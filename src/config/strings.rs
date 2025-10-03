@@ -56,7 +56,7 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
             .to_string_lossy()
             .to_string();
     } else if data_dir.starts_with("?userconfig?") {
-        let suffix = data_dir["?userdata?".len()..].trim_start_matches(&['/', '\\'][..]);
+        let suffix = data_dir["?userconfig?".len()..].trim_start_matches(&['/', '\\'][..]);
 
         data_dir = crate::default_config_path()
             .join(suffix)
