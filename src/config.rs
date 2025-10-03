@@ -225,21 +225,11 @@ impl OpenMWConfiguration {
                 if let Some(setting) = config.resources() {
                     let dir = setting.parsed();
 
-                    let morrowind_vfs = DirectorySetting::new(
-                        dir.join("vfs-mw").to_string_lossy().to_string(),
-                        setting.meta.source_config.to_path_buf(),
-                        &mut setting.meta.comment.to_string(),
-                    );
-
                     let engine_vfs = DirectorySetting::new(
                         dir.join("vfs").to_string_lossy().to_string(),
                         setting.meta.source_config.to_path_buf(),
                         &mut setting.meta.comment.to_string(),
                     );
-
-                    config
-                        .settings
-                        .insert(0, SettingValue::DataDirectory(morrowind_vfs));
 
                     config
                         .settings
