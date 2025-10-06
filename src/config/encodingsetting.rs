@@ -5,9 +5,9 @@
 
 use std::fmt;
 
-use crate::{ConfigError, GameSetting, GameSettingMeta, bail_config};
+use crate::{bail_config, ConfigError, GameSetting, GameSettingMeta};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum EncodingType {
     WIN1250,
     WIN1251,
@@ -32,6 +32,12 @@ pub struct EncodingSetting {
     encoding: EncodingType,
 }
 
+impl EncodingSetting {
+    pub fn value(&self) -> EncodingType {
+        self.encoding
+    }
+}
+
 impl PartialEq for EncodingSetting {
     fn eq(&self, other: &Self) -> bool {
         self.encoding == other.encoding
@@ -46,11 +52,7 @@ impl GameSetting for EncodingSetting {
 
 impl fmt::Display for EncodingSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            format!("{}encoding={}", self.meta.comment, self.encoding)
-        )
+        write!(f, "{}encoding={}", self.meta.comment, self.encoding)
     }
 }
 
