@@ -5,9 +5,13 @@
 
 mod config;
 pub use config::{
-    OpenMWConfiguration, directorysetting::DirectorySetting, encodingsetting::EncodingSetting,
-    error::ConfigError, filesetting::FileSetting, gamesetting::GameSettingType,
+    directorysetting::DirectorySetting,
+    encodingsetting::{EncodingSetting, EncodingType},
+    error::ConfigError,
+    filesetting::FileSetting,
+    gamesetting::GameSettingType,
     genericsetting::GenericSetting,
+    OpenMWConfiguration,
 };
 
 pub(crate) trait GameSetting: std::fmt::Display {
