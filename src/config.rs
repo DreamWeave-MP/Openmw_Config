@@ -907,18 +907,12 @@ impl OpenMWConfiguration {
     pub fn save_user(&self) -> Result<(), String> {
         let target_dir = self.user_config_path();
 
-        // Check if target_dir is a writable directory
-        if !target_dir.is_dir() {
-            return Err(format!("Target path {:?} is not a directory.", target_dir));
-        }
-
-        // Try to open a file for writing to check writability
-        if !util::can_write_to_dir(&target_dir) {
-            return Err(format!("Directory {:?} is not writable!", target_dir));
-        };
-
         // Write the config to openmw.cfg in the target directory
         let cfg_path = target_dir.join("openmw.cfg");
+
+        if !util::is_writable(&cfg_path) {
+            return Err(format!("Target path {:?} is not writable!", target_dir));
+        }
 
         let mut user_settings_string = String::new();
 
@@ -934,13 +928,6 @@ impl OpenMWConfiguration {
     /// This doesn't prevent bad usages of the configuration such as overriding an existing one with the original root configuration,
     /// So you should exercise caution when writing an openmw.cfg and be very sure you know it is going where you think it is.
     pub fn save_subconfig(&self, target_dir: PathBuf) -> Result<(), String> {
-        // Check if target_dir is a writable directory
-        if !target_dir.is_dir() {
-            return Err(format!("Target path {:?} is not a directory.", target_dir));
-        } else if !util::can_write_to_dir(&target_dir) {
-            return Err(format!("Directory {:?} is not writable!", target_dir));
-        };
-
         let subconfig_is_loaded = self.settings.iter().any(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => {
                 subconfig.parsed() == &target_dir
@@ -957,6 +944,10 @@ impl OpenMWConfiguration {
         }
 
         let cfg_path = target_dir.join("openmw.cfg");
+
+        if !util::is_writable(&cfg_path) {
+            return Err(format!("Target path {:?} is not writable!", target_dir));
+        }
 
         let mut subconfig_settings_string = String::new();
 

@@ -20,20 +20,26 @@ pub fn user_config_path(
         .to_path_buf()
 }
 
-pub fn user_config_writable(path: &std::path::PathBuf) -> bool {
-    std::fs::metadata(path)
-        .map(|m| m.permissions().readonly() == false)
-        .unwrap_or(false)
-}
-
-pub fn can_write_to_dir<P: AsRef<std::path::Path>>(dir: &P) -> bool {
-    let test_path = dir.as_ref().join(".openmw_cfg_write_test");
-    match std::fs::File::create(&test_path) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&test_path);
-            true
+pub fn is_writable(path: &std::path::PathBuf) -> bool {
+    if path.exists() {
+        match std::fs::OpenOptions::new().write(true).open(path) {
+            Ok(_) => true,
+            Err(e) => e.kind() != std::io::ErrorKind::PermissionDenied,
         }
-        Err(_) => false,
+    } else {
+        match path.parent() {
+            Some(parent) => {
+                let test_path = parent.join(".write_test_tmp");
+                match std::fs::File::create(&test_path) {
+                    Ok(_) => {
+                        let _ = std::fs::remove_file(&test_path);
+                        true
+                    }
+                    Err(e) => e.kind() != std::io::ErrorKind::PermissionDenied,
+                }
+            }
+            None => false,
+        }
     }
 }
 
