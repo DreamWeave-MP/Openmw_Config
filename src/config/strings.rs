@@ -12,9 +12,13 @@ fn strip_special_components<P: AsRef<std::path::Path>>(input: P) -> PathBuf {
         match component {
             CurDir => {} // skip '.'
             ParentDir => {
-                result.pop(); // remove last segment
+                if result.ends_with("..") || !result.pop() {
+                    result.push(ParentDir);
+                }
             }
-            Normal(part) => result.push(part),
+            Normal(part) => {
+                result.push(part);
+            }
             RootDir => result.push(component),
             Prefix(prefix) => result.push(prefix.as_os_str()), // for Windows
         }
@@ -72,4 +76,35 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
     }
 
     strip_special_components(path)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::config::strings::strip_special_components;
+    use std::path::Path;
+
+    #[test]
+    fn test_strip_components() {
+        assert_eq!(strip_special_components("."), Path::new(""));
+        assert_eq!(strip_special_components(".."), Path::new(".."));
+        assert_eq!(strip_special_components("foo"), Path::new("foo"));
+        assert_eq!(strip_special_components("./foo/bar"), Path::new("foo/bar"));
+        assert_eq!(
+            strip_special_components("../foo/bar"),
+            Path::new("../foo/bar")
+        );
+        assert_eq!(
+            strip_special_components("../../foo/bar/../../bar/baz"),
+            Path::new("../../bar/baz")
+        );
+
+        assert_eq!(
+            strip_special_components("./foo/bar/../bar/baz"),
+            Path::new("foo/bar/baz")
+        );
+        assert_eq!(
+            strip_special_components("./foo/bar/../../bar/baz"),
+            Path::new("bar/baz")
+        );
+    }
 }
