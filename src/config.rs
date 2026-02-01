@@ -196,7 +196,17 @@ impl OpenMWConfiguration {
     pub fn new(path: Option<PathBuf>) -> Result<Self, ConfigError> {
         let mut config = OpenMWConfiguration::default();
         let root_config = match path {
-            Some(path) => util::input_config_path(&path)?,
+            Some(path) => {
+                if path.as_os_str().is_empty() {
+                    return Err(ConfigError::NotFileOrDirectory(path));
+                } else if path.is_absolute() {
+                    util::input_config_path(&path)?
+                } else if path.is_relative() {
+                    util::input_config_path(&std::fs::canonicalize(path)?)?
+                } else {
+                    return Err(ConfigError::NotFileOrDirectory(path));
+                }
+            }
             None => crate::default_config_path().join("openmw.cfg"),
         };
 
