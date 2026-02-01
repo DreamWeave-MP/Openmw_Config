@@ -173,7 +173,15 @@ impl OpenMWConfiguration {
         if let Ok(explicit_path) = std::env::var("OPENMW_CONFIG") {
             let explicit_path: PathBuf = shellexpand::tilde(&explicit_path).into_owned().into();
 
-            return Self::new(Some(explicit_path));
+            if explicit_path.as_os_str().is_empty() {
+                return Err(ConfigError::NotFileOrDirectory(explicit_path));
+            } else if explicit_path.is_absolute() {
+                return Self::new(Some(explicit_path));
+            } else if explicit_path.is_relative() {
+                return Self::new(Some(std::fs::canonicalize(explicit_path)?));
+            } else {
+                return Err(ConfigError::NotFileOrDirectory(explicit_path));
+            }
         } else if let Ok(path_list) = std::env::var("OPENMW_CONFIG_DIR") {
             let path_list = if cfg!(windows) {
                 path_list.split(';')
