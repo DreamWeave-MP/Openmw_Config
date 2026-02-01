@@ -5,6 +5,8 @@
 
 use std::path::PathBuf;
 
+const SEPARATORS: [char; 2] = ['/', '\\'];
+
 /// Parses a data directory string according to OpenMW rules.
 /// https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#openmw-cfg-syntax
 pub fn parse_data_directory<P: AsRef<std::path::Path>>(
@@ -32,14 +34,14 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
 
     // Token replacement
     if data_dir.starts_with("?userdata?") {
-        let suffix = data_dir["?userdata?".len()..].trim_start_matches(&['/', '\\'][..]);
+        let suffix = data_dir["?userdata?".len()..].trim_start_matches(&SEPARATORS[..]);
 
         data_dir = crate::default_userdata_path()
             .join(suffix)
             .to_string_lossy()
             .to_string();
     } else if data_dir.starts_with("?userconfig?") {
-        let suffix = data_dir["?userconfig?".len()..].trim_start_matches(&['/', '\\'][..]);
+        let suffix = data_dir["?userconfig?".len()..].trim_start_matches(&SEPARATORS[..]);
 
         data_dir = crate::default_config_path()
             .join(suffix)
@@ -47,7 +49,7 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
             .to_string();
     }
 
-    let data_dir = data_dir.replace(['/', '\\'], &std::path::MAIN_SEPARATOR.to_string());
+    let data_dir = data_dir.replace(SEPARATORS, &std::path::MAIN_SEPARATOR.to_string());
 
     let mut path = PathBuf::from(&data_dir);
     if !path.is_absolute() {
