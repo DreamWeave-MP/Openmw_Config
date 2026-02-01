@@ -43,29 +43,49 @@ pub fn is_writable(path: &std::path::PathBuf) -> bool {
     }
 }
 
+pub fn validate_path(
+    check_path: std::path::PathBuf,
+) -> Result<std::path::PathBuf, crate::ConfigError> {
+    if check_path.as_os_str().is_empty() {
+        return Err(crate::ConfigError::NotFileOrDirectory(check_path));
+    } else if check_path.is_absolute() {
+        return Ok(check_path);
+    } else if check_path.is_relative() {
+        return Ok(std::fs::canonicalize(check_path)?);
+    } else {
+        return Err(crate::ConfigError::NotFileOrDirectory(check_path));
+    }
+}
+
 /// Transposes an input directory or file path to an openmw.cfg path
 /// Maybe could do with some additional validation
 pub fn input_config_path(
-    config_path: &std::path::Path,
+    config_path: std::path::PathBuf,
 ) -> Result<std::path::PathBuf, crate::ConfigError> {
-    match std::fs::symlink_metadata(config_path) {
+    let check_path = match validate_path(config_path) {
+        Err(error) => return Err(error),
+        Ok(path) => path,
+    };
+
+    match std::fs::symlink_metadata(&check_path) {
         Ok(metadata) => {
-            if metadata.is_file() {
-                Ok(config_path.to_path_buf())
-            } else if metadata.is_dir() {
-                let maybe_config = config_path.join("openmw.cfg");
-                if maybe_config.is_file() {
+            if metadata.is_dir() {
+                let maybe_config = check_path.join("openmw.cfg");
+
+                if maybe_config.is_file() || maybe_config.is_symlink() {
                     Ok(maybe_config)
                 } else {
-                    crate::config::bail_config!(cannot_find, config_path);
+                    crate::config::bail_config!(cannot_find, check_path);
                 }
+            } else if metadata.is_symlink() || metadata.is_file() {
+                Ok(check_path)
             } else {
-                crate::config::bail_config!(not_file_or_directory, config_path);
+                crate::config::bail_config!(not_file_or_directory, check_path);
             }
         }
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
-                crate::config::bail_config!(not_file_or_directory, config_path);
+                crate::config::bail_config!(not_file_or_directory, check_path);
             } else {
                 Err(crate::ConfigError::Io(err))
             }

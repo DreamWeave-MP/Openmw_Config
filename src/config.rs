@@ -204,17 +204,10 @@ impl OpenMWConfiguration {
     pub fn new(path: Option<PathBuf>) -> Result<Self, ConfigError> {
         let mut config = OpenMWConfiguration::default();
         let root_config = match path {
-            Some(path) => {
-                if path.as_os_str().is_empty() {
-                    return Err(ConfigError::NotFileOrDirectory(path));
-                } else if path.is_absolute() {
-                    util::input_config_path(&path)?
-                } else if path.is_relative() {
-                    util::input_config_path(&std::fs::canonicalize(path)?)?
-                } else {
-                    return Err(ConfigError::NotFileOrDirectory(path));
-                }
-            }
+            Some(path) => match util::input_config_path(path) {
+                Err(error) => return Err(error),
+                Ok(validated_path) => validated_path,
+            },
             None => crate::default_config_path().join("openmw.cfg"),
         };
 
@@ -829,18 +822,36 @@ impl OpenMWConfiguration {
                         self,
                         DataDirectory,
                         &value,
-                        &config_dir,
+                        (config_dir).to_path_buf(),
                         &mut queued_comment
                     )
                 }
                 "resources" => {
-                    insert_dir_setting!(self, Resources, &value, &config_dir, &mut queued_comment)
+                    insert_dir_setting!(
+                        self,
+                        Resources,
+                        &value,
+                        (config_dir).to_path_buf(),
+                        &mut queued_comment
+                    )
                 }
                 "user-data" => {
-                    insert_dir_setting!(self, UserData, &value, &config_dir, &mut queued_comment)
+                    insert_dir_setting!(
+                        self,
+                        UserData,
+                        &value,
+                        (config_dir).to_path_buf(),
+                        &mut queued_comment
+                    )
                 }
                 "data-local" => {
-                    insert_dir_setting!(self, DataLocal, &value, &config_dir, &mut queued_comment)
+                    insert_dir_setting!(
+                        self,
+                        DataLocal,
+                        &value,
+                        (config_dir).to_path_buf(),
+                        &mut queued_comment
+                    )
                 }
                 "replace" => match value.to_lowercase().as_str() {
                     "content" => self.set_content_files(None),
