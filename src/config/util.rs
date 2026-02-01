@@ -67,7 +67,7 @@ pub fn input_config_path(
         Ok(path) => path,
     };
 
-    match std::fs::symlink_metadata(&check_path) {
+    match std::fs::metadata(&check_path) {
         Ok(metadata) => {
             if metadata.is_dir() {
                 let maybe_config = check_path.join("openmw.cfg");
