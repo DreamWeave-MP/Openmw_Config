@@ -142,20 +142,22 @@ mod tests {
     }
 
     #[test]
-    fn test_double_dot_component_removes_parent() {
+    fn test_double_dot_not_normalized() {
+        // OpenMW does not normalize .. — the raw joined path is preserved
         let config = mock_path("/home/user/.config/openmw");
         let mut comment = String::from("comment");
         let setting = DirectorySetting::new("../common", config.clone(), &mut comment);
-        let expected = config.parent().unwrap().join("common");
+        let expected = config.join("../common");
         assert_eq!(setting.parsed(), &expected);
     }
 
     #[test]
-    fn test_nested_dots_normalize_correctly() {
+    fn test_dot_components_not_normalized() {
+        // OpenMW does not normalize . or .. in the middle of a path
         let config = mock_path("/opt/game/config");
         let mut comment = String::new();
         let setting = DirectorySetting::new("foo/./bar/../baz", config.clone(), &mut comment);
-        let expected = config.join("foo/baz");
+        let expected = config.join("foo/./bar/../baz");
         assert_eq!(setting.parsed(), &expected);
     }
 }
