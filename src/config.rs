@@ -1011,7 +1011,7 @@ impl fmt::Display for OpenMWConfiguration {
         writeln!(
             f,
             "# OpenMW-Config Serializer Version: {}",
-            std::env::var("CARGO_PKG_VERSON").expect("")
+            env!("CARGO_PKG_VERSION")
         )?;
 
         Ok(())
