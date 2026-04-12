@@ -3,7 +3,7 @@
 // Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
 
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 use crate::{ConfigError, GameSetting, GameSettingMeta, bail_config};
 
@@ -78,15 +78,15 @@ impl GameSettingType {
         }
     }
 
-    pub fn value(&self) -> String {
-        match &self {
-            &GameSettingType::Color(setting) => {
+    pub fn value(&self) -> Cow<str> {
+        match self {
+            GameSettingType::Color(setting) => {
                 let (r, g, b) = setting.value;
-                format!("{r},{g},{b}")
+                Cow::Owned(format!("{r},{g},{b}"))
             }
-            &GameSettingType::String(setting) => setting.value.clone(),
-            &GameSettingType::Float(setting) => setting.value.to_string(),
-            &GameSettingType::Int(setting) => setting.value.to_string(),
+            GameSettingType::String(setting) => Cow::Borrowed(&setting.value),
+            GameSettingType::Float(setting) => Cow::Owned(setting.value.to_string()),
+            GameSettingType::Int(setting) => Cow::Owned(setting.value.to_string()),
         }
     }
 }
