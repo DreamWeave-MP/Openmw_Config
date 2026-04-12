@@ -339,4 +339,116 @@ mod tests {
 
         assert_eq!(setting.to_string(), "#Monochrome UI Settings\n#\n#\n#\n#######\n##\n##\n##\nfallback=iHUDColor,128,64,255");
     }
+
+    // --- TryFrom parsing ---
+
+    fn parse(s: &str) -> Result<GameSettingType, crate::ConfigError> {
+        GameSettingType::try_from((s.to_string(), PathBuf::default(), &mut String::new()))
+    }
+
+    #[test]
+    fn test_parse_string_value() {
+        let setting = parse("sMyKey,hello world").unwrap();
+        assert!(matches!(setting, GameSettingType::String(_)));
+        assert_eq!(setting.key(), "sMyKey");
+        assert_eq!(setting.value(), "hello world");
+    }
+
+    #[test]
+    fn test_parse_integer_value() {
+        let setting = parse("iSpeed,42").unwrap();
+        assert!(matches!(setting, GameSettingType::Int(_)));
+        assert_eq!(setting.value(), "42");
+    }
+
+    #[test]
+    fn test_parse_negative_integer() {
+        let setting = parse("iDepth,-100").unwrap();
+        assert!(matches!(setting, GameSettingType::Int(_)));
+        assert_eq!(setting.value(), "-100");
+    }
+
+    #[test]
+    fn test_parse_float_value() {
+        let setting = parse("fGravity,9.81").unwrap();
+        assert!(matches!(setting, GameSettingType::Float(_)));
+        assert_eq!(setting.value(), "9.81");
+    }
+
+    #[test]
+    fn test_parse_color_value() {
+        let setting = parse("iSkyColor,100,149,237").unwrap();
+        assert!(matches!(setting, GameSettingType::Color(_)));
+        assert_eq!(setting.value(), "100,149,237");
+    }
+
+    #[test]
+    fn test_parse_missing_comma_errors() {
+        assert!(parse("NoCommaAtAll").is_err());
+    }
+
+    #[test]
+    fn test_parse_value_with_comma_stays_string() {
+        // A string value that contains a comma should not be misidentified as color
+        let setting = parse("sMessage,Hello, traveller").unwrap();
+        assert!(matches!(setting, GameSettingType::String(_)));
+        assert_eq!(setting.value(), "Hello, traveller");
+    }
+
+    #[test]
+    fn test_parse_ambiguous_two_number_value_is_string() {
+        // Two comma-separated numbers is NOT a valid color (needs 3), must fall back to String
+        let setting = parse("sKey,10,20").unwrap();
+        assert!(matches!(setting, GameSettingType::String(_)));
+    }
+
+    #[test]
+    fn test_parse_color_out_of_u8_range_is_string() {
+        // Values > 255 can't be u8 so the whole thing should parse as String
+        let setting = parse("sBig,256,0,0").unwrap();
+        assert!(matches!(setting, GameSettingType::String(_)));
+    }
+
+    #[test]
+    fn test_parse_comment_consumed() {
+        let mut comment = String::from("# some note\n");
+        let setting = GameSettingType::try_from((
+            "iVal,1".to_string(),
+            PathBuf::default(),
+            &mut comment,
+        )).unwrap();
+        assert_eq!(setting.meta().comment, "# some note\n");
+        assert!(comment.is_empty(), "comment should be consumed");
+    }
+
+    // --- Equality ---
+
+    #[test]
+    fn test_same_key_same_type_are_equal() {
+        let a = parse("iKey,1").unwrap();
+        let b = parse("iKey,2").unwrap();
+        assert_eq!(a, b, "equality is key-only within the same type");
+    }
+
+    #[test]
+    fn test_different_keys_not_equal() {
+        let a = parse("iKey,1").unwrap();
+        let b = parse("iOther,1").unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_mismatched_types_not_equal() {
+        // "1" parses as Int; "1.0" parses as Float — same logical key, different types
+        let int_setting = parse("iKey,1").unwrap();
+        let float_setting = parse("iKey,1.0").unwrap();
+        assert_ne!(int_setting, float_setting);
+    }
+
+    #[test]
+    fn test_eq_with_str_key() {
+        let setting = parse("iMaxLevel,50").unwrap();
+        assert_eq!(setting, "iMaxLevel");
+        assert_ne!(setting, "iOtherKey");
+    }
 }

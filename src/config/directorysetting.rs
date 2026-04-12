@@ -160,4 +160,136 @@ mod tests {
         let expected = config.join("foo/./bar/../baz");
         assert_eq!(setting.parsed(), &expected);
     }
+
+    // --- Absolute paths ---
+
+    #[test]
+    fn test_absolute_path_not_joined_to_config() {
+        // An absolute value must not be prepended with the config dir
+        let config = mock_path("/etc/openmw");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("/absolute/path/to/data", config, &mut comment);
+        assert_eq!(setting.parsed(), &PathBuf::from("/absolute/path/to/data"));
+    }
+
+    #[test]
+    fn test_absolute_path_original_preserved() {
+        let config = mock_path("/etc/openmw");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("/absolute/data", config, &mut comment);
+        assert_eq!(setting.original(), "/absolute/data");
+    }
+
+    // --- Backslash / separator normalisation ---
+
+    #[test]
+    fn test_backslash_normalised_to_separator() {
+        // Backslashes in values must be converted to the platform separator
+        let config = mock_path("/my/config");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("subdir\\nested\\leaf", config.clone(), &mut comment);
+        let expected = config.join("subdir").join("nested").join("leaf");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    #[test]
+    fn test_mixed_separators_normalised() {
+        let config = mock_path("/my/config");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("a\\b/c", config.clone(), &mut comment);
+        let expected = config.join("a").join("b").join("c");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    // --- Quote handling ---
+
+    #[test]
+    fn test_quoted_path_stripped_of_quotes() {
+        let config = mock_path("/cfg");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("\"simple\"", config.clone(), &mut comment);
+        assert_eq!(setting.parsed(), &config.join("simple"));
+    }
+
+    #[test]
+    fn test_quoted_path_ampersand_escapes_next_char() {
+        // & inside quotes escapes the following character (OpenMW quote escape rule)
+        let config = mock_path("/cfg");
+        let mut comment = String::new();
+        // "&"" inside the quoted string should yield a literal "
+        let setting = DirectorySetting::new("\"foo&\"bar\"", config.clone(), &mut comment);
+        assert_eq!(setting.parsed(), &config.join("foo\"bar"));
+    }
+
+    #[test]
+    fn test_quoted_path_ampersand_escapes_ampersand() {
+        let config = mock_path("/cfg");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("\"foo&&bar\"", config.clone(), &mut comment);
+        assert_eq!(setting.parsed(), &config.join("foo&bar"));
+    }
+
+    #[test]
+    fn test_original_preserves_quotes() {
+        // original() must round-trip back exactly as it appeared in openmw.cfg
+        let config = mock_path("/cfg");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("\"path with spaces\"", config, &mut comment);
+        assert_eq!(setting.original(), "\"path with spaces\"");
+    }
+
+    // --- Token expansion ---
+
+    #[test]
+    fn test_userdata_token_only() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?userdata?", config, &mut comment);
+        // With no suffix, should resolve exactly to the userdata base dir
+        assert_eq!(setting.parsed(), &crate::default_userdata_path());
+    }
+
+    #[test]
+    fn test_userconfig_token_only() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?userconfig?", config, &mut comment);
+        assert_eq!(setting.parsed(), &crate::default_config_path());
+    }
+
+    #[test]
+    fn test_userdata_token_with_nested_path() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?userdata?/saves/slot1", config, &mut comment);
+        let expected = crate::default_userdata_path().join("saves").join("slot1");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    // --- Meta / comment handling ---
+
+    #[test]
+    fn test_source_config_stored_verbatim() {
+        let config = mock_path("/etc/openmw/openmw.cfg");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("data", config.clone(), &mut comment);
+        assert_eq!(setting.meta.source_config, config);
+    }
+
+    #[test]
+    fn test_comment_cleared_after_new() {
+        let config = mock_path("/etc/openmw");
+        let mut comment = String::from("# a comment\n");
+        let setting = DirectorySetting::new("data", config, &mut comment);
+        assert_eq!(setting.meta.comment, "# a comment\n");
+        assert!(comment.is_empty(), "comment should be cleared after construction");
+    }
+
+    #[test]
+    fn test_empty_comment_stays_empty() {
+        let config = mock_path("/etc/openmw");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("data", config, &mut comment);
+        assert!(setting.meta.comment.is_empty());
+    }
 }

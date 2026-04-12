@@ -1017,3 +1017,337 @@ impl fmt::Display for OpenMWConfiguration {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    fn write_cfg(dir: &std::path::Path, contents: &str) -> PathBuf {
+        let cfg = dir.join("openmw.cfg");
+        let mut f = std::fs::File::create(&cfg).unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
+        cfg
+    }
+
+    fn temp_dir() -> PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "openmw_cfg_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        base
+    }
+
+    fn load(cfg_contents: &str) -> OpenMWConfiguration {
+        let dir = temp_dir();
+        write_cfg(&dir, cfg_contents);
+        OpenMWConfiguration::new(Some(dir)).unwrap()
+    }
+
+    // -----------------------------------------------------------------------
+    // Content files
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_content_files_empty_on_bare_config() {
+        let config = load("");
+        assert!(config.content_files().is_empty());
+    }
+
+    #[test]
+    fn test_content_files_parsed_in_order() {
+        let config = load("content=Morrowind.esm\ncontent=Tribunal.esm\ncontent=Bloodmoon.esm\n");
+        let files = config.content_files();
+        assert_eq!(files, vec!["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]);
+    }
+
+    #[test]
+    fn test_has_content_file_found() {
+        let config = load("content=Morrowind.esm\n");
+        assert!(config.has_content_file("Morrowind.esm"));
+    }
+
+    #[test]
+    fn test_has_content_file_not_found() {
+        let config = load("content=Morrowind.esm\n");
+        assert!(!config.has_content_file("Tribunal.esm"));
+    }
+
+    #[test]
+    fn test_duplicate_content_file_errors_on_load() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\ncontent=Morrowind.esm\n");
+        assert!(OpenMWConfiguration::new(Some(dir)).is_err());
+    }
+
+    #[test]
+    fn test_add_content_file_appends() {
+        let mut config = load("content=Morrowind.esm\n");
+        config.add_content_file("MyMod.esp").unwrap();
+        assert!(config.has_content_file("MyMod.esp"));
+    }
+
+    #[test]
+    fn test_add_duplicate_content_file_errors() {
+        let mut config = load("content=Morrowind.esm\n");
+        assert!(config.add_content_file("Morrowind.esm").is_err());
+    }
+
+    #[test]
+    fn test_add_content_file_source_config_is_cfg_file() {
+        let dir = temp_dir();
+        let cfg_path = write_cfg(&dir, "");
+        let mut config = OpenMWConfiguration::new(Some(dir)).unwrap();
+        config.add_content_file("Mod.esp").unwrap();
+        let setting = config.content_files_iter().next().unwrap();
+        assert_eq!(setting.meta().source_config, cfg_path,
+            "source_config should be the openmw.cfg file, not a directory");
+    }
+
+    #[test]
+    fn test_remove_content_file() {
+        let mut config = load("content=Morrowind.esm\ncontent=Tribunal.esm\n");
+        config.remove_content_file("Morrowind.esm");
+        assert!(!config.has_content_file("Morrowind.esm"));
+        assert!(config.has_content_file("Tribunal.esm"));
+    }
+
+    #[test]
+    fn test_set_content_files_replaces_all() {
+        let mut config = load("content=Morrowind.esm\ncontent=Tribunal.esm\n");
+        config.set_content_files(Some(vec!["NewMod.esp".to_string()]));
+        assert!(!config.has_content_file("Morrowind.esm"));
+        assert!(!config.has_content_file("Tribunal.esm"));
+        assert!(config.has_content_file("NewMod.esp"));
+    }
+
+    #[test]
+    fn test_set_content_files_none_clears_all() {
+        let mut config = load("content=Morrowind.esm\n");
+        config.set_content_files(None);
+        assert!(config.content_files().is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Fallback archives
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fallback_archives_parsed() {
+        let config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
+        let archives = config.fallback_archives();
+        assert_eq!(archives, vec!["Morrowind.bsa", "Tribunal.bsa"]);
+    }
+
+    #[test]
+    fn test_has_archive_file() {
+        let config = load("fallback-archive=Morrowind.bsa\n");
+        assert!(config.has_archive_file("Morrowind.bsa"));
+        assert!(!config.has_archive_file("Tribunal.bsa"));
+    }
+
+    #[test]
+    fn test_add_duplicate_archive_errors() {
+        let mut config = load("fallback-archive=Morrowind.bsa\n");
+        assert!(config.add_archive_file("Morrowind.bsa").is_err());
+    }
+
+    #[test]
+    fn test_remove_archive_file() {
+        let mut config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
+        config.remove_archive_file("Morrowind.bsa");
+        assert!(!config.has_archive_file("Morrowind.bsa"));
+        assert!(config.has_archive_file("Tribunal.bsa"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Groundcover
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_groundcover_parsed() {
+        let config = load("groundcover=GrassPlugin.esp\n");
+        assert_eq!(config.groundcover(), vec!["GrassPlugin.esp"]);
+    }
+
+    #[test]
+    fn test_has_groundcover_file() {
+        let config = load("groundcover=Grass.esp\n");
+        assert!(config.has_groundcover_file("Grass.esp"));
+        assert!(!config.has_groundcover_file("Other.esp"));
+    }
+
+    #[test]
+    fn test_duplicate_groundcover_errors_on_load() {
+        let dir = temp_dir();
+        write_cfg(&dir, "groundcover=Grass.esp\ngroundcover=Grass.esp\n");
+        assert!(OpenMWConfiguration::new(Some(dir)).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Data directories
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_data_directories_absolute_paths_parsed() {
+        let config = load("data=/absolute/path/to/data\n");
+        let dirs = config.data_directories();
+        assert!(dirs.iter().any(|d| d.ends_with("absolute/path/to/data")));
+    }
+
+    #[test]
+    fn test_add_data_directory() {
+        let mut config = load("");
+        config.add_data_directory(PathBuf::from("/some/data/dir"));
+        assert!(config.has_data_dir("/some/data/dir"));
+    }
+
+    #[test]
+    fn test_set_data_directories_replaces_all() {
+        let mut config = load("data=/old/dir\n");
+        config.set_data_directories(Some(vec![PathBuf::from("/new/dir")]));
+        assert!(!config.has_data_dir("/old/dir"));
+        assert!(config.has_data_dir("/new/dir"));
+    }
+
+    #[test]
+    fn test_remove_data_directory() {
+        let mut config = load("data=/keep/me\n");
+        config.add_data_directory(PathBuf::from("/remove/me"));
+        config.remove_data_directory(&PathBuf::from("/remove/me"));
+        assert!(!config.has_data_dir("/remove/me"));
+        assert!(config.has_data_dir("/keep/me"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Fallback (game) settings
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_game_settings_parsed() {
+        let config = load("fallback=iMaxLevel,100\n");
+        let setting = config.get_game_setting("iMaxLevel").unwrap();
+        assert_eq!(setting.value(), "100");
+    }
+
+    #[test]
+    fn test_game_settings_last_wins() {
+        let config = load("fallback=iKey,1\nfallback=iKey,2\n");
+        let setting = config.get_game_setting("iKey").unwrap();
+        assert_eq!(setting.value(), "2");
+    }
+
+    #[test]
+    fn test_game_settings_deduplicates_by_key() {
+        // Known bug (#18): game_settings() deduplicates by full serialized string rather than by
+        // key alone, so the same key with different values appears multiple times.
+        // get_game_setting() correctly applies last-wins by key; game_settings() does not.
+        // This test documents current (buggy) behavior so regressions are visible.
+        // When #18 is fixed, change the assertion to `count == 1`.
+        let config = load("fallback=iKey,1\nfallback=iKey,2\n");
+        let count = config.game_settings().filter(|s| s.key() == "iKey").count();
+        assert_eq!(count, 2, "BUG #18: game_settings() does not deduplicate by key");
+    }
+
+    #[test]
+    fn test_get_game_setting_missing_returns_none() {
+        let config = load("fallback=iKey,1\n");
+        assert!(config.get_game_setting("iMissing").is_none());
+    }
+
+    #[test]
+    fn test_game_setting_color_roundtrip() {
+        let config = load("fallback=iSkyColor,100,149,237\n");
+        let setting = config.get_game_setting("iSkyColor").unwrap();
+        assert_eq!(setting.value(), "100,149,237");
+    }
+
+    #[test]
+    fn test_game_setting_float_roundtrip() {
+        let config = load("fallback=fGravity,9.81\n");
+        let setting = config.get_game_setting("fGravity").unwrap();
+        assert_eq!(setting.value(), "9.81");
+    }
+
+    // -----------------------------------------------------------------------
+    // Encoding
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_encoding_parsed() {
+        use crate::config::encodingsetting::EncodingType;
+        let config = load("encoding=win1252\n");
+        assert_eq!(config.encoding().unwrap().value(), EncodingType::WIN1252);
+    }
+
+    #[test]
+    fn test_invalid_encoding_errors_on_load() {
+        let dir = temp_dir();
+        write_cfg(&dir, "encoding=utf8\n");
+        assert!(OpenMWConfiguration::new(Some(dir)).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Replace semantics
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_replace_content_clears_prior_plugins() {
+        let config = load("content=Old.esm\nreplace=content\ncontent=New.esm\n");
+        assert!(!config.has_content_file("Old.esm"));
+        assert!(config.has_content_file("New.esm"));
+    }
+
+    #[test]
+    fn test_replace_data_clears_prior_dirs() {
+        let config = load("data=/old\nreplace=data\ndata=/new\n");
+        assert!(!config.has_data_dir("/old"));
+        assert!(config.has_data_dir("/new"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Display / serialisation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_display_contains_version_comment() {
+        let config = load("content=Morrowind.esm\n");
+        let output = config.to_string();
+        assert!(output.contains("# OpenMW-Config Serializer Version:"),
+            "Display should include version comment");
+    }
+
+    #[test]
+    fn test_display_preserves_content_entries() {
+        let config = load("content=Morrowind.esm\ncontent=Tribunal.esm\n");
+        let output = config.to_string();
+        assert!(output.contains("content=Morrowind.esm"));
+        assert!(output.contains("content=Tribunal.esm"));
+    }
+
+    #[test]
+    fn test_display_preserves_comments() {
+        let config = load("# This is a comment\ncontent=Morrowind.esm\n");
+        let output = config.to_string();
+        assert!(output.contains("# This is a comment"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Generic settings
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_generic_setting_preserved() {
+        let config = load("some-unknown-key=some-value\n");
+        let output = config.to_string();
+        assert!(output.contains("some-unknown-key=some-value"));
+    }
+}
