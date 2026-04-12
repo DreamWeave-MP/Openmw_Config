@@ -246,7 +246,7 @@ impl OpenMWConfiguration {
     /// Useful for reading other configuration files, or if assuming openmw.cfg
     /// Is always *called* openmw.cfg (which it should be)
     pub fn root_config_dir(&self) -> PathBuf {
-        self.root_config.parent().expect("").to_path_buf()
+        self.root_config.parent().expect("root_config has no parent directory").to_path_buf()
     }
 
     pub fn is_user_config(&self) -> bool {
