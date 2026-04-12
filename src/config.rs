@@ -185,10 +185,7 @@ impl OpenMWConfiguration {
     pub fn new(path: Option<PathBuf>) -> Result<Self, ConfigError> {
         let mut config = OpenMWConfiguration::default();
         let root_config = match path {
-            Some(path) => match util::input_config_path(path) {
-                Err(error) => return Err(error),
-                Ok(validated_path) => validated_path,
-            },
+            Some(path) => util::input_config_path(path)?,
             None => crate::default_config_path().join("openmw.cfg"),
         };
 
@@ -201,13 +198,12 @@ impl OpenMWConfiguration {
                     let path = dir.parsed();
 
                     let path_meta = metadata(path);
-                    if path_meta.is_err() {
-                        if let Err(error) = create_dir_all(path) {
+                    if path_meta.is_err()
+                        && let Err(error) = create_dir_all(path) {
                             util::debug_log(format!(
                                 "WARNING: Attempted to crete a data-local directory at {path:?}, but failed: {error}"
                             ))
                         };
-                    }
 
                     config
                         .settings
@@ -272,7 +268,7 @@ impl OpenMWConfiguration {
     /// and will be the one which is modifiable by OpenMW-Launcher and OpenMW proper.
     ///
     /// See https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources for examples and further explanation of multiple config sources.
-
+    ///
     /// Path to the highest-level configuration *directory*
     pub fn user_config_path(&self) -> PathBuf {
         self.sub_configs()
@@ -535,7 +531,7 @@ impl OpenMWConfiguration {
     where
         P: Fn(&SettingValue) -> bool + 'a,
     {
-        self.settings.iter().filter(move |s| predicate(*s))
+        self.settings.iter().filter(move |s| predicate(s))
     }
 
     pub fn clear_matching<P>(&mut self, predicate: P)
@@ -622,11 +618,10 @@ impl OpenMWConfiguration {
         let mut seen = HashSet::new();
 
         for setting in self.settings.iter().rev() {
-            if let SettingValue::GameSetting(gs) = setting {
-                if seen.insert(gs.to_string()) {
+            if let SettingValue::GameSetting(gs) = setting
+                && seen.insert(gs.to_string()) {
                     unique_settings.push(gs);
                 }
-            }
         }
 
         unique_settings.into_iter()
@@ -722,7 +717,7 @@ impl OpenMWConfiguration {
                     self.settings
                         .push(SettingValue::ContentFile(FileSetting::new(
                             &value,
-                            &config_dir,
+                            config_dir,
                             &mut queued_comment,
                         )));
                 }
@@ -733,7 +728,7 @@ impl OpenMWConfiguration {
                     self.settings
                         .push(SettingValue::Groundcover(FileSetting::new(
                             &value,
-                            &config_dir,
+                            config_dir,
                             &mut queued_comment,
                         )));
                 }
@@ -744,7 +739,7 @@ impl OpenMWConfiguration {
                     self.settings
                         .push(SettingValue::BethArchive(FileSetting::new(
                             &value,
-                            &config_dir,
+                            config_dir,
                             &mut queued_comment,
                         )));
                 }
@@ -858,7 +853,7 @@ impl OpenMWConfiguration {
             .write(true)
             .truncate(true)
             .create(true)
-            .open(&path)
+            .open(path)
             .map_err(|e| format!("Failed to open {:?} for writing: {}", path, e))?;
 
         file.write_all(config_string.as_bytes())

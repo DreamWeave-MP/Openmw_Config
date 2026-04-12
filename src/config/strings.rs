@@ -50,7 +50,7 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
             .to_string();
     }
 
-    let data_dir = data_dir.replace(SEPARATORS, &std::path::MAIN_SEPARATOR.to_string());
+    let data_dir = data_dir.replace(SEPARATORS, std::path::MAIN_SEPARATOR_STR);
 
     let mut path = PathBuf::from(&data_dir);
     if !path.is_absolute() {

@@ -70,15 +70,15 @@ pub enum GameSettingType {
 
 impl GameSettingType {
     pub fn key(&self) -> &String {
-        match &self {
-            &GameSettingType::Color(setting) => &setting.key,
-            &GameSettingType::String(setting) => &setting.key,
-            &GameSettingType::Float(setting) => &setting.key,
-            &GameSettingType::Int(setting) => &setting.key,
+        match self {
+            GameSettingType::Color(setting) => &setting.key,
+            GameSettingType::String(setting) => &setting.key,
+            GameSettingType::Float(setting) => &setting.key,
+            GameSettingType::Int(setting) => &setting.key,
         }
     }
 
-    pub fn value(&self) -> Cow<str> {
+    pub fn value(&self) -> Cow<'_, str> {
         match self {
             GameSettingType::Color(setting) => {
                 let (r, g, b) = setting.value;
@@ -173,15 +173,14 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
             }));
         }
 
-        if value.contains('.') {
-            if let Ok(f) = value.parse::<f64>() {
+        if value.contains('.')
+            && let Ok(f) = value.parse::<f64>() {
                 return Ok(GameSettingType::Float(FloatGameSetting {
                     meta,
                     key,
                     value: f,
                 }));
             }
-        }
 
         if let Ok(i) = value.parse::<i64>() {
             return Ok(GameSettingType::Int(IntGameSetting {

@@ -37,13 +37,13 @@ pub fn validate_path(
     check_path: std::path::PathBuf,
 ) -> Result<std::path::PathBuf, crate::ConfigError> {
     if check_path.as_os_str().is_empty() {
-        return Err(crate::ConfigError::NotFileOrDirectory(check_path));
+        Err(crate::ConfigError::NotFileOrDirectory(check_path))
     } else if check_path.is_absolute() {
-        return Ok(check_path);
+        Ok(check_path)
     } else if check_path.is_relative() {
-        return Ok(std::fs::canonicalize(check_path)?);
+        Ok(std::fs::canonicalize(check_path)?)
     } else {
-        return Err(crate::ConfigError::NotFileOrDirectory(check_path));
+        Err(crate::ConfigError::NotFileOrDirectory(check_path))
     }
 }
 
@@ -52,10 +52,7 @@ pub fn validate_path(
 pub fn input_config_path(
     config_path: std::path::PathBuf,
 ) -> Result<std::path::PathBuf, crate::ConfigError> {
-    let check_path = match validate_path(config_path) {
-        Err(error) => return Err(error),
-        Ok(path) => path,
-    };
+    let check_path = validate_path(config_path)?;
 
     match std::fs::metadata(&check_path) {
         Ok(metadata) => {

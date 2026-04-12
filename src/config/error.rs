@@ -121,90 +121,55 @@ impl fmt::Display for ConfigError {
                     config_path.display()
                 )
             }
-            ConfigError::Io(e) => write!(f, "IO error: {}", e),
+            ConfigError::Io(e) => write!(f, "IO error: {e}"),
             ConfigError::NotFileOrDirectory(config_path) => write!(
                 f,
-                "{}",
-                format!(
-                    "Unable to determine whether {} was a file or directory, refusing to read.",
-                    config_path.display()
-                )
+                "Unable to determine whether {} was a file or directory, refusing to read.",
+                config_path.display()
             ),
             ConfigError::CannotFind(config_path) => {
-                write!(
-                    f,
-                    "{}",
-                    format!("An openmw.cfg does not exist at: {}", config_path.display())
-                )
+                write!(f, "An openmw.cfg does not exist at: {}", config_path.display())
             }
             ConfigError::DuplicateContentFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} has appeared in the content files list twice. Its second occurence was in: {}",
-                    config_path.display()
-                ),
+                "{file} has appeared in the content files list twice. Its second occurence was in: {}",
+                config_path.display()
             ),
             ConfigError::CannotAddContentFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
-                    config_path.display()
-                ),
+                "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
+                config_path.display()
             ),
             ConfigError::DuplicateGroundcoverFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} has appeared in the groundcover list twice. Its second occurence was in: {}",
-                    config_path.display()
-                ),
+                "{file} has appeared in the groundcover list twice. Its second occurence was in: {}",
+                config_path.display()
             ),
             ConfigError::CannotAddGroundcoverFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
-                    config_path.display()
-                ),
+                "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
+                config_path.display()
             ),
             ConfigError::DuplicateArchiveFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} has appeared in the BSA/Archive list twice. Its second occurence was in: {}",
-                    config_path.display()
-                ),
+                "{file} has appeared in the BSA/Archive list twice. Its second occurence was in: {}",
+                config_path.display()
             ),
             ConfigError::CannotAddArchiveFile { file, config_path } => write!(
                 f,
-                "{}",
-                format!(
-                    "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
-                    config_path.display()
-                ),
+                "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
+                config_path.display()
             ),
-            ConfigError::BadEncoding { value, config_path } => {
-                write!(
-                    f,
-                    "{}",
-                    format!(
-                        "Invalid encoding type: {value} in config file {}",
-                        config_path.display()
-                    ),
-                )
-            }
-            ConfigError::InvalidLine { value, config_path } => {
-                write!(
-                    f,
-                    "{}",
-                    format!(
-                        "Invalid pair in openmw.cfg {value} was defined by {}",
-                        config_path.display()
-                    )
-                )
-            }
+            ConfigError::BadEncoding { value, config_path } => write!(
+                f,
+                "Invalid encoding type: {value} in config file {}",
+                config_path.display()
+            ),
+            ConfigError::InvalidLine { value, config_path } => write!(
+                f,
+                "Invalid pair in openmw.cfg {value} was defined by {}",
+                config_path.display()
+            ),
         }
     }
 }
