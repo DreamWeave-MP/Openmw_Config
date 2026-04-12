@@ -1,163 +1,17 @@
-name: CI
+name: OpenMW_Config CI
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
   pull_request:
-    branches: [main]
-
-env:
-  CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  push:
+    branches: main
+    tags: ['*']
 
 jobs:
-  test:
-    name: Test (${{ matrix.rust }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable, "1.88"]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust ${{ matrix.rust }}
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo test
-        run: cargo test --all-features
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo clippy
-        run: cargo clippy -- -W clippy::all -W clippy::pedantic
-
-  publish-dry-run:
-    name: Publish dry run
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo publish --dry-run
-        run: cargo publish --dry-run
-
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo doc
-        run: cargo doc --no-deps --document-private-items
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-
-      - name: Add redirect index
-        run: |
-          echo '<meta http-equiv="refresh" content="0; url=openmw_config/">' \
-            > target/doc/index.html
-
-      - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: target/doc
-
-      - name: Deploy to GitHub Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        id: deploy
-        uses: actions/deploy-pages@v4
-
-  benchmarks:
-    name: Update BENCHMARKS
-    runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      !contains(github.event.head_commit.message, '[skip ci]')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo bench
-        run: cargo bench --bench parsing
-
-      - name: Generate BENCHMARKS.md
-        run: python3 scripts/gen_benchmarks.py
-
-      - name: Commit and push if changed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add BENCHMARKS.md
-          if ! git diff --staged --quiet; then
-            git commit -m "docs: Update BENCHMARKS.md [skip ci]"
-            git pull --rebase origin main
-            git push
-          fi
-
-  changelog:
-    name: Update CHANGELOG
-    runs-on: ubuntu-latest
-    # Only run on pushes to main, and skip if this is itself a changelog commit
-    if: >
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      !contains(github.event.head_commit.message, '[skip ci]')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # full history needed for git log across all tags
-
-      - name: Generate CHANGELOG.md
-        run: bash scripts/gen_changelog.sh
-
-      - name: Commit and push if changed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          if ! git diff --staged --quiet; then
-            git commit -m "docs: Update CHANGELOG.md [skip ci]"
-            git pull --rebase origin main
-            git push
-          fi
+  build:
+    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v7
+    secrets: inherit
+    with:
+      crate_names: '["openmw_config"]'
+      dependent_repo_names: '["DreamWeave-MP/S3lightfixes"]'
+      generate_benchmarks: true
