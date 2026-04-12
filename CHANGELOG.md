@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [c118293](https://github.com/DreamWeave-MP/Openmw_Config/commit/c118293) - FIX: Correct race condition between benchmark and changelog jobs
+- [7698bf8](https://github.com/DreamWeave-MP/Openmw_Config/commit/7698bf8) - docs: Update CHANGELOG.md [skip ci]
 - [1aeff52](https://github.com/DreamWeave-MP/Openmw_Config/commit/1aeff52) - FEAT: Add a benchmark-generating script which outputs mermaid format docs to a BENCHMARKS.md to demonstrate continuous testing
 - [7797f96](https://github.com/DreamWeave-MP/Openmw_Config/commit/7797f96) - docs: Update CHANGELOG.md [skip ci]
 - [0abf3b3](https://github.com/DreamWeave-MP/Openmw_Config/commit/0abf3b3) - CLEANUP: Update readme
