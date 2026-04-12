@@ -367,10 +367,11 @@ impl OpenMWConfiguration {
 
     #[must_use] 
     pub fn has_data_dir(&self, file_name: &str) -> bool {
+        let query = PathBuf::from(
+            file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR),
+        );
         self.settings.iter().any(|setting| match setting {
-            SettingValue::DataDirectory(data_dir) => {
-                data_dir.parsed().to_string_lossy() == file_name
-            }
+            SettingValue::DataDirectory(data_dir) => data_dir.parsed() == &query,
             _ => false,
         })
     }
