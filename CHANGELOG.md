@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [0abf3b3](https://github.com/DreamWeave-MP/Openmw_Config/commit/0abf3b3) - CLEANUP: Update readme
+- [94c610e](https://github.com/DreamWeave-MP/Openmw_Config/commit/94c610e) - docs: Update CHANGELOG.md [skip ci]
 - [ea3ac87](https://github.com/DreamWeave-MP/Openmw_Config/commit/ea3ac87) - CLEANUP: Add doctests
 - [007f360](https://github.com/DreamWeave-MP/Openmw_Config/commit/007f360) - CLEANUP: Update readme
 - [d336969](https://github.com/DreamWeave-MP/Openmw_Config/commit/d336969) - FEAT: Add cargo publish --dry-run to the pipeline and auto-generated changelogs
