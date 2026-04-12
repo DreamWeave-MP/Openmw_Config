@@ -30,6 +30,10 @@ const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";
 /// These functions are not expected to fail and should they fail, indicate either:
 /// a severe issue with the system
 /// or that an unsupported system is being used.
+///
+/// # Panics
+/// Panics if the platform config directory cannot be determined (unsupported system).
+#[must_use]
 pub fn default_config_path() -> std::path::PathBuf {
     #[cfg(target_os = "android")]
     return std::path::PathBuf::from("/storage/emulated/0/Alpha3/config");
@@ -49,6 +53,10 @@ pub fn default_config_path() -> std::path::PathBuf {
 /// These functions are not expected to fail and should they fail, indicate either:
 /// a severe issue with the system
 /// or that an unsupported system is being used.
+///
+/// # Panics
+/// Panics if the platform data directory cannot be determined (unsupported system).
+#[must_use]
 pub fn default_userdata_path() -> std::path::PathBuf {
     #[cfg(target_os = "android")]
     return std::path::PathBuf::from("/storage/emulated/0/Alpha3");
@@ -66,6 +74,7 @@ pub fn default_userdata_path() -> std::path::PathBuf {
 /// Path to the last-loading directory of openmw.cfg,
 /// As defined by the engine's defaults
 /// This directory will override all others in the load order
+#[must_use] 
 pub fn default_data_local_path() -> std::path::PathBuf {
     default_userdata_path().join("data")
 }

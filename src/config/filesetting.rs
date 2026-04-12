@@ -59,6 +59,7 @@ impl FileSetting {
         }
     }
 
+    #[must_use] 
     pub fn value(&self) -> &String {
         &self.value
     }

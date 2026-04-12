@@ -14,11 +14,11 @@ pub struct DirectorySetting {
 }
 
 /// This is tricky.
-/// The trait implementation for GameSetting necessitates that all settings have a Display method.
-/// However, DirectorySetting is reused interchangeably amongst variants that use a different key. So really the key should just be skipped here,
-/// And handled by the upper SettingValue implementation?
+/// The trait implementation for `GameSetting` necessitates that all settings have a Display method.
+/// However, `DirectorySetting` is reused interchangeably amongst variants that use a different key. So really the key should just be skipped here,
+/// And handled by the upper `SettingValue` implementation?
 /// But that, also, is fucked off, because then we wouldn't be able to handle comments.
-/// So the hope I guess is that the SettingValue itself can have an implementation to account for this.
+/// So the hope I guess is that the `SettingValue` itself can have an implementation to account for this.
 /// That seems fair?
 /// And then we just assume data= is the default in here.
 impl std::fmt::Display for DirectorySetting {
@@ -34,11 +34,11 @@ impl crate::GameSetting for DirectorySetting {
 }
 
 /// Refactor to clone less shit
-/// Use std::mem::take for the comment and change parse_data_directory to accept &str
+/// Use `std::mem::take` for the comment and change `parse_data_directory` to accept &str
 impl DirectorySetting {
     pub fn new<S: Into<String>>(value: S, source_config: PathBuf, comment: &mut String) -> Self {
         let original = value.into();
-        let parse_base = if source_config.file_name().map(|f| f == "openmw.cfg").unwrap_or(false) {
+        let parse_base = if source_config.file_name().is_some_and(|f| f == "openmw.cfg") {
             source_config.parent().unwrap_or(source_config.as_path())
         } else {
             source_config.as_path()
@@ -51,16 +51,18 @@ impl DirectorySetting {
         };
 
         Self {
+            meta,
             original,
             parsed,
-            meta,
         }
     }
 
+    #[must_use] 
     pub fn original(&self) -> &String {
         &self.original
     }
 
+    #[must_use] 
     pub fn parsed(&self) -> &PathBuf {
         &self.parsed
     }

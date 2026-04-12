@@ -33,6 +33,7 @@ pub struct EncodingSetting {
 }
 
 impl EncodingSetting {
+    #[must_use] 
     pub fn value(&self) -> EncodingType {
         self.encoding
     }
@@ -77,7 +78,7 @@ impl<P: AsRef<std::path::Path>> TryFrom<(String, P, &mut String)> for EncodingSe
         };
         comment.clear();
 
-        Ok(EncodingSetting { encoding, meta })
+        Ok(EncodingSetting { meta, encoding })
     }
 }
 

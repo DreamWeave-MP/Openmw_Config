@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 const SEPARATORS: [char; 2] = ['/', '\\'];
 
-/// Parses a data directory string according to OpenMW rules.
-/// https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#openmw-cfg-syntax
+/// Parses a data directory string according to `OpenMW` rules.
+/// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#openmw-cfg-syntax>
 pub fn parse_data_directory<P: AsRef<std::path::Path>>(
     config_dir: &P,
     data_dir: &str,

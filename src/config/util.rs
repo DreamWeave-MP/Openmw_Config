@@ -3,9 +3,9 @@
 // Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 // You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
 
-pub fn debug_log(message: String) {
+pub fn debug_log(message: &str) {
     if std::env::var("CFG_DEBUG").is_ok() {
-        println!("[CONFIG DEBUG]: {message}")
+        println!("[CONFIG DEBUG]: {message}");
     }
 }
 
@@ -73,9 +73,8 @@ pub fn input_config_path(
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
                 crate::config::bail_config!(not_file_or_directory, check_path);
-            } else {
-                Err(crate::ConfigError::Io(err))
             }
+            Err(crate::ConfigError::Io(err))
         }
     }
 }

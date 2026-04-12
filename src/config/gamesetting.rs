@@ -69,6 +69,7 @@ pub enum GameSettingType {
 }
 
 impl GameSettingType {
+    #[must_use] 
     pub fn key(&self) -> &String {
         match self {
             GameSettingType::Color(setting) => &setting.key,
@@ -78,6 +79,7 @@ impl GameSettingType {
         }
     }
 
+    #[must_use] 
     pub fn value(&self) -> Cow<'_, str> {
         match self {
             GameSettingType::Color(setting) => {
@@ -94,10 +96,10 @@ impl GameSettingType {
 impl std::fmt::Display for GameSettingType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GameSettingType::Color(s) => write!(f, "{}", s),
-            GameSettingType::Float(s) => write!(f, "{}", s),
-            GameSettingType::String(s) => write!(f, "{}", s),
-            GameSettingType::Int(s) => write!(f, "{}", s),
+            GameSettingType::Color(s) => write!(f, "{s}"),
+            GameSettingType::Float(s) => write!(f, "{s}"),
+            GameSettingType::String(s) => write!(f, "{s}"),
+            GameSettingType::Int(s) => write!(f, "{s}"),
         }
     }
 }
@@ -115,7 +117,7 @@ impl GameSetting for GameSettingType {
 
 impl PartialEq for GameSettingType {
     fn eq(&self, other: &Self) -> bool {
-        use GameSettingType::*;
+        use GameSettingType::{Color, String, Float, Int};
 
         match (self, other) {
             (Color(a), Color(b)) => a.key == b.key,
@@ -130,7 +132,7 @@ impl PartialEq for GameSettingType {
 
 impl PartialEq<&str> for GameSettingType {
     fn eq(&self, other: &&str) -> bool {
-        use GameSettingType::*;
+        use GameSettingType::{Color, String, Float, Int};
 
         match self {
             Color(a) => a.key == *other,
