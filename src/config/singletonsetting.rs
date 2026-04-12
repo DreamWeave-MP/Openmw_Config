@@ -24,7 +24,7 @@ macro_rules! impl_singleton_setting {
                     let index = self
                         .settings
                         .iter()
-                        .position(|setting| matches!(setting, SettingValue::$variant(_)));
+                        .rposition(|setting| matches!(setting, SettingValue::$variant(_)));
 
                     match (index, new) {
                         (Some(i), Some(value)) => self.settings[i] = SettingValue::$variant(value),
