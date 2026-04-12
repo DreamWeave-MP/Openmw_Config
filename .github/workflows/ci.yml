@@ -9,6 +9,10 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v7
     secrets: inherit
     with:
