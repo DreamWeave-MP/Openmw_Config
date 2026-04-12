@@ -187,7 +187,7 @@ fn bench_content_files_iter(c: &mut Criterion) {
         let config = OpenMWConfiguration::new(Some(dir)).unwrap();
 
         group.bench_with_input(BenchmarkId::new("collect", n), &n, |b, _| {
-            b.iter(|| config.content_files())
+            b.iter(|| config.content_files_iter().count())
         });
     }
     group.finish();
