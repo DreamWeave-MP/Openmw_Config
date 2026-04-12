@@ -705,6 +705,19 @@ impl OpenMWConfiguration {
         let mut queued_comment = String::new();
         let mut sub_configs: Vec<(String, String)> = Vec::new();
 
+        let mut seen_content: HashSet<String> = HashSet::new();
+        let mut seen_groundcover: HashSet<String> = HashSet::new();
+        let mut seen_archives: HashSet<String> = HashSet::new();
+
+        for setting in self.settings.iter() {
+            match setting {
+                SettingValue::ContentFile(f) => { seen_content.insert(f.value().clone()); }
+                SettingValue::Groundcover(f) => { seen_groundcover.insert(f.value().clone()); }
+                SettingValue::BethArchive(f) => { seen_archives.insert(f.value().clone()); }
+                _ => {}
+            }
+        }
+
         for line in lines.lines() {
             let trimmed = line.trim();
 
@@ -727,17 +740,9 @@ impl OpenMWConfiguration {
 
             match key {
                 "content" => {
-                    self.settings.iter().try_for_each(|setting| match setting {
-                        SettingValue::ContentFile(plugin) => {
-                            if *plugin == &value {
-                                bail_config!(duplicate_content_file, value.to_owned(), config_dir)
-                            } else {
-                                Ok(())
-                            }
-                        }
-                        _ => Ok(()),
-                    })?;
-
+                    if !seen_content.insert(value.clone()) {
+                        bail_config!(duplicate_content_file, value, config_dir);
+                    }
                     self.settings
                         .push(SettingValue::ContentFile(FileSetting::new(
                             &value,
@@ -746,21 +751,9 @@ impl OpenMWConfiguration {
                         )));
                 }
                 "groundcover" => {
-                    self.settings.iter().try_for_each(|setting| match setting {
-                        SettingValue::Groundcover(plugin) => {
-                            if *plugin == &value {
-                                bail_config!(
-                                    duplicate_groundcover_file,
-                                    value.to_owned(),
-                                    config_dir
-                                )
-                            } else {
-                                Ok(())
-                            }
-                        }
-                        _ => Ok(()),
-                    })?;
-
+                    if !seen_groundcover.insert(value.clone()) {
+                        bail_config!(duplicate_groundcover_file, value, config_dir);
+                    }
                     self.settings
                         .push(SettingValue::Groundcover(FileSetting::new(
                             &value,
@@ -769,17 +762,9 @@ impl OpenMWConfiguration {
                         )));
                 }
                 "fallback-archive" => {
-                    self.settings.iter().try_for_each(|setting| match setting {
-                        SettingValue::BethArchive(archive) => {
-                            if *archive == &value {
-                                bail_config!(duplicate_archive_file, value.to_owned(), config_dir)
-                            } else {
-                                Ok(())
-                            }
-                        }
-                        _ => Ok(()),
-                    })?;
-
+                    if !seen_archives.insert(value.clone()) {
+                        bail_config!(duplicate_archive_file, value, config_dir);
+                    }
                     self.settings
                         .push(SettingValue::BethArchive(FileSetting::new(
                             &value,
@@ -839,19 +824,21 @@ impl OpenMWConfiguration {
                     )
                 }
                 "replace" => match value.to_lowercase().as_str() {
-                    "content" => self.set_content_files(None),
+                    "content" => { self.set_content_files(None); seen_content.clear(); }
                     "data" => self.set_data_directories(None),
                     "fallback" => self.set_game_settings(None)?,
-                    "fallback-archives" => self.set_fallback_archives(None),
+                    "fallback-archives" => { self.set_fallback_archives(None); seen_archives.clear(); }
+                    "groundcover" => { self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_))); seen_groundcover.clear(); }
                     "data-local" => self.set_data_local(None),
                     "resources" => self.set_resources(None),
                     "user-data" => self.set_userdata(None),
                     "config" => {
                         self.settings.clear();
+                        seen_content.clear();
+                        seen_groundcover.clear();
+                        seen_archives.clear();
                     }
-                    _ => {
-                        // eprintln!("Warning: Unrecognized replacement option: {value}")
-                    }
+                    _ => {}
                 },
                 _ => {
                     let setting = GenericSetting::new(key, &value, config_dir, &mut queued_comment);
