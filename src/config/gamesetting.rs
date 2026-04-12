@@ -17,11 +17,7 @@ pub struct ColorGameSetting {
 impl std::fmt::Display for ColorGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (r, g, b) = self.value;
-        write!(
-            f,
-            "{}",
-            format!("{}fallback={},{r},{g},{b}", self.meta.comment, self.key)
-        )
+        write!(f, "{}fallback={},{r},{g},{b}", self.meta.comment, self.key)
     }
 }
 
@@ -34,11 +30,7 @@ pub struct StringGameSetting {
 
 impl std::fmt::Display for StringGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            format!("{}fallback={},{}", self.meta.comment, self.key, self.value)
-        )
+        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
     }
 }
 
@@ -51,11 +43,7 @@ pub struct FloatGameSetting {
 
 impl std::fmt::Display for FloatGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            format!("{}fallback={},{}", self.meta.comment, self.key, self.value)
-        )
+        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
     }
 }
 
@@ -68,11 +56,7 @@ pub struct IntGameSetting {
 
 impl std::fmt::Display for IntGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            format!("{}fallback={},{}", self.meta.comment, self.key, self.value)
-        )
+        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
     }
 }
 
