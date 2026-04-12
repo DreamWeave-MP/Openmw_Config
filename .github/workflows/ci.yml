@@ -13,7 +13,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v8
+    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v9
     secrets: inherit
     with:
       crate_names: '["openmw_config"]'
