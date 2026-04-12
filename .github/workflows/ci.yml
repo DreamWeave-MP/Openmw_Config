@@ -127,9 +127,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add BENCHMARKS.md
-          git diff --staged --quiet || \
-            git commit -m "docs: Update BENCHMARKS.md [skip ci]" && \
+          if ! git diff --staged --quiet; then
+            git commit -m "docs: Update BENCHMARKS.md [skip ci]"
+            git pull --rebase origin main
             git push
+          fi
 
   changelog:
     name: Update CHANGELOG
@@ -154,6 +156,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git diff --staged --quiet || \
-            git commit -m "docs: Update CHANGELOG.md [skip ci]" && \
+          if ! git diff --staged --quiet; then
+            git commit -m "docs: Update CHANGELOG.md [skip ci]"
+            git pull --rebase origin main
             git push
+          fi
