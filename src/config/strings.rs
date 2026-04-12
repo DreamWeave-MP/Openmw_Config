@@ -53,7 +53,7 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(
     let data_dir = data_dir.replace(SEPARATORS, std::path::MAIN_SEPARATOR_STR);
 
     let mut path = PathBuf::from(&data_dir);
-    if !path.is_absolute() {
+    if !path.has_root() {
         path = config_dir.as_ref().join(path);
     }
 
