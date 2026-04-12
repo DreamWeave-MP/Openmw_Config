@@ -1,168 +1,138 @@
 # openmw_config
 
-**openmw_config** is a lightweight Rust crate that provides a simple, idiomatic API for reading, composing, and writing [OpenMW](https://openmw.org/) configuration files. It closely matches OpenMW's own configuration parser, supporting advanced features such as configuration chains, directory tokens, and value replacement semantics. For comprehensive coverage of OpenMW's configuration and filesystem, combine this crate with [vfstool_lib](https://crates.io/crates/vfstool_lib/0.1.0).
+**openmw_config** is a lightweight Rust crate that provides a simple, idiomatic API for reading,
+composing, and writing [OpenMW](https://openmw.org/) configuration files. It closely matches
+OpenMW's own configuration parser, supporting configuration chains, directory tokens, and value
+replacement semantics. For comprehensive VFS coverage, combine with
+[vfstool_lib](https://crates.io/crates/vfstool_lib).
 
 ## Features
 
-- **Accurate Parsing:** Mirrors OpenMW's config resolution, including support for `config=`, `replace=`, and directory tokens like `?userdata?`.
-- **Multi-file Support:** Handles configuration chains, where multiple `openmw.cfg` files are merged according to OpenMW's rules.
-- **Simple API:** Access content files, data directories, fallback entries, and more with ergonomic Rust methods.
-- **Serialization:** Easily write out a configuration in valid `openmw.cfg` format.
-- **No heavy dependencies:** Only depends on the Rust standard library and the [`dirs`](https://crates.io/crates/dirs) crate.
-
-## Why use openmw-config?
-
-Modern OpenMW installations often use multiple configuration files, with complex rules for merging and overriding settings. This crate makes it easy to:
-
-- Inspect and modify the effective configuration as seen by OpenMW.
-- Build tools for mod management, diagnostics, or launcher frontends.
-- Programmatically generate or edit `openmw.cfg` files.
+- **Accurate parsing** — mirrors OpenMW's config resolution, including `config=`, `replace=`, and
+  tokens like `?userdata?` and `?userconfig?`.
+- **Multi-file chains** — multiple `openmw.cfg` files are merged according to OpenMW's rules;
+  last-defined wins.
+- **Round-trip serialization** — `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
+  preserving comments.
+- **Minimal dependencies** — only [`dirs`](https://crates.io/crates/dirs) and
+  [`shellexpand`](https://crates.io/crates/shellexpand).
 
 ## Quick Start
 
-Add to your `Cargo.toml`:
-
 ```toml
+[dependencies]
 openmw-config = "0.1"
 ```
 
-## Basic Usage
+```rust,no_run
+use openmw_config::OpenMWConfiguration;
 
-### Load the active OpenMW configuration
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load the default config chain for the current platform
+    let config = OpenMWConfiguration::from_env()?;
 
-```rust
-use openmw_cfg::OpenMWConfiguration;
-
-fn main() -> Result<(), String> {
-    // Load the default OpenMW configuration chain
-    let config = OpenMWConfiguration::new(None)?;
-
-    println!("Root config: {:?}", config.root_config());
-    println!("User config: {:?}", config.user_config_path());
-
-    // List all content files (plugins)
-    for plugin in config.content_files() {
-        println!("Plugin: {plugin}");
+    for plugin in config.content_files_iter() {
+        println!("{}", plugin.value());
     }
 
-    // List all data directories
-    for dir in config.data_directories() {
-        println!("Data dir: {}", dir.display());
+    for dir in config.data_directories_iter() {
+        println!("{}", dir.parsed().display());
     }
 
     Ok(())
 }
 ```
 
-### Load a specific config file
+## Loading a specific config
 
-> **Note:**  
-> The argument to `OpenMWConfiguration::new(Some(path))` must be the **directory containing** `openmw.cfg`, **not** the path to the file itself.  
-> For example, if your config is at `/home/user/.config/openmw/openmw.cfg`, you should pass `/home/user/.config/openmw`.
+`new()` accepts either a directory containing `openmw.cfg` or a direct path to the file:
 
-```rust
+```rust,no_run
 use std::path::PathBuf;
-use openmw_cfg::OpenMWConfiguration;
+use openmw_config::OpenMWConfiguration;
 
-fn main() -> Result<(), String> {
-    // Correct: pass the directory, not the file!
-    let config_dir = PathBuf::from("/path/to/your/config_dir");
-    let config = OpenMWConfiguration::new(Some(config_dir))?;
+// From a directory
+let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw")))?;
 
-    // ... use config as above ...
-    Ok(())
-}
+// From a file path
+let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw/openmw.cfg")))?;
+# Ok::<(), openmw_config::ConfigError>(())
 ```
 
-### Accessing and Modifying Configuration
+## Modifying and saving
 
-```rust
-use std::collections::HashMap;
+```rust,no_run
 use std::path::PathBuf;
-use openmw_cfg::OpenMWConfiguration;
+use openmw_config::OpenMWConfiguration;
 
-// Assume you have a mutable config instance:
 let mut config = OpenMWConfiguration::new(None)?;
 
-// Set content files
-config.set_content_files(vec!["MyMod.esp".to_string(), "Another.esp".to_string()]);
+// Replace all content files
+config.set_content_files(Some(vec!["MyMod.esp".into(), "Another.esp".into()]));
 
-// Set data directories
-config.set_data_directories(vec![
-    PathBuf::from("/path/to/DataFiles"),
-    PathBuf::from("/path/to/OtherData"),
-]);
+// Add a single plugin (errors if already present)
+config.add_content_file("Extra.esp")?;
 
-// Set fallback entries
-let mut fallbacks = HashMap::new();
-fallbacks.insert("Some_Fallback".to_string(), "SomeValue".to_string());
-config.set_fallback_entries(fallbacks);
+// Replace all data directories
+config.set_data_directories(Some(vec![PathBuf::from("/path/to/Data Files")]));
 
-// Set fallback archives
-config.set_fallback_archives(vec!["Archive1.bsa".to_string(), "Archive2.bsa".to_string()]);
+// Replace all fallback archives
+config.set_fallback_archives(Some(vec!["Morrowind.bsa".into()]));
 
-// Set data-local directory
-config.set_data_local(PathBuf::from("/path/to/data-local"));
-
-// Set resources directory
-config.set_resources_dir(PathBuf::from("/path/to/resources"));
-
-// Set userdata directory
-config.set_userdata_dir(PathBuf::from("/path/to/userdata"));
+// Write the user config back to disk
+config.save_user()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-### Manually Serializing and Saving to a File
+## Serialization
 
-```rust
-use std::fs::File;
-use std::io::Write;
+`OpenMWConfiguration` implements `Display`, which produces a valid `openmw.cfg` string with
+comments preserved:
 
-// Serialize the config to a string in openmw.cfg format
-let config_string = config.display();
+```rust,no_run
+use openmw_config::OpenMWConfiguration;
 
-// Write to a file of your choice
-let mut file = File::create("/path/to/your/openmw.cfg")?;
-file.write_all(config_string.as_bytes())?;
+let config = OpenMWConfiguration::new(None)?;
+println!("{config}");
+# Ok::<(), openmw_config::ConfigError>(())
 ```
-
-### Serialize to String (openmw.cfg format)
-
-```rust
-println!("{}", config); // Uses the Display trait to print in openmw.cfg format
-```
-
-## Advanced Features
-
-- **Config Chains:**  
-  OpenMW can load multiple config files in a chain. Use `config.sub_configs()` to inspect the chain and get granular access to the config.
-- **Replace Semantics:**  
-  Handles `replace=content`, `replace=data`, etc., as in OpenMW.
-- **Token Expansion:**  
-  Supports tokens like `?userdata?` and `?userconfig?` in directory paths.
 
 ## API Overview
 
-- `OpenMWConfiguration::new(path: Option<PathBuf>) -> Result<Self, String>`  
-  Load a configuration, optionally from a specific directory.
-- `content_files() -> &Vec<String>`  
-  List of plugin files.
-- `data_directories() -> &Vec<PathBuf>`  
-  List of data directories.
-- `fallback_archives() -> &Vec<String>`
-  List of Bethesda Archives defined by the current config
-- `fallback_entries() -> &HashMap<String, String>`  
-  Fallback key-value pairs.
-- `save(dir: Option<PathBuf>) -> Result<(), String>`  
-  Save the configuration to a directory.
-- `Display` trait  
-  Serialize the configuration to a valid `openmw.cfg` string.
+| Method | Description |
+|---|---|
+| `OpenMWConfiguration::from_env()` | Load from `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` env vars, then platform default |
+| `OpenMWConfiguration::new(path)` | Load from a specific path (file or directory), or platform default if `None` |
+| `content_files_iter()` | Iterator over loaded content files (`content=`) |
+| `groundcover_iter()` | Iterator over groundcover plugins (`groundcover=`) |
+| `fallback_archives_iter()` | Iterator over BSA/BA2 archives (`fallback-archive=`) |
+| `data_directories_iter()` | Iterator over data directories (`data=`) |
+| `game_settings()` | Iterator over `fallback=` entries, deduplicated by key (last-wins) |
+| `get_game_setting(key)` | Look up a single `fallback=` entry by key |
+| `sub_configs()` | Iterator over chained `config=` entries |
+| `add_content_file(name)` | Append a content file; errors if duplicate |
+| `remove_content_file(name)` | Remove a content file by name |
+| `set_content_files(list)` | Replace all content files; `None` clears them |
+| `set_data_directories(list)` | Replace all data directories; `None` clears them |
+| `set_fallback_archives(list)` | Replace all fallback archives; `None` clears them |
+| `set_game_settings(list)` | Replace all fallback entries; `None` clears them |
+| `save_user()` | Write the user config (`last config= in the chain`) to disk |
+| `save_subconfig(path)` | Write an arbitrary loaded sub-config to disk |
+| `user_config_path()` | Directory of the highest-priority (user) config |
+
+## Advanced
+
+- **Config chains** — `sub_configs()` walks the `config=` entries that were loaded. The last entry
+  is the user config; everything above it is read-only from OpenMW's perspective.
+- **Replace semantics** — `replace=content`, `replace=data`, etc. are honoured during load, exactly
+  as OpenMW handles them.
+- **Token expansion** — `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
+  platform-correct directories at load time.
 
 ## Reference
 
-See [OpenMW documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources) for details on configuration file semantics.
+[OpenMW configuration documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources)
 
 ---
 
-**openmw-config** is not affiliated with the OpenMW project, but aims to be a faithful and practical Rust implementation of its configuration logic.
-
-PRs and issues welcome!
+openmw-config is not affiliated with the OpenMW project.
