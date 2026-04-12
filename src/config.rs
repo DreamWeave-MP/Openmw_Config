@@ -620,7 +620,7 @@ impl OpenMWConfiguration {
 
         for setting in self.settings.iter().rev() {
             if let SettingValue::GameSetting(gs) = setting
-                && seen.insert(gs.to_string()) {
+                && seen.insert(gs.key().clone()) {
                     unique_settings.push(gs);
                 }
         }
@@ -1182,14 +1182,12 @@ mod tests {
 
     #[test]
     fn test_game_settings_deduplicates_by_key() {
-        // Known bug (#18): game_settings() deduplicates by full serialized string rather than by
-        // key alone, so the same key with different values appears multiple times.
-        // get_game_setting() correctly applies last-wins by key; game_settings() does not.
-        // This test documents current (buggy) behavior so regressions are visible.
-        // When #18 is fixed, change the assertion to `count == 1`.
+        // When the same fallback key appears more than once, game_settings() must emit only the
+        // last-defined value (last-wins), matching the behavior of get_game_setting().
         let config = load("fallback=iKey,1\nfallback=iKey,2\n");
-        let count = config.game_settings().filter(|s| s.key() == "iKey").count();
-        assert_eq!(count, 2, "BUG #18: game_settings() does not deduplicate by key");
+        let results: Vec<_> = config.game_settings().filter(|s| s.key() == "iKey").collect();
+        assert_eq!(results.len(), 1, "game_settings() should deduplicate by key");
+        assert_eq!(results[0].value(), "2", "last-defined value should win");
     }
 
     #[test]
