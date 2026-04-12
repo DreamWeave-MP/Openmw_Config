@@ -8,6 +8,7 @@ repository = "https://github.com/DreamWeave-MP/Openmw_Config"
 readme = "README.md"
 keywords = ["openmw"]
 edition = "2024"
+rust-version = "1.88"
 
 [dependencies]
 dirs = "6.0.0"
