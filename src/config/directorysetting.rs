@@ -38,13 +38,17 @@ impl crate::GameSetting for DirectorySetting {
 impl DirectorySetting {
     pub fn new<S: Into<String>>(value: S, source_config: PathBuf, comment: &mut String) -> Self {
         let original = value.into();
-        let parsed = strings::parse_data_directory(&source_config, original.clone());
+        let parse_base = if source_config.file_name().map(|f| f == "openmw.cfg").unwrap_or(false) {
+            source_config.parent().unwrap_or(source_config.as_path())
+        } else {
+            source_config.as_path()
+        };
+        let parsed = strings::parse_data_directory(&parse_base, original.clone());
 
         let meta = crate::GameSettingMeta {
-            source_config: source_config,
-            comment: comment.clone(),
+            source_config,
+            comment: std::mem::take(comment),
         };
-        comment.clear();
 
         Self {
             original,

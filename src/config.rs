@@ -130,31 +130,12 @@ impl SettingValue {
 }
 
 macro_rules! insert_dir_setting {
-    ($self:ident, $variant:ident, $value:expr, $config_dir:expr, $comment:expr) => {{
-        let mut actual_dir = util::input_config_path($config_dir)?;
-
-        if actual_dir
-            .file_name()
-            .map(|f| f == "openmw.cfg")
-            .unwrap_or(false)
-        {
-            actual_dir = actual_dir
-                .parent()
-                .map(|p| p.to_path_buf())
-                .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "Invalid openmw.cfg path: no parent directory",
-                    )
-                })
-                .map_err(|io_err| ConfigError::Io(io_err))?;
-        }
-
+    ($self:ident, $variant:ident, $value:expr, $config_file:expr, $comment:expr) => {{
         $self
             .settings
             .push(SettingValue::$variant(DirectorySetting::new(
                 $value,
-                actual_dir.to_path_buf(),
+                $config_file,
                 $comment,
             )));
     }};
@@ -535,12 +516,14 @@ impl OpenMWConfiguration {
         self.clear_matching(|setting| matches!(setting, SettingValue::ContentFile(_)));
 
         if let Some(plugins) = plugins {
+            let cfg_path = self.user_config_path().join("openmw.cfg");
+            let mut empty = String::default();
             plugins.into_iter().for_each(|plugin| {
                 self.settings
                     .push(SettingValue::ContentFile(FileSetting::new(
                         &plugin,
-                        &self.user_config_path(),
-                        &mut String::default(),
+                        &cfg_path,
+                        &mut empty,
                     )))
             })
         }
@@ -550,12 +533,14 @@ impl OpenMWConfiguration {
         self.clear_matching(|setting| matches!(setting, SettingValue::BethArchive(_)));
 
         if let Some(archives) = archives {
+            let cfg_path = self.user_config_path().join("openmw.cfg");
+            let mut empty = String::default();
             archives.into_iter().for_each(|archive| {
                 self.settings
                     .push(SettingValue::BethArchive(FileSetting::new(
                         &archive,
-                        &self.user_config_path(),
-                        &mut String::default(),
+                        &cfg_path,
+                        &mut empty,
                     )))
             })
         }
@@ -583,14 +568,14 @@ impl OpenMWConfiguration {
         self.clear_matching(|setting| matches!(setting, SettingValue::DataDirectory(_)));
 
         if let Some(dirs) = dirs {
-            let config_path = self.user_config_path();
+            let cfg_path = self.user_config_path().join("openmw.cfg");
             let mut empty = String::default();
 
             dirs.into_iter().for_each(|dir| {
                 self.settings
                     .push(SettingValue::DataDirectory(DirectorySetting::new(
                         dir.to_string_lossy(),
-                        config_path.clone(),
+                        cfg_path.clone(),
                         &mut empty,
                     )))
             })
@@ -608,7 +593,7 @@ impl OpenMWConfiguration {
     ) -> Result<(), ConfigError> {
         let new_setting = GameSettingType::try_from((
             base_value.to_owned(),
-            config_path.unwrap_or(self.user_config_path()),
+            config_path.unwrap_or_else(|| self.user_config_path().join("openmw.cfg")),
             comment,
         ))?;
 
@@ -622,14 +607,14 @@ impl OpenMWConfiguration {
         self.clear_matching(|setting| matches!(setting, SettingValue::GameSetting(_)));
 
         if let Some(settings) = settings {
-            let config_path = self.user_config_path();
+            let cfg_path = self.user_config_path().join("openmw.cfg");
             let mut empty = String::default();
 
             settings.into_iter().try_for_each(|setting| {
                 self.settings
                     .push(SettingValue::GameSetting(GameSettingType::try_from((
                         setting,
-                        config_path.clone(),
+                        cfg_path.clone(),
                         &mut empty,
                     ))?));
 
@@ -875,20 +860,11 @@ impl OpenMWConfiguration {
             }
         }
 
-        // This shit with file/directory is very hard to keep track of and should be refactored post-release, but for now it isn't important
-        let cfg_file_path = match config_dir.is_dir() {
-            true => config_dir,
-            false => config_dir
-                .parent()
-                .ok_or_else(|| config_err!(cannot_find, config_dir))?,
-        }
-        .to_path_buf();
-
         sub_configs.into_iter().try_for_each(
             |(subconfig_path, mut subconfig_comment): (String, String)| {
                 let mut comment = std::mem::take(&mut subconfig_comment);
 
-                let setting: DirectorySetting = DirectorySetting::new(subconfig_path.clone(), cfg_file_path.clone(), &mut comment);
+                let setting: DirectorySetting = DirectorySetting::new(subconfig_path.clone(), config_dir.to_path_buf(), &mut comment);
                 let subconfig_path = setting.parsed().join("openmw.cfg");
 
                 if std::fs::metadata(&subconfig_path).is_ok() {
@@ -897,7 +873,7 @@ impl OpenMWConfiguration {
                 } else {
                     util::debug_log(format!(
                         "Skipping parsing of {} As this directory does not actually contain an openmw.cfg!",
-                        cfg_file_path.display(),
+                        config_dir.display(),
                     ));
 
                     Ok(())
