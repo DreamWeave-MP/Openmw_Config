@@ -43,7 +43,7 @@ impl DirectorySetting {
         } else {
             source_config.as_path()
         };
-        let parsed = strings::parse_data_directory(&parse_base, original.clone());
+        let parsed = strings::parse_data_directory(&parse_base, &original);
 
         let meta = crate::GameSettingMeta {
             source_config,
