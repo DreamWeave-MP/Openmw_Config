@@ -216,7 +216,7 @@ impl OpenMWConfiguration {
                     let engine_vfs = DirectorySetting::new(
                         dir.join("vfs").to_string_lossy().to_string(),
                         setting.meta.source_config.to_path_buf(),
-                        &mut setting.meta.comment.to_string(),
+                        &mut setting.meta.comment.clone(),
                     );
 
                     config
@@ -434,7 +434,7 @@ impl OpenMWConfiguration {
         self.clear_matching(|setting| match setting {
             SettingValue::DataDirectory(existing_data_dir) => {
                 existing_data_dir.parsed() == data_dir
-                    || existing_data_dir.original() == &data_dir.to_string_lossy().to_string()
+                    || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
             }
             _ => false,
         });
@@ -894,7 +894,7 @@ impl OpenMWConfiguration {
         let subconfig_is_loaded = self.settings.iter().any(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => {
                 subconfig.parsed() == &target_dir
-                    || subconfig.original() == &target_dir.to_string_lossy().to_string()
+                    || subconfig.original() == target_dir.to_string_lossy().as_ref()
             }
             _ => false,
         });
