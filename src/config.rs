@@ -250,10 +250,11 @@ impl OpenMWConfiguration {
     }
 
     pub fn user_config(self) -> Result<Self, ConfigError> {
-        if self.is_user_config() {
+        let user_path = self.user_config_path();
+        if self.root_config_dir() == user_path {
             Ok(self)
         } else {
-            Self::new(Some(self.user_config_path()))
+            Self::new(Some(user_path))
         }
     }
 
