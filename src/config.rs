@@ -275,10 +275,10 @@ impl OpenMWConfiguration {
 
     /// Path to the highest-level configuration *directory*
     pub fn user_config_path(&self) -> PathBuf {
-        util::user_config_path(
-            &self.sub_configs().map(|setting| setting.parsed()).collect(),
-            &self.root_config_dir(),
-        )
+        self.sub_configs()
+            .map(|setting| setting.parsed().clone())
+            .last()
+            .unwrap_or_else(|| self.root_config_dir())
     }
 
     impl_singleton_setting! {

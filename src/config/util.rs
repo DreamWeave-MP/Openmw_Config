@@ -9,16 +9,6 @@ pub fn debug_log(message: String) {
     }
 }
 
-pub fn user_config_path(
-    sub_configs: &Vec<&std::path::PathBuf>,
-    fallthrough_dir: &std::path::PathBuf,
-) -> std::path::PathBuf {
-    sub_configs
-        .into_iter()
-        .last()
-        .unwrap_or(&fallthrough_dir)
-        .to_path_buf()
-}
 
 pub fn is_writable(path: &std::path::PathBuf) -> bool {
     if path.exists() {
