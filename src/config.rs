@@ -307,12 +307,6 @@ impl OpenMWConfiguration {
     /// Content files are the actual *mods* or plugins which are created by either OpenCS or Bethesda's construction set
     /// These entries only refer to the names and ordering of content files.
     /// vfstool-lib should be used to derive paths
-    pub fn content_files(&self) -> Vec<&String> {
-        self.content_files_iter()
-            .map(|setting| setting.value())
-            .collect()
-    }
-
     pub fn content_files_iter(&self) -> impl Iterator<Item = &FileSetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::ContentFile(plugin) => Some(plugin),
@@ -378,12 +372,6 @@ impl OpenMWConfiguration {
             )));
 
         Ok(())
-    }
-
-    pub fn groundcover(&self) -> Vec<&String> {
-        self.groundcover_iter()
-            .map(|setting| setting.value())
-            .collect()
     }
 
     pub fn groundcover_iter(&self) -> impl Iterator<Item = &FileSetting> {
@@ -496,12 +484,6 @@ impl OpenMWConfiguration {
             )));
 
         Ok(())
-    }
-
-    pub fn fallback_archives(&self) -> Vec<&String> {
-        self.fallback_archives_iter()
-            .map(|setting| setting.value())
-            .collect()
     }
 
     pub fn fallback_archives_iter(&self) -> impl Iterator<Item = &FileSetting> {
@@ -675,12 +657,6 @@ impl OpenMWConfiguration {
     /// So the real ones may easily be iterated and loaded.
     /// There is not actually validation anywhere in the crate that DirectorySettings refer to a directory which actually exists.
     /// This is according to the openmw.cfg specification and doesn't technically break anything but should be considered when using these paths.
-    pub fn data_directories(&self) -> Vec<&PathBuf> {
-        self.data_directories_iter()
-            .map(|setting| setting.parsed())
-            .collect()
-    }
-
     pub fn data_directories_iter(&self) -> impl Iterator<Item = &DirectorySetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::DataDirectory(data_dir) => Some(data_dir),
@@ -1022,13 +998,13 @@ mod tests {
     #[test]
     fn test_content_files_empty_on_bare_config() {
         let config = load("");
-        assert!(config.content_files().is_empty());
+        assert!(config.content_files_iter().next().is_none());
     }
 
     #[test]
     fn test_content_files_parsed_in_order() {
         let config = load("content=Morrowind.esm\ncontent=Tribunal.esm\ncontent=Bloodmoon.esm\n");
-        let files = config.content_files();
+        let files: Vec<&String> = config.content_files_iter().map(|s| s.value()).collect();
         assert_eq!(files, vec!["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]);
     }
 
@@ -1096,7 +1072,7 @@ mod tests {
     fn test_set_content_files_none_clears_all() {
         let mut config = load("content=Morrowind.esm\n");
         config.set_content_files(None);
-        assert!(config.content_files().is_empty());
+        assert!(config.content_files_iter().next().is_none());
     }
 
     // -----------------------------------------------------------------------
@@ -1106,7 +1082,7 @@ mod tests {
     #[test]
     fn test_fallback_archives_parsed() {
         let config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
-        let archives = config.fallback_archives();
+        let archives: Vec<&String> = config.fallback_archives_iter().map(|s| s.value()).collect();
         assert_eq!(archives, vec!["Morrowind.bsa", "Tribunal.bsa"]);
     }
 
@@ -1138,7 +1114,8 @@ mod tests {
     #[test]
     fn test_groundcover_parsed() {
         let config = load("groundcover=GrassPlugin.esp\n");
-        assert_eq!(config.groundcover(), vec!["GrassPlugin.esp"]);
+        let grass: Vec<&String> = config.groundcover_iter().map(|s| s.value()).collect();
+        assert_eq!(grass, vec!["GrassPlugin.esp"]);
     }
 
     #[test]
@@ -1162,8 +1139,7 @@ mod tests {
     #[test]
     fn test_data_directories_absolute_paths_parsed() {
         let config = load("data=/absolute/path/to/data\n");
-        let dirs = config.data_directories();
-        assert!(dirs.iter().any(|d| d.ends_with("absolute/path/to/data")));
+        assert!(config.data_directories_iter().any(|d| d.parsed().ends_with("absolute/path/to/data")));
     }
 
     #[test]
