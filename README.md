@@ -21,7 +21,7 @@ replacement semantics. For comprehensive VFS coverage, combine with
 
 ```toml
 [dependencies]
-openmw-config = "0.1"
+openmw-config = "0.1.93"
 ```
 
 ```rust,no_run
@@ -132,6 +132,10 @@ println!("{config}");
 ## Reference
 
 [OpenMW configuration documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources)
+
+---
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
