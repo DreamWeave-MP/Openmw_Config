@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [1aeff52](https://github.com/DreamWeave-MP/Openmw_Config/commit/1aeff52) - FEAT: Add a benchmark-generating script which outputs mermaid format docs to a BENCHMARKS.md to demonstrate continuous testing
+- [7797f96](https://github.com/DreamWeave-MP/Openmw_Config/commit/7797f96) - docs: Update CHANGELOG.md [skip ci]
 - [0abf3b3](https://github.com/DreamWeave-MP/Openmw_Config/commit/0abf3b3) - CLEANUP: Update readme
 - [94c610e](https://github.com/DreamWeave-MP/Openmw_Config/commit/94c610e) - docs: Update CHANGELOG.md [skip ci]
 - [ea3ac87](https://github.com/DreamWeave-MP/Openmw_Config/commit/ea3ac87) - CLEANUP: Add doctests
