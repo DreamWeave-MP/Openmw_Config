@@ -1011,6 +1011,7 @@ impl fmt::Display for OpenMWConfiguration {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -1024,13 +1025,13 @@ mod tests {
     }
 
     fn temp_dir() -> PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "openmw_cfg_test_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .subsec_nanos()
-        ));
+        // Use a per-process atomic counter so concurrent tests always get distinct
+        // directories.  The old `subsec_nanos()` approach could collide when two
+        // tests ran at the same nanosecond offset in different seconds, causing
+        // one to overwrite the other's openmw.cfg before it was read.
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let base = std::env::temp_dir().join(format!("openmw_cfg_test_{id}"));
         std::fs::create_dir_all(&base).unwrap();
         base
     }
