@@ -353,7 +353,7 @@ impl OpenMWConfiguration {
     pub fn add_content_file(&mut self, content_file: &str) -> Result<(), ConfigError> {
         let duplicate = self.settings.iter().find_map(|setting| match setting {
             SettingValue::ContentFile(plugin) => {
-                if plugin == content_file {
+                if plugin.value() == content_file {
                     Some(plugin)
                 } else {
                     None
@@ -396,7 +396,7 @@ impl OpenMWConfiguration {
     pub fn add_groundcover_file(&mut self, content_file: &str) -> Result<(), ConfigError> {
         let duplicate = self.settings.iter().find_map(|setting| match setting {
             SettingValue::Groundcover(plugin) => {
-                if plugin == content_file {
+                if plugin.value() == content_file {
                     Some(plugin)
                 } else {
                     None
@@ -471,7 +471,7 @@ impl OpenMWConfiguration {
     pub fn add_archive_file(&mut self, archive_file: &str) -> Result<(), ConfigError> {
         let duplicate = self.settings.iter().find_map(|setting| match setting {
             SettingValue::BethArchive(archive) => {
-                if archive == archive_file {
+                if archive.value() == archive_file {
                     Some(archive)
                 } else {
                     None
