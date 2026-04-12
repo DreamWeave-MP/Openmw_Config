@@ -201,7 +201,7 @@ impl OpenMWConfiguration {
                     let path = dir.parsed();
 
                     let path_meta = metadata(path);
-                    if !path_meta.is_ok() {
+                    if path_meta.is_err() {
                         if let Err(error) = create_dir_all(path) {
                             util::debug_log(format!(
                                 "WARNING: Attempted to crete a data-local directory at {path:?}, but failed: {error}"
