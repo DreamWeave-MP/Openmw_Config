@@ -69,7 +69,17 @@ pub enum GameSettingType {
 }
 
 impl GameSettingType {
-    #[must_use] 
+    /// Returns the setting key — the text before the first comma in a `fallback=Key,Value` entry.
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use openmw_config::GameSettingType;
+    /// let setting = GameSettingType::try_from(
+    ///     ("iMaxLevel,50".to_string(), PathBuf::default(), &mut String::new())
+    /// ).unwrap();
+    /// assert_eq!(setting.key(), "iMaxLevel");
+    /// ```
+    #[must_use]
     pub fn key(&self) -> &String {
         match self {
             GameSettingType::Color(setting) => &setting.key,
@@ -79,7 +89,17 @@ impl GameSettingType {
         }
     }
 
-    #[must_use] 
+    /// Returns the setting value — the text after the first comma in a `fallback=Key,Value` entry.
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use openmw_config::GameSettingType;
+    /// let setting = GameSettingType::try_from(
+    ///     ("iMaxLevel,50".to_string(), PathBuf::default(), &mut String::new())
+    /// ).unwrap();
+    /// assert_eq!(setting.value(), "50");
+    /// ```
+    #[must_use]
     pub fn value(&self) -> Cow<'_, str> {
         match self {
             GameSettingType::Color(setting) => {

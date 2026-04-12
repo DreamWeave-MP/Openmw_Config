@@ -152,6 +152,13 @@ pub struct OpenMWConfiguration {
 impl OpenMWConfiguration {
     /// # Errors
     /// Returns [`ConfigError`] if the path from the environment variable is invalid or if config loading fails.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use openmw_config::OpenMWConfiguration;
+    /// let config = OpenMWConfiguration::from_env()?;
+    /// # Ok::<(), openmw_config::ConfigError>(())
+    /// ```
     pub fn from_env() -> Result<Self, ConfigError> {
         if let Ok(explicit_path) = std::env::var("OPENMW_CONFIG") {
             let explicit_path: PathBuf = shellexpand::tilde(&explicit_path).into_owned().into();
@@ -185,6 +192,19 @@ impl OpenMWConfiguration {
 
     /// # Errors
     /// Returns [`ConfigError`] if the path does not exist, is not a valid config, or if loading the config chain fails.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use std::path::PathBuf;
+    /// use openmw_config::OpenMWConfiguration;
+    ///
+    /// // Platform default
+    /// let config = OpenMWConfiguration::new(None)?;
+    ///
+    /// // Specific directory or file path — both are accepted
+    /// let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw")))?;
+    /// # Ok::<(), openmw_config::ConfigError>(())
+    /// ```
     pub fn new(path: Option<PathBuf>) -> Result<Self, ConfigError> {
         let mut config = OpenMWConfiguration::default();
         let root_config = match path {
@@ -634,9 +654,22 @@ impl OpenMWConfiguration {
         })
     }
 
-    /// Fallback entries are k/v pairs baked into the value side of k/v pairs in `fallback=` entries of openmw.cfg
+    /// Fallback entries are k/v pairs baked into the value side of k/v pairs in `fallback=` entries of openmw.cfg.
     /// They are used to express settings which are defined in Morrowind.ini for things such as:
-    /// weather, lighting behaviors, UI Colors, and levelup messages
+    /// weather, lighting behaviors, UI colors, and levelup messages.
+    ///
+    /// Returns each key exactly once — when a key appears multiple times in the config chain, the
+    /// last-defined value wins.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use openmw_config::OpenMWConfiguration;
+    /// let config = OpenMWConfiguration::new(None)?;
+    /// for setting in config.game_settings() {
+    ///     println!("{}={}", setting.key(), setting.value());
+    /// }
+    /// # Ok::<(), openmw_config::ConfigError>(())
+    /// ```
     pub fn game_settings(&self) -> impl Iterator<Item = &GameSettingType> {
         let mut unique_settings = Vec::new();
         let mut seen = HashSet::new();
