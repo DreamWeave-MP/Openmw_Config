@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_empty_encoding_string() {
-        let err = EncodingSetting::try_from(("".to_string(), dummy_path(), &mut dummy_comment()));
+        let err = EncodingSetting::try_from((String::new(), dummy_path(), &mut dummy_comment()));
         assert!(matches!(err, Err(ConfigError::BadEncoding { .. })));
     }
 

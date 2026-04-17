@@ -1055,7 +1055,7 @@ mod tests {
     #[test]
     fn test_content_files_parsed_in_order() {
         let config = load("content=Morrowind.esm\ncontent=Tribunal.esm\ncontent=Bloodmoon.esm\n");
-        let files: Vec<&String> = config.content_files_iter().map(|s| s.value()).collect();
+        let files: Vec<&String> = config.content_files_iter().map(FileSetting::value).collect();
         assert_eq!(files, vec!["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]);
     }
 
@@ -1133,7 +1133,7 @@ mod tests {
     #[test]
     fn test_fallback_archives_parsed() {
         let config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
-        let archives: Vec<&String> = config.fallback_archives_iter().map(|s| s.value()).collect();
+        let archives: Vec<&String> = config.fallback_archives_iter().map(FileSetting::value).collect();
         assert_eq!(archives, vec!["Morrowind.bsa", "Tribunal.bsa"]);
     }
 
@@ -1165,7 +1165,7 @@ mod tests {
     #[test]
     fn test_groundcover_parsed() {
         let config = load("groundcover=GrassPlugin.esp\n");
-        let grass: Vec<&String> = config.groundcover_iter().map(|s| s.value()).collect();
+        let grass: Vec<&String> = config.groundcover_iter().map(FileSetting::value).collect();
         assert_eq!(grass, vec!["GrassPlugin.esp"]);
     }
 
