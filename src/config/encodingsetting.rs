@@ -1,16 +1,22 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use std::fmt;
 
 use crate::{bail_config, ConfigError, GameSetting, GameSettingMeta};
 
+/// The text encoding used to interpret byte strings in plugin data.
+///
+/// `OpenMW` supports exactly three Windows code-page encodings; any other value in an
+/// `encoding=` line is rejected with [`ConfigError::BadEncoding`](crate::ConfigError::BadEncoding).
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum EncodingType {
+    /// Windows code page 1250 — Central European (Polish, Czech, Slovak, …).
     WIN1250,
+    /// Windows code page 1251 — Cyrillic (Russian, Ukrainian, …).
     WIN1251,
+    /// Windows code page 1252 — Western European (English, French, German, …). The default.
     WIN1252,
 }
 
@@ -26,6 +32,10 @@ impl std::fmt::Display for EncodingType {
     }
 }
 
+/// A parsed `encoding=` entry from an `openmw.cfg` file.
+///
+/// At most one `encoding=` entry is meaningful per resolved configuration chain (singleton
+/// semantics). The encoding affects how byte strings in plugin records are decoded.
 #[derive(Debug, Clone)]
 pub struct EncodingSetting {
     meta: GameSettingMeta,
@@ -33,7 +43,8 @@ pub struct EncodingSetting {
 }
 
 impl EncodingSetting {
-    #[must_use] 
+    /// The parsed encoding type.
+    #[must_use]
     pub fn value(&self) -> EncodingType {
         self.encoding
     }

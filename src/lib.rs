@@ -1,7 +1,35 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
+
+//! Parser, resolver, and serializer for `OpenMW` configuration chains.
+//!
+//! `OpenMW` loads one or more `openmw.cfg` files in a chain: the root config can reference
+//! additional configs via `config=` entries, and each file can accumulate or override settings
+//! from its parent.  This crate walks that chain, resolves token substitutions
+//! (`?userdata?`, `?userconfig?`), normalises paths, and exposes the composed result as
+//! [`OpenMWConfiguration`].
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! use openmw_config::OpenMWConfiguration;
+//!
+//! // Load from the platform-default location (or OPENMW_CONFIG / OPENMW_CONFIG_DIR env vars)
+//! let config = OpenMWConfiguration::from_env()?;
+//!
+//! // Iterate content files in load order
+//! for plugin in config.content_files_iter() {
+//!     println!("{}", plugin.value());
+//! }
+//! # Ok::<(), openmw_config::ConfigError>(())
+//! ```
+//!
+//! # Configuration sources
+//!
+//! See the [OpenMW path documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html)
+//! for platform-specific default locations.  The environment variables `OPENMW_CONFIG` (path to
+//! an `openmw.cfg` file) and `OPENMW_CONFIG_DIR` (directory containing `openmw.cfg`) override the
+//! platform default.
 
 mod config;
 pub use config::{
@@ -18,6 +46,11 @@ pub(crate) trait GameSetting: std::fmt::Display {
     fn meta(&self) -> &GameSettingMeta;
 }
 
+/// Source-tracking metadata attached to every setting value.
+///
+/// Records which config file defined the setting and any comment lines that
+/// immediately preceded it in the file, so that [`OpenMWConfiguration`]'s
+/// `Display` implementation can round-trip comments faithfully.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GameSettingMeta {
     source_config: std::path::PathBuf,
@@ -71,10 +104,11 @@ pub fn default_userdata_path() -> std::path::PathBuf {
     }
 }
 
-/// Path to the last-loading directory of openmw.cfg,
-/// As defined by the engine's defaults
-/// This directory will override all others in the load order
-#[must_use] 
+/// Path to the `data-local` directory as defined by the engine's defaults.
+///
+/// This directory is loaded last and therefore overrides all other data sources
+/// in the VFS load order.
+#[must_use]
 pub fn default_data_local_path() -> std::path::PathBuf {
     default_userdata_path().join("data")
 }

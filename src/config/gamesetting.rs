@@ -1,12 +1,11 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use std::{borrow::Cow, fmt};
 
 use crate::{ConfigError, GameSetting, GameSettingMeta, bail_config};
 
+/// A `fallback=` setting whose value is an RGB colour triple (`r,g,b` with each component 0–255).
 #[derive(Debug, Clone)]
 pub struct ColorGameSetting {
     meta: GameSettingMeta,
@@ -21,6 +20,7 @@ impl std::fmt::Display for ColorGameSetting {
     }
 }
 
+/// A `fallback=` setting whose value did not parse as a number or colour triple.
 #[derive(Debug, Clone)]
 pub struct StringGameSetting {
     meta: GameSettingMeta,
@@ -34,6 +34,7 @@ impl std::fmt::Display for StringGameSetting {
     }
 }
 
+/// A `fallback=` setting whose value parsed as a floating-point number (contains a `.`).
 #[derive(Debug, Clone)]
 pub struct FloatGameSetting {
     meta: GameSettingMeta,
@@ -47,6 +48,7 @@ impl std::fmt::Display for FloatGameSetting {
     }
 }
 
+/// A `fallback=` setting whose value parsed as a 64-bit integer.
 #[derive(Debug, Clone)]
 pub struct IntGameSetting {
     meta: GameSettingMeta,
@@ -60,11 +62,26 @@ impl std::fmt::Display for IntGameSetting {
     }
 }
 
+/// A typed `fallback=Key,Value` entry from an `openmw.cfg` file.
+///
+/// The value is parsed into the most specific type that fits:
+/// - Three comma-separated integers in 0–255 → [`Color`](Self::Color)
+/// - A number containing `.` that parses as `f64` → [`Float`](Self::Float)
+/// - A number that parses as `i64` → [`Int`](Self::Int)
+/// - Anything else → [`String`](Self::String)
+///
+/// [`PartialEq`] comparisons are key-only *within the same variant*, matching `OpenMW`'s
+/// last-defined-wins deduplication semantics used by [`game_settings`](crate::OpenMWConfiguration::game_settings).
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum GameSettingType {
+    /// An RGB colour triple (`r,g,b`).
     Color(ColorGameSetting),
+    /// A plain string value (catch-all for values that aren't numeric or colour).
     String(StringGameSetting),
+    /// A floating-point value.
     Float(FloatGameSetting),
+    /// A 64-bit integer value.
     Int(IntGameSetting),
 }
 

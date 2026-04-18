@@ -1,11 +1,16 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use crate::{GameSetting, GameSettingMeta};
 use std::fmt;
 
+/// A plain filename entry from an `openmw.cfg` file (`content=`, `fallback-archive=`, `groundcover=`).
+///
+/// Stores only the filename string — no path resolution is applied, since these entries name
+/// files looked up through the VFS rather than direct filesystem paths.
+///
+/// `PartialEq` comparisons are value-only and ignore source metadata, making it straightforward
+/// to check whether a particular file is present regardless of which config file defined it.
 #[derive(Debug, Clone)]
 pub struct FileSetting {
     meta: GameSettingMeta,
@@ -49,6 +54,9 @@ impl fmt::Display for FileSetting {
 }
 
 impl FileSetting {
+    /// Creates a new `FileSetting` attributed to `source_config`.
+    ///
+    /// Consumes the accumulated `comment` string (via [`std::mem::take`]).
     pub fn new(value: &str, source_config: &std::path::Path, comment: &mut String) -> Self {
         Self {
             meta: GameSettingMeta {
@@ -59,7 +67,8 @@ impl FileSetting {
         }
     }
 
-    #[must_use] 
+    /// The filename string as it appeared in the `openmw.cfg` file.
+    #[must_use]
     pub fn value(&self) -> &String {
         &self.value
     }

@@ -1,11 +1,14 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use crate::config::strings;
 use std::{fmt, path::PathBuf};
 
+/// A directory path entry from an `openmw.cfg` file (`data=`, `config=`, `user-data=`, etc.).
+///
+/// Stores both the *original* string exactly as it appeared in the file (for round-trip
+/// serialisation) and a *parsed* `PathBuf` with quotes stripped, token substitution applied
+/// (`?userdata?`, `?userconfig?`), and the path resolved relative to the config file's directory.
 #[derive(Debug, Clone)]
 pub struct DirectorySetting {
     pub meta: crate::GameSettingMeta,
@@ -13,14 +16,6 @@ pub struct DirectorySetting {
     parsed: PathBuf,
 }
 
-/// This is tricky.
-/// The trait implementation for `GameSetting` necessitates that all settings have a Display method.
-/// However, `DirectorySetting` is reused interchangeably amongst variants that use a different key. So really the key should just be skipped here,
-/// And handled by the upper `SettingValue` implementation?
-/// But that, also, is fucked off, because then we wouldn't be able to handle comments.
-/// So the hope I guess is that the `SettingValue` itself can have an implementation to account for this.
-/// That seems fair?
-/// And then we just assume data= is the default in here.
 impl std::fmt::Display for DirectorySetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.original)
@@ -33,9 +28,11 @@ impl crate::GameSetting for DirectorySetting {
     }
 }
 
-/// Refactor to clone less shit
-/// Use `std::mem::take` for the comment and change `parse_data_directory` to accept &str
 impl DirectorySetting {
+    /// Parses `value` as a directory path relative to `source_config`.
+    ///
+    /// Consumes the accumulated `comment` string (via [`std::mem::take`]) and stores it in the
+    /// setting's metadata so comments are preserved through serialisation.
     pub fn new<S: Into<String>>(value: S, source_config: PathBuf, comment: &mut String) -> Self {
         let original = value.into();
         let parse_base = if source_config.file_name().is_some_and(|f| f == "openmw.cfg") {
@@ -57,13 +54,20 @@ impl DirectorySetting {
         }
     }
 
-    #[must_use] 
+    /// The raw string exactly as it appeared in the `openmw.cfg` file, including any quotes.
+    ///
+    /// Use this when serialising back to `openmw.cfg` format to preserve the original style.
+    #[must_use]
     pub fn original(&self) -> &String {
         &self.original
     }
 
-    #[must_use] 
-    pub fn parsed(&self) -> &PathBuf {
+    /// The resolved, normalised path after quote-stripping, token substitution, and
+    /// relative-to-config-dir resolution.
+    ///
+    /// Use this when working with the filesystem.
+    #[must_use]
+    pub fn parsed(&self) -> &std::path::Path {
         &self.parsed
     }
 }

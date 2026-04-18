@@ -1,7 +1,5 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use std::{fmt, path::PathBuf};
 
@@ -79,6 +77,18 @@ macro_rules! config_err {
         }
     };
 
+    (not_writable, $path:expr) => {
+        $crate::ConfigError::NotWritable($path.to_path_buf())
+    };
+
+    (subconfig_not_loaded, $path:expr) => {
+        $crate::ConfigError::SubconfigNotLoaded($path.to_path_buf())
+    };
+
+    (max_depth_exceeded, $path:expr) => {
+        $crate::ConfigError::MaxDepthExceeded($path.to_path_buf())
+    };
+
     // Wrap std::io::Error
     (io, $err:expr) => {
         $crate::ConfigError::Io($err)
@@ -94,20 +104,45 @@ macro_rules! bail_config {
 };
 }
 
+/// Errors that can arise while loading, mutating, or saving an `OpenMW` configuration.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ConfigError {
+    /// A content file (`content=`) appeared twice in the configuration chain.
     DuplicateContentFile { file: String, config_path: PathBuf },
+    /// A fallback-archive (`fallback-archive=`) appeared twice in the configuration chain.
     DuplicateArchiveFile { file: String, config_path: PathBuf },
+    /// [`OpenMWConfiguration::add_content_file`](crate::OpenMWConfiguration::add_content_file)
+    /// was called for a file that is already present.
     CannotAddContentFile { file: String, config_path: PathBuf },
+    /// [`OpenMWConfiguration::add_archive_file`](crate::OpenMWConfiguration::add_archive_file)
+    /// was called for an archive that is already present.
     CannotAddArchiveFile { file: String, config_path: PathBuf },
+    /// A groundcover file (`groundcover=`) appeared twice in the configuration chain.
     DuplicateGroundcoverFile { file: String, config_path: PathBuf },
+    /// [`OpenMWConfiguration::add_groundcover_file`](crate::OpenMWConfiguration::add_groundcover_file)
+    /// was called for a file that is already present.
     CannotAddGroundcoverFile { file: String, config_path: PathBuf },
+    /// A `fallback=` entry could not be parsed as a valid `Key,Value` pair.
     InvalidGameSetting { value: String, config_path: PathBuf },
+    /// An `encoding=` entry contained an unrecognised encoding name.
+    /// Only `win1250`, `win1251`, and `win1252` are valid.
     BadEncoding { value: String, config_path: PathBuf },
+    /// A line in an `openmw.cfg` file did not match any recognised `key=value` format.
     InvalidLine { value: String, config_path: PathBuf },
+    /// An I/O error occurred while reading or writing a config file.
     Io(std::io::Error),
+    /// The supplied path could not be classified as a file or directory.
     NotFileOrDirectory(PathBuf),
+    /// No `openmw.cfg` was found at the given path.
     CannotFind(PathBuf),
+    /// The target path for a save operation is not writable.
+    NotWritable(PathBuf),
+    /// [`OpenMWConfiguration::save_subconfig`](crate::OpenMWConfiguration::save_subconfig)
+    /// was called with a path that is not part of the loaded configuration chain.
+    SubconfigNotLoaded(PathBuf),
+    /// The `config=` chain exceeded the maximum nesting depth, likely due to a circular reference.
+    MaxDepthExceeded(PathBuf),
 }
 
 impl fmt::Display for ConfigError {
@@ -169,6 +204,19 @@ impl fmt::Display for ConfigError {
                 f,
                 "Invalid pair in openmw.cfg {value} was defined by {}",
                 config_path.display()
+            ),
+            ConfigError::NotWritable(path) => {
+                write!(f, "Target path is not writable: {}", path.display())
+            }
+            ConfigError::SubconfigNotLoaded(path) => write!(
+                f,
+                "Cannot save to {}; it is not part of the loaded configuration chain",
+                path.display()
+            ),
+            ConfigError::MaxDepthExceeded(path) => write!(
+                f,
+                "Maximum config= nesting depth exceeded while loading {}",
+                path.display()
             ),
         }
     }

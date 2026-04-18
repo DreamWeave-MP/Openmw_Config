@@ -1,7 +1,5 @@
-// This file is part of Openmw_Config.
-// Openmw_Config is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-// Openmw_Config is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License along with Openmw_Config. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use std::{
     fmt::{self, Display},
@@ -34,18 +32,36 @@ mod singletonsetting;
 mod strings;
 mod util;
 
+/// A single parsed entry from an `openmw.cfg` file.
+///
+/// Every line in the file is represented as one of these variants. The variant
+/// determines both the key that appears in the file and how the value is interpreted.
+/// Unknown keys are preserved as [`SettingValue::Generic`] so that round-trip
+/// serialisation never silently drops unrecognised entries.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum SettingValue {
+    /// A `data=` entry specifying a VFS data directory.
     DataDirectory(DirectorySetting),
+    /// A `fallback=` entry containing a Morrowind.ini-style key/value pair.
     GameSetting(GameSettingType),
+    /// A `user-data=` entry (singleton) specifying the user data root.
     UserData(DirectorySetting),
+    /// A `data-local=` entry (singleton) specifying the highest-priority data directory.
     DataLocal(DirectorySetting),
+    /// A `resources=` entry (singleton) specifying the engine resources directory.
     Resources(DirectorySetting),
+    /// An `encoding=` entry (singleton) specifying the text encoding (`win1250`/`win1251`/`win1252`).
     Encoding(EncodingSetting),
+    /// A `config=` entry referencing another `openmw.cfg` directory in the chain.
     SubConfiguration(DirectorySetting),
+    /// Any unrecognised `key=value` line, preserved verbatim.
     Generic(GenericSetting),
+    /// A `content=` entry naming an ESP/ESM plugin file.
     ContentFile(FileSetting),
+    /// A `fallback-archive=` entry naming a BSA archive file.
     BethArchive(FileSetting),
+    /// A `groundcover=` entry naming a groundcover plugin file.
     Groundcover(FileSetting),
 }
 
@@ -141,9 +157,13 @@ macro_rules! insert_dir_setting {
     }};
 }
 
-/// Core struct representing the composed `OpenMW` configuration,
-/// After it has been fully resolved.
-#[derive(Debug, Default)]
+/// A fully-resolved `OpenMW` configuration chain.
+///
+/// Constructed by walking the `config=` chain starting from a root `openmw.cfg`, accumulating
+/// every setting from every file into a flat list.  The list preserves source attribution and
+/// comments so that [`save_user`](Self::save_user) can write back only the user-owned entries,
+/// and [`Display`](std::fmt::Display) can reproduce a valid, comment-preserving `openmw.cfg`.
+#[derive(Debug, Default, Clone)]
 pub struct OpenMWConfiguration {
     root_config: PathBuf,
     settings: Vec<SettingValue>,
@@ -214,7 +234,7 @@ impl OpenMWConfiguration {
 
         config.root_config = root_config;
 
-        if let Err(error) = config.load(&config.root_config.clone()) { Err(error) } else {
+        if let Err(error) = config.load(&config.root_config.clone(), 0) { Err(error) } else {
             if let Some(dir) = config.data_local() {
                 let path = dir.parsed();
 
@@ -222,7 +242,7 @@ impl OpenMWConfiguration {
                 if path_meta.is_err()
                     && let Err(error) = create_dir_all(path) {
                         util::debug_log(&format!(
-                            "WARNING: Attempted to crete a data-local directory at {}, but failed: {error}",
+                            "WARNING: Attempted to create a data-local directory at {}, but failed: {error}",
                             path.display()
                         ));
                     }
@@ -255,8 +275,8 @@ impl OpenMWConfiguration {
     /// Path to the configuration file which is the root of the configuration chain
     /// Typically, this will be whatever is defined in the `Paths` documentation for the appropriate platform:
     /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-files-and-log-files>
-    #[must_use] 
-    pub fn root_config_file(&self) -> &PathBuf {
+    #[must_use]
+    pub fn root_config_file(&self) -> &std::path::Path {
         &self.root_config
     }
 
@@ -303,7 +323,7 @@ impl OpenMWConfiguration {
     #[must_use] 
     pub fn user_config_path(&self) -> PathBuf {
         self.sub_configs()
-            .map(|setting| setting.parsed().clone())
+            .map(|setting| setting.parsed().to_path_buf())
             .last()
             .unwrap_or_else(|| self.root_config_dir())
     }
@@ -341,7 +361,8 @@ impl OpenMWConfiguration {
         })
     }
 
-    #[must_use] 
+    /// Returns `true` if the named plugin is present in the `content=` list.
+    #[must_use]
     pub fn has_content_file(&self, file_name: &str) -> bool {
         self.settings.iter().any(|setting| match setting {
             SettingValue::ContentFile(plugin) => plugin == file_name,
@@ -349,7 +370,8 @@ impl OpenMWConfiguration {
         })
     }
 
-    #[must_use] 
+    /// Returns `true` if the named plugin is present in the `groundcover=` list.
+    #[must_use]
     pub fn has_groundcover_file(&self, file_name: &str) -> bool {
         self.settings.iter().any(|setting| match setting {
             SettingValue::Groundcover(plugin) => plugin == file_name,
@@ -357,7 +379,8 @@ impl OpenMWConfiguration {
         })
     }
 
-    #[must_use] 
+    /// Returns `true` if the named archive is present in the `fallback-archive=` list.
+    #[must_use]
     pub fn has_archive_file(&self, file_name: &str) -> bool {
         self.settings.iter().any(|setting| match setting {
             SettingValue::BethArchive(archive) => archive == file_name,
@@ -365,13 +388,17 @@ impl OpenMWConfiguration {
         })
     }
 
-    #[must_use] 
+    /// Returns `true` if the given path is present in the `data=` list.
+    ///
+    /// Both `/` and `\` are normalised to the platform separator before comparison,
+    /// so the query does not need to use a specific separator style.
+    #[must_use]
     pub fn has_data_dir(&self, file_name: &str) -> bool {
         let query = PathBuf::from(
             file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR),
         );
         self.settings.iter().any(|setting| match setting {
-            SettingValue::DataDirectory(data_dir) => data_dir.parsed() == &query,
+            SettingValue::DataDirectory(data_dir) => data_dir.parsed() == query,
             _ => false,
         })
     }
@@ -408,6 +435,7 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
+    /// Iterates all `groundcover=` entries in definition order.
     pub fn groundcover_iter(&self) -> impl Iterator<Item = &FileSetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::Groundcover(grass) => Some(grass),
@@ -447,6 +475,7 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
+    /// Removes all `content=` entries matching `file_name`.
     pub fn remove_content_file(&mut self, file_name: &str) {
         self.clear_matching(|setting| match setting {
             SettingValue::ContentFile(existing_file) => existing_file == file_name,
@@ -454,6 +483,7 @@ impl OpenMWConfiguration {
         });
     }
 
+    /// Removes all `groundcover=` entries matching `file_name`.
     pub fn remove_groundcover_file(&mut self, file_name: &str) {
         self.clear_matching(|setting| match setting {
             SettingValue::Groundcover(existing_file) => existing_file == file_name,
@@ -461,6 +491,7 @@ impl OpenMWConfiguration {
         });
     }
 
+    /// Removes all `fallback-archive=` entries matching `file_name`.
     pub fn remove_archive_file(&mut self, file_name: &str) {
         self.clear_matching(|setting| match setting {
             SettingValue::BethArchive(existing_file) => existing_file == file_name,
@@ -468,8 +499,7 @@ impl OpenMWConfiguration {
         });
     }
 
-    /// Removed any path matching either the relativized original version in openmw.cfg or
-    /// the fully resolved absolute version the config itself relies on
+    /// Removes any `data=` entry whose resolved path or original string matches `data_dir`.
     pub fn remove_data_directory(&mut self, data_dir: &PathBuf) {
         self.clear_matching(|setting| match setting {
             SettingValue::DataDirectory(existing_data_dir) => {
@@ -480,9 +510,7 @@ impl OpenMWConfiguration {
         });
     }
 
-    /// Does not validate duplicate data directories
-    /// Jest don't feel like it atm
-    /// Let's add comments later after we're not super burned out on this whole config thing
+    /// Appends a data directory entry attributed to the user config. Does not check for duplicates.
     pub fn add_data_directory(&mut self, dir: &Path) {
         self.settings
             .push(SettingValue::DataDirectory(DirectorySetting::new(
@@ -524,6 +552,7 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
+    /// Iterates all `fallback-archive=` entries in definition order.
     pub fn fallback_archives_iter(&self) -> impl Iterator<Item = &FileSetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::BethArchive(archive) => Some(archive),
@@ -531,7 +560,9 @@ impl OpenMWConfiguration {
         })
     }
 
-    /// This early iteration of the crate provides no input validation for setter functions.
+    /// Replaces all `content=` entries with `plugins`, or clears them if `None`.
+    ///
+    /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_content_files(&mut self, plugins: Option<Vec<String>>) {
         self.clear_matching(|setting| matches!(setting, SettingValue::ContentFile(_)));
 
@@ -548,6 +579,9 @@ impl OpenMWConfiguration {
         }
     }
 
+    /// Replaces all `fallback-archive=` entries with `archives`, or clears them if `None`.
+    ///
+    /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_fallback_archives(&mut self, archives: Option<Vec<String>>) {
         self.clear_matching(|setting| matches!(setting, SettingValue::BethArchive(_)));
 
@@ -564,6 +598,7 @@ impl OpenMWConfiguration {
         }
     }
 
+    /// Iterates all settings for which `predicate` returns `true`.
     pub fn settings_matching<'a, P>(
         &'a self,
         predicate: P,
@@ -574,6 +609,7 @@ impl OpenMWConfiguration {
         self.settings.iter().filter(move |s| predicate(s))
     }
 
+    /// Removes all settings for which `predicate` returns `true`.
     pub fn clear_matching<P>(&mut self, predicate: P)
     where
         P: Fn(&SettingValue) -> bool,
@@ -581,7 +617,9 @@ impl OpenMWConfiguration {
         self.settings.retain(|s| !predicate(s));
     }
 
-    /// This early iteration of the crate provides no input validation for setter functions.
+    /// Replaces all `data=` entries with `dirs`, or clears them if `None`.
+    ///
+    /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_data_directories(&mut self, dirs: Option<Vec<PathBuf>>) {
         self.clear_matching(|setting| matches!(setting, SettingValue::DataDirectory(_)));
 
@@ -622,7 +660,10 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
-    /// This early iteration of the crate provides no input validation for setter functions.
+    /// Replaces all `fallback=` entries with `settings`, or clears them if `None`.
+    ///
+    /// Each string must be in `Key,Value` format — the same as it would appear after the `=` in
+    /// an `openmw.cfg` `fallback=` line.
     ///
     /// # Errors
     /// Returns [`ConfigError`] if any entry in `settings` cannot be parsed as a valid game setting.
@@ -648,6 +689,7 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
+    /// Iterates all `config=` sub-configuration entries in definition order.
     pub fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => Some(subconfig),
@@ -673,11 +715,11 @@ impl OpenMWConfiguration {
     /// ```
     pub fn game_settings(&self) -> impl Iterator<Item = &GameSettingType> {
         let mut unique_settings = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen: HashSet<&str> = HashSet::new();
 
         for setting in self.settings.iter().rev() {
             if let SettingValue::GameSetting(gs) = setting
-                && seen.insert(gs.key().clone()) {
+                && seen.insert(gs.key()) {
                     unique_settings.push(gs);
                 }
         }
@@ -714,8 +756,14 @@ impl OpenMWConfiguration {
         })
     }
 
+    const MAX_CONFIG_DEPTH: usize = 16;
+
     #[allow(clippy::too_many_lines)]
-    fn load(&mut self, config_dir: &Path) -> Result<(), ConfigError> {
+    fn load(&mut self, config_dir: &Path, depth: usize) -> Result<(), ConfigError> {
+        if depth > Self::MAX_CONFIG_DEPTH {
+            bail_config!(max_depth_exceeded, config_dir);
+        }
+
         util::debug_log(&format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
 
         if !config_dir.exists() {
@@ -880,7 +928,7 @@ impl OpenMWConfiguration {
 
                 if std::fs::metadata(&subconfig_path).is_ok() {
                     self.settings.push(SettingValue::SubConfiguration(setting));
-                    self.load(Path::new(&subconfig_path))
+                    self.load(Path::new(&subconfig_path), depth + 1)
                 } else {
                     util::debug_log(&format!(
                         "Skipping parsing of {} As this directory does not actually contain an openmw.cfg!",
@@ -895,38 +943,35 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
-    fn write_config(config_string: &str, path: &Path) -> Result<(), String> {
+    fn write_config(config_string: &str, path: &Path) -> Result<(), ConfigError> {
         use std::io::Write;
 
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
-            .open(path)
-            .map_err(|e| format!("Failed to open {} for writing: {e}", path.display()))?;
+            .open(path)?;
 
-        file.write_all(config_string.as_bytes())
-            .map_err(|e| format!("Failed to write to {}: {e}", path.display()))?;
+        file.write_all(config_string.as_bytes())?;
 
         Ok(())
     }
 
-    /// Saves the currently-defined user openmw.cfg configuration
-    /// It should be noted that while modifications may be performed at runtime,
-    /// Because of how *extensive* those modifications to a given configuration may *be*, it's more or less impossible to
-    /// guarantee that saving any lower priority openmw.cfg will not *completely* destroy it.
-    /// You've been warned!
+    /// Saves the currently-defined user openmw.cfg configuration.
+    ///
+    /// Only settings whose source is the user config file are written; settings inherited from
+    /// parent configs are not affected. Modifications applied to inherited settings at runtime
+    /// are therefore not persisted by this method.
     ///
     /// # Errors
-    /// Returns an error string if the target path is not writable or if writing the file fails.
-    pub fn save_user(&self) -> Result<(), String> {
+    /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
+    /// Returns [`ConfigError::Io`] if writing the file fails.
+    pub fn save_user(&self) -> Result<(), ConfigError> {
         let target_dir = self.user_config_path();
-
-        // Write the config to openmw.cfg in the target directory
         let cfg_path = target_dir.join("openmw.cfg");
 
         if !util::is_writable(&cfg_path) {
-            return Err(format!("Target path {} is not writable!", target_dir.display()));
+            bail_config!(not_writable, &cfg_path);
         }
 
         let mut user_settings_string = String::new();
@@ -940,13 +985,16 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
-    /// Save the openmw.cfg to an arbitrary path, instead of the (safe) user configuration.
-    /// This doesn't prevent bad usages of the configuration such as overriding an existing one with the original root configuration,
-    /// So you should exercise caution when writing an openmw.cfg and be very sure you know it is going where you think it is.
+    /// Saves the openmw.cfg belonging to a loaded sub-configuration.
+    ///
+    /// `target_dir` must be the directory of a `config=` entry already present in the loaded
+    /// chain. This method refuses to write to arbitrary paths to prevent accidental overwrites.
     ///
     /// # Errors
-    /// Returns an error string if `target_dir` is not a loaded sub-config, is not writable, or if writing fails.
-    pub fn save_subconfig(&self, target_dir: &Path) -> Result<(), String> {
+    /// Returns [`ConfigError::SubconfigNotLoaded`] if `target_dir` is not part of the chain.
+    /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
+    /// Returns [`ConfigError::Io`] if writing the file fails.
+    pub fn save_subconfig(&self, target_dir: &Path) -> Result<(), ConfigError> {
         let subconfig_is_loaded = self.settings.iter().any(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => {
                 subconfig.parsed() == target_dir
@@ -956,16 +1004,13 @@ impl OpenMWConfiguration {
         });
 
         if !subconfig_is_loaded {
-            return Err(format!(
-                "Refusing to save a sub-configuration which is not actually loaded as a child of the current one: {}",
-                target_dir.display()
-            ));
+            bail_config!(subconfig_not_loaded, target_dir);
         }
 
         let cfg_path = target_dir.join("openmw.cfg");
 
         if !util::is_writable(&cfg_path) {
-            return Err(format!("Target path {} is not writable!", target_dir.display()));
+            bail_config!(not_writable, &cfg_path);
         }
 
         let mut subconfig_settings_string = String::new();
@@ -1337,5 +1382,243 @@ mod tests {
         let config = load("some-unknown-key=some-value\n");
         let output = config.to_string();
         assert!(output.contains("some-unknown-key=some-value"));
+    }
+
+    // -----------------------------------------------------------------------
+    // save_user
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_save_user_round_trips_content_files() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\ncontent=Tribunal.esm\n");
+        let mut config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        config.add_content_file("Bloodmoon.esm").unwrap();
+        config.save_user().unwrap();
+
+        let reloaded = OpenMWConfiguration::new(Some(dir)).unwrap();
+        let files: Vec<&String> = reloaded.content_files_iter().map(FileSetting::value).collect();
+        assert!(files.contains(&&"Morrowind.esm".to_string()));
+        assert!(files.contains(&&"Bloodmoon.esm".to_string()));
+    }
+
+    #[test]
+    fn test_save_user_not_writable_returns_error() {
+        // Only meaningful on Unix — skip on other platforms
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = temp_dir();
+            write_cfg(&dir, "content=Morrowind.esm\n");
+            let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+
+            // Make the directory read-only so we can't write openmw.cfg
+            let cfg_path = dir.join("openmw.cfg");
+            std::fs::set_permissions(&cfg_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+            let result = config.save_user();
+            // Restore permissions before asserting so temp cleanup works
+            std::fs::set_permissions(&cfg_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+            assert!(
+                matches!(result, Err(ConfigError::NotWritable(_))),
+                "expected NotWritable, got {result:?}"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // save_subconfig
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_save_subconfig_rejects_unloaded_path() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\n");
+        let config = OpenMWConfiguration::new(Some(dir)).unwrap();
+
+        let fake_dir = temp_dir();
+        let result = config.save_subconfig(&fake_dir);
+        assert!(
+            matches!(result, Err(ConfigError::SubconfigNotLoaded(_))),
+            "expected SubconfigNotLoaded, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_save_subconfig_round_trips_settings() {
+        let root_dir = temp_dir();
+        let sub_dir = temp_dir();
+        write_cfg(&sub_dir, "content=Plugin.esp\n");
+        write_cfg(
+            &root_dir,
+            &format!("content=Morrowind.esm\nconfig={}\n", sub_dir.display()),
+        );
+
+        let mut config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+        config.add_content_file("NewPlugin.esp").unwrap();
+        config.save_subconfig(&sub_dir).unwrap();
+
+        let sub_cfg = sub_dir.join("openmw.cfg");
+        let saved = std::fs::read_to_string(sub_cfg).unwrap();
+        assert!(saved.contains("content=Plugin.esp"), "sub-config content preserved");
+    }
+
+    // -----------------------------------------------------------------------
+    // from_env
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_from_env_openmw_config_dir() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\n");
+
+        // SAFETY: tests that mutate env must not run concurrently with each other.
+        // The test binary is single-threaded by default so this is acceptable.
+        unsafe { std::env::set_var("OPENMW_CONFIG_DIR", &dir) };
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { std::env::remove_var("OPENMW_CONFIG_DIR") };
+
+        assert!(config.has_content_file("Morrowind.esm"));
+    }
+
+    #[test]
+    fn test_from_env_openmw_config_file() {
+        let dir = temp_dir();
+        let cfg = write_cfg(&dir, "content=Tribunal.esm\n");
+
+        unsafe { std::env::set_var("OPENMW_CONFIG", &cfg) };
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { std::env::remove_var("OPENMW_CONFIG") };
+
+        assert!(config.has_content_file("Tribunal.esm"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ConfigError variants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_error_duplicate_archive_file() {
+        // The parser itself rejects duplicate fallback-archive= entries
+        let dir = temp_dir();
+        write_cfg(&dir, "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n");
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(result, Err(ConfigError::DuplicateArchiveFile { .. })));
+    }
+
+    #[test]
+    fn test_error_cannot_add_groundcover_file() {
+        let mut config = load("groundcover=GrassPlugin.esp\n");
+        let result = config.add_groundcover_file("GrassPlugin.esp");
+        assert!(matches!(result, Err(ConfigError::CannotAddGroundcoverFile { .. })));
+    }
+
+    #[test]
+    fn test_error_cannot_find() {
+        let result = OpenMWConfiguration::new(Some(PathBuf::from("/nonexistent/totally/fake/path")));
+        assert!(matches!(result, Err(ConfigError::CannotFind(_) | ConfigError::NotFileOrDirectory(_))));
+    }
+
+    #[test]
+    fn test_error_io_from_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let config_err: ConfigError = io_err.into();
+        assert!(matches!(config_err, ConfigError::Io(_)));
+    }
+
+    #[test]
+    fn test_error_invalid_line() {
+        // A line with no `=` separator should produce InvalidLine
+        let result = OpenMWConfiguration::new(Some({
+            let dir = temp_dir();
+            write_cfg(&dir, "this_has_no_equals_sign\n");
+            dir
+        }));
+        assert!(matches!(result, Err(ConfigError::InvalidLine { .. })));
+    }
+
+    #[test]
+    fn test_error_max_depth_exceeded() {
+        // Build a self-referencing config chain that will hit the depth limit
+        let dir = temp_dir();
+        write_cfg(&dir, &format!("config={}\n", dir.display()));
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(result, Err(ConfigError::MaxDepthExceeded(_))));
+    }
+
+    // -----------------------------------------------------------------------
+    // settings_matching and clear_matching
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_settings_matching_filters_correctly() {
+        let config = load("content=Morrowind.esm\nfallback-archive=Morrowind.bsa\n");
+        let content_count = config
+            .settings_matching(|s| matches!(s, SettingValue::ContentFile(_)))
+            .count();
+        assert_eq!(content_count, 1);
+    }
+
+    #[test]
+    fn test_clear_matching_removes_entries() {
+        let mut config = load("content=Morrowind.esm\ncontent=Tribunal.esm\n");
+        config.clear_matching(|s| matches!(s, SettingValue::ContentFile(_)));
+        assert_eq!(config.content_files_iter().count(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // sub_configs and config chaining
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_sub_configs_iteration() {
+        let root_dir = temp_dir();
+        let sub_dir = temp_dir();
+        write_cfg(&sub_dir, "content=Plugin.esp\n");
+        write_cfg(
+            &root_dir,
+            &format!("content=Morrowind.esm\nconfig={}\n", sub_dir.display()),
+        );
+
+        let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+        assert_eq!(config.sub_configs().count(), 1);
+        assert!(config.has_content_file("Plugin.esp"), "sub-config content visible in root");
+    }
+
+    // -----------------------------------------------------------------------
+    // root_config_file / root_config_dir
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_root_config_file_points_to_cfg() {
+        let dir = temp_dir();
+        write_cfg(&dir, "");
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
+    }
+
+    #[test]
+    fn test_root_config_dir_is_parent() {
+        let dir = temp_dir();
+        write_cfg(&dir, "");
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        assert_eq!(config.root_config_dir(), dir);
+    }
+
+    // -----------------------------------------------------------------------
+    // Clone
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_clone_is_independent() {
+        let mut original = load("content=Morrowind.esm\n");
+        let mut cloned = original.clone();
+        cloned.add_content_file("Tribunal.esm").unwrap();
+        original.add_content_file("Bloodmoon.esm").unwrap();
+        assert!(cloned.has_content_file("Tribunal.esm"));
+        assert!(!cloned.has_content_file("Bloodmoon.esm"));
+        assert!(original.has_content_file("Bloodmoon.esm"));
+        assert!(!original.has_content_file("Tribunal.esm"));
     }
 }
