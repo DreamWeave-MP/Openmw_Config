@@ -309,16 +309,54 @@ pub fn default_global_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    fn snapshot_env(keys: &[&str]) -> Vec<(String, Option<OsString>)> {
+        keys.iter()
+            .map(|key| ((*key).to_string(), std::env::var_os(key)))
+            .collect()
+    }
+
+    fn restore_env(snapshot: Vec<(String, Option<OsString>)>) {
+        for (key, value) in snapshot {
+            // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+            unsafe {
+                if let Some(value) = value {
+                    std::env::set_var(&key, value);
+                } else {
+                    std::env::remove_var(&key);
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_default_data_local_path_is_userdata_data_child() {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let snapshot = snapshot_env(&[
+            "OPENMW_CONFIG_USING_FLATPAK",
+            "OPENMW_FLATPAK_ID",
+            "FLATPAK_ID",
+            "OPENMW_GLOBAL_PATH",
+        ]);
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("OPENMW_FLATPAK_ID");
+            std::env::remove_var("FLATPAK_ID");
+            std::env::remove_var("OPENMW_GLOBAL_PATH");
+        }
+
         assert_eq!(
             default_data_local_path(),
             default_userdata_path().join("data")
         );
+
+        restore_env(snapshot);
     }
 
     #[test]
@@ -333,12 +371,26 @@ mod tests {
 
     #[test]
     fn test_try_default_config_path_returns_path_or_error() {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let snapshot = snapshot_env(&[
+            "OPENMW_CONFIG_USING_FLATPAK",
+            "OPENMW_FLATPAK_ID",
+            "FLATPAK_ID",
+        ]);
         let _ = try_default_config_path();
+        restore_env(snapshot);
     }
 
     #[test]
     fn test_try_default_local_path_returns_path_or_error() {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let snapshot = snapshot_env(&[
+            "OPENMW_CONFIG_USING_FLATPAK",
+            "OPENMW_FLATPAK_ID",
+            "FLATPAK_ID",
+        ]);
         let _ = try_default_local_path();
+        restore_env(snapshot);
     }
 
     #[test]
