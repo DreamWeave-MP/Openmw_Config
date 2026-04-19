@@ -17,18 +17,25 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(config_dir: &P, data_dir:
     // Quote handling
     if data_dir.starts_with('"') {
         let mut result = String::new();
-        let mut i = 1;
-        let chars: Vec<char> = data_dir.chars().collect();
-        while i < chars.len() {
-            if chars[i] == '&' {
-                i += 1; // skip the next char (escape)
-            } else if chars[i] == '"' {
+        let mut escaped = false;
+
+        for ch in data_dir.chars().skip(1) {
+            if escaped {
+                result.push(ch);
+                escaped = false;
+                continue;
+            }
+
+            if ch == '&' {
+                escaped = true;
+                continue;
+            }
+
+            if ch == '"' {
                 break;
             }
-            if i < chars.len() {
-                result.push(chars[i]);
-            }
-            i += 1;
+
+            result.push(ch);
         }
         data_dir = result;
     }

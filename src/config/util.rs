@@ -1,9 +1,23 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
+#[must_use]
+pub fn debug_enabled() -> bool {
+    std::env::var("CFG_DEBUG").is_ok()
+}
+
 pub fn debug_log(message: &str) {
-    if std::env::var("CFG_DEBUG").is_ok() {
+    if debug_enabled() {
         println!("[CONFIG DEBUG]: {message}");
+    }
+}
+
+pub fn debug_log_lazy<F>(message: F)
+where
+    F: FnOnce() -> String,
+{
+    if debug_enabled() {
+        println!("[CONFIG DEBUG]: {}", message());
     }
 }
 

@@ -219,14 +219,12 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
     fn try_from(
         (original_value, source_config, queued_comment): (String, std::path::PathBuf, &mut String),
     ) -> Result<Self, ConfigError> {
-        let tokens: Vec<&str> = original_value.splitn(2, ',').collect();
-
-        if tokens.len() < 2 {
+        let Some((key, value)) = original_value.split_once(',') else {
             bail_config!(invalid_game_setting, original_value, source_config);
-        }
+        };
 
-        let key = tokens[0].to_string();
-        let value = tokens[1].to_string();
+        let key = key.to_string();
+        let value = value.to_string();
 
         let meta = GameSettingMeta {
             source_config,
@@ -273,16 +271,16 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
 }
 
 fn parse_color_value(value: &str) -> Option<(u8, u8, u8)> {
-    let parts: Vec<_> = value
-        .split(',')
-        .map(str::trim)
-        .filter_map(|s| s.parse::<u8>().ok())
-        .collect();
+    let mut parts = value.split(',').map(str::trim);
+    let r = parts.next()?.parse::<u8>().ok()?;
+    let g = parts.next()?.parse::<u8>().ok()?;
+    let b = parts.next()?.parse::<u8>().ok()?;
 
-    match parts.as_slice() {
-        [r, g, b] => Some((*r, *g, *b)),
-        _ => None,
+    if parts.next().is_some() {
+        return None;
     }
+
+    Some((r, g, b))
 }
 
 #[cfg(test)]

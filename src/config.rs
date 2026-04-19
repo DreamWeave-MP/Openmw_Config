@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{ConfigError, GameSetting, bail_config};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub mod directorysetting;
 use directorysetting::DirectorySetting;
@@ -168,6 +168,12 @@ pub struct OpenMWConfiguration {
     root_config: PathBuf,
     settings: Vec<SettingValue>,
     chain: Vec<ConfigChainEntry>,
+    indexed_content: HashSet<String>,
+    indexed_groundcover: HashSet<String>,
+    indexed_archives: HashSet<String>,
+    indexed_data_dirs: HashSet<PathBuf>,
+    indexed_game_setting_last: HashMap<String, usize>,
+    indexed_game_setting_order: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -201,6 +207,46 @@ impl ConfigChainEntry {
 }
 
 impl OpenMWConfiguration {
+    fn rebuild_indexes(&mut self) {
+        self.indexed_content.clear();
+        self.indexed_groundcover.clear();
+        self.indexed_archives.clear();
+        self.indexed_data_dirs.clear();
+        self.indexed_game_setting_last.clear();
+        self.indexed_game_setting_order.clear();
+
+        for (index, setting) in self.settings.iter().enumerate() {
+            match setting {
+                SettingValue::ContentFile(file) => {
+                    self.indexed_content.insert(file.value().clone());
+                }
+                SettingValue::Groundcover(file) => {
+                    self.indexed_groundcover.insert(file.value().clone());
+                }
+                SettingValue::BethArchive(file) => {
+                    self.indexed_archives.insert(file.value().clone());
+                }
+                SettingValue::DataDirectory(dir) => {
+                    self.indexed_data_dirs.insert(dir.parsed().to_path_buf());
+                }
+                SettingValue::GameSetting(game_setting) => {
+                    self.indexed_game_setting_last
+                        .insert(game_setting.key().clone(), index);
+                }
+                _ => {}
+            }
+        }
+
+        let mut seen = HashSet::new();
+        for (index, setting) in self.settings.iter().enumerate().rev() {
+            if let SettingValue::GameSetting(game_setting) = setting
+                && seen.insert(game_setting.key())
+            {
+                self.indexed_game_setting_order.push(index);
+            }
+        }
+    }
+
     /// # Errors
     /// Returns [`ConfigError`] if the path from the environment variable is invalid or if config loading fails.
     ///
@@ -414,28 +460,19 @@ impl OpenMWConfiguration {
     /// Returns `true` if the named plugin is present in the `content=` list.
     #[must_use]
     pub fn has_content_file(&self, file_name: &str) -> bool {
-        self.settings.iter().any(|setting| match setting {
-            SettingValue::ContentFile(plugin) => plugin == file_name,
-            _ => false,
-        })
+        self.indexed_content.contains(file_name)
     }
 
     /// Returns `true` if the named plugin is present in the `groundcover=` list.
     #[must_use]
     pub fn has_groundcover_file(&self, file_name: &str) -> bool {
-        self.settings.iter().any(|setting| match setting {
-            SettingValue::Groundcover(plugin) => plugin == file_name,
-            _ => false,
-        })
+        self.indexed_groundcover.contains(file_name)
     }
 
     /// Returns `true` if the named archive is present in the `fallback-archive=` list.
     #[must_use]
     pub fn has_archive_file(&self, file_name: &str) -> bool {
-        self.settings.iter().any(|setting| match setting {
-            SettingValue::BethArchive(archive) => archive == file_name,
-            _ => false,
-        })
+        self.indexed_archives.contains(file_name)
     }
 
     /// Returns `true` if the given path is present in the `data=` list.
@@ -444,11 +481,12 @@ impl OpenMWConfiguration {
     /// so the query does not need to use a specific separator style.
     #[must_use]
     pub fn has_data_dir(&self, file_name: &str) -> bool {
-        let query = PathBuf::from(file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR));
-        self.settings.iter().any(|setting| match setting {
-            SettingValue::DataDirectory(data_dir) => data_dir.parsed() == query,
-            _ => false,
-        })
+        let query = if file_name.contains(['/', '\\']) {
+            PathBuf::from(file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR))
+        } else {
+            PathBuf::from(file_name)
+        };
+        self.indexed_data_dirs.contains(&query)
     }
 
     /// # Errors
@@ -479,6 +517,7 @@ impl OpenMWConfiguration {
                 &self.user_config_path().join("openmw.cfg"),
                 &mut String::default(),
             )));
+        self.rebuild_indexes();
 
         Ok(())
     }
@@ -519,43 +558,48 @@ impl OpenMWConfiguration {
                 &self.user_config_path().join("openmw.cfg"),
                 &mut String::default(),
             )));
+        self.rebuild_indexes();
 
         Ok(())
     }
 
     /// Removes all `content=` entries matching `file_name`.
     pub fn remove_content_file(&mut self, file_name: &str) {
-        self.clear_matching(|setting| match setting {
+        self.clear_matching_internal(|setting| match setting {
             SettingValue::ContentFile(existing_file) => existing_file == file_name,
             _ => false,
         });
+        self.rebuild_indexes();
     }
 
     /// Removes all `groundcover=` entries matching `file_name`.
     pub fn remove_groundcover_file(&mut self, file_name: &str) {
-        self.clear_matching(|setting| match setting {
+        self.clear_matching_internal(|setting| match setting {
             SettingValue::Groundcover(existing_file) => existing_file == file_name,
             _ => false,
         });
+        self.rebuild_indexes();
     }
 
     /// Removes all `fallback-archive=` entries matching `file_name`.
     pub fn remove_archive_file(&mut self, file_name: &str) {
-        self.clear_matching(|setting| match setting {
+        self.clear_matching_internal(|setting| match setting {
             SettingValue::BethArchive(existing_file) => existing_file == file_name,
             _ => false,
         });
+        self.rebuild_indexes();
     }
 
     /// Removes any `data=` entry whose resolved path or original string matches `data_dir`.
     pub fn remove_data_directory(&mut self, data_dir: &PathBuf) {
-        self.clear_matching(|setting| match setting {
+        self.clear_matching_internal(|setting| match setting {
             SettingValue::DataDirectory(existing_data_dir) => {
                 existing_data_dir.parsed() == data_dir
                     || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
             }
             _ => false,
         });
+        self.rebuild_indexes();
     }
 
     /// Appends a data directory entry attributed to the user config. Does not check for duplicates.
@@ -566,6 +610,7 @@ impl OpenMWConfiguration {
                 self.user_config_path().join("openmw.cfg"),
                 &mut String::default(),
             )));
+        self.rebuild_indexes();
     }
 
     /// # Errors
@@ -596,6 +641,7 @@ impl OpenMWConfiguration {
                 &self.user_config_path().join("openmw.cfg"),
                 &mut String::default(),
             )));
+        self.rebuild_indexes();
 
         Ok(())
     }
@@ -612,7 +658,7 @@ impl OpenMWConfiguration {
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_content_files(&mut self, plugins: Option<Vec<String>>) {
-        self.clear_matching(|setting| matches!(setting, SettingValue::ContentFile(_)));
+        self.clear_matching_internal(|setting| matches!(setting, SettingValue::ContentFile(_)));
 
         if let Some(plugins) = plugins {
             let cfg_path = self.user_config_path().join("openmw.cfg");
@@ -624,13 +670,15 @@ impl OpenMWConfiguration {
                     )));
             }
         }
+
+        self.rebuild_indexes();
     }
 
     /// Replaces all `fallback-archive=` entries with `archives`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_fallback_archives(&mut self, archives: Option<Vec<String>>) {
-        self.clear_matching(|setting| matches!(setting, SettingValue::BethArchive(_)));
+        self.clear_matching_internal(|setting| matches!(setting, SettingValue::BethArchive(_)));
 
         if let Some(archives) = archives {
             let cfg_path = self.user_config_path().join("openmw.cfg");
@@ -642,6 +690,8 @@ impl OpenMWConfiguration {
                     )));
             }
         }
+
+        self.rebuild_indexes();
     }
 
     /// Iterates all settings for which `predicate` returns `true`.
@@ -656,18 +706,27 @@ impl OpenMWConfiguration {
     }
 
     /// Removes all settings for which `predicate` returns `true`.
-    pub fn clear_matching<P>(&mut self, predicate: P)
+    fn clear_matching_internal<P>(&mut self, predicate: P)
     where
         P: Fn(&SettingValue) -> bool,
     {
         self.settings.retain(|s| !predicate(s));
     }
 
+    /// Removes all settings for which `predicate` returns `true`.
+    pub fn clear_matching<P>(&mut self, predicate: P)
+    where
+        P: Fn(&SettingValue) -> bool,
+    {
+        self.clear_matching_internal(predicate);
+        self.rebuild_indexes();
+    }
+
     /// Replaces all `data=` entries with `dirs`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
     pub fn set_data_directories(&mut self, dirs: Option<Vec<PathBuf>>) {
-        self.clear_matching(|setting| matches!(setting, SettingValue::DataDirectory(_)));
+        self.clear_matching_internal(|setting| matches!(setting, SettingValue::DataDirectory(_)));
 
         if let Some(dirs) = dirs {
             let cfg_path = self.user_config_path().join("openmw.cfg");
@@ -682,6 +741,8 @@ impl OpenMWConfiguration {
                     )));
             }
         }
+
+        self.rebuild_indexes();
     }
 
     /// Given a string resembling a fallback= entry's value, as it would exist in openmw.cfg,
@@ -703,6 +764,7 @@ impl OpenMWConfiguration {
         ))?;
 
         self.settings.push(SettingValue::GameSetting(new_setting));
+        self.rebuild_indexes();
 
         Ok(())
     }
@@ -715,23 +777,26 @@ impl OpenMWConfiguration {
     /// # Errors
     /// Returns [`ConfigError`] if any entry in `settings` cannot be parsed as a valid game setting.
     pub fn set_game_settings(&mut self, settings: Option<Vec<String>>) -> Result<(), ConfigError> {
-        self.clear_matching(|setting| matches!(setting, SettingValue::GameSetting(_)));
+        self.clear_matching_internal(|setting| matches!(setting, SettingValue::GameSetting(_)));
 
         if let Some(settings) = settings {
             let cfg_path = self.user_config_path().join("openmw.cfg");
             let mut empty = String::default();
 
-            settings.into_iter().try_for_each(|setting| {
-                self.settings
-                    .push(SettingValue::GameSetting(GameSettingType::try_from((
-                        setting,
-                        cfg_path.clone(),
-                        &mut empty,
-                    ))?));
+            for setting in settings {
+                let parsed = match GameSettingType::try_from((setting, cfg_path.clone(), &mut empty)) {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        self.rebuild_indexes();
+                        return Err(error);
+                    }
+                };
 
-                Ok::<(), ConfigError>(())
-            })?;
+                self.settings.push(SettingValue::GameSetting(parsed));
+            }
         }
+
+        self.rebuild_indexes();
 
         Ok(())
     }
@@ -772,18 +837,12 @@ impl OpenMWConfiguration {
     /// # Ok::<(), openmw_config::ConfigError>(())
     /// ```
     pub fn game_settings(&self) -> impl Iterator<Item = &GameSettingType> {
-        let mut unique_settings = Vec::new();
-        let mut seen: HashSet<&str> = HashSet::new();
-
-        for setting in self.settings.iter().rev() {
-            if let SettingValue::GameSetting(gs) = setting
-                && seen.insert(gs.key())
-            {
-                unique_settings.push(gs);
-            }
-        }
-
-        unique_settings.into_iter()
+        self.indexed_game_setting_order
+            .iter()
+            .filter_map(|index| match &self.settings[*index] {
+                SettingValue::GameSetting(setting) => Some(setting),
+                _ => None,
+            })
     }
 
     /// Retrieves a gamesetting according to its name.
@@ -791,14 +850,12 @@ impl OpenMWConfiguration {
     /// Case-sensitive!
     #[must_use]
     pub fn get_game_setting(&self, key: &str) -> Option<&GameSettingType> {
-        for setting in self.settings.iter().rev() {
-            if let SettingValue::GameSetting(setting) = setting
-                && setting == &key
-            {
-                return Some(setting);
-            }
-        }
-        None
+        self.indexed_game_setting_last
+            .get(key)
+            .and_then(|index| match &self.settings[*index] {
+                SettingValue::GameSetting(setting) => Some(setting),
+                _ => None,
+            })
     }
 
     /// Data directories are the bulk of an `OpenMW` Configuration's contents,
@@ -823,12 +880,37 @@ impl OpenMWConfiguration {
         let mut pending_configs = VecDeque::new();
         pending_configs.push_back((root_config.to_path_buf(), 0usize));
 
+        let mut seen_content: HashSet<String> = self
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::ContentFile(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+        let mut seen_groundcover: HashSet<String> = self
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::Groundcover(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+        let mut seen_archives: HashSet<String> = self
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::BethArchive(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+
         while let Some((config_dir, depth)) = pending_configs.pop_front() {
             if depth > Self::MAX_CONFIG_DEPTH {
                 bail_config!(max_depth_exceeded, config_dir);
             }
 
-            util::debug_log(&format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
+            util::debug_log_lazy(|| format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
 
             if !config_dir.exists() {
                 bail_config!(cannot_find, config_dir);
@@ -851,25 +933,6 @@ impl OpenMWConfiguration {
             let mut queued_comment = String::new();
             let mut sub_configs: Vec<(String, String)> = Vec::new();
 
-            let mut seen_content: HashSet<String> = HashSet::new();
-            let mut seen_groundcover: HashSet<String> = HashSet::new();
-            let mut seen_archives: HashSet<String> = HashSet::new();
-
-            for setting in &self.settings {
-                match setting {
-                    SettingValue::ContentFile(f) => {
-                        seen_content.insert(f.value().clone());
-                    }
-                    SettingValue::Groundcover(f) => {
-                        seen_groundcover.insert(f.value().clone());
-                    }
-                    SettingValue::BethArchive(f) => {
-                        seen_archives.insert(f.value().clone());
-                    }
-                    _ => {}
-                }
-            }
-
             for (index, line) in lines.lines().enumerate() {
                 let line_no = index + 1;
                 let trimmed = line.trim();
@@ -883,59 +946,58 @@ impl OpenMWConfiguration {
                     continue;
                 }
 
-                let tokens: Vec<&str> = trimmed.splitn(2, '=').collect();
-                if tokens.len() < 2 {
+                let Some((key, value)) = trimmed.split_once('=') else {
                     bail_config!(invalid_line, trimmed.into(), cfg_file_path.clone(), line_no);
-                }
+                };
 
-                let key = tokens[0].trim();
-                let value = tokens[1].trim().to_string();
+                let key = key.trim();
+                let value = value.trim();
 
                 match key {
                     "content" => {
-                        if !seen_content.insert(value.clone()) {
-                            bail_config!(duplicate_content_file, value, cfg_file_path, line_no);
+                        if !seen_content.insert(value.to_owned()) {
+                            bail_config!(duplicate_content_file, value.to_owned(), cfg_file_path, line_no);
                         }
                         self.settings
                             .push(SettingValue::ContentFile(FileSetting::new(
-                                &value,
+                                value,
                                 &cfg_file_path,
                                 &mut queued_comment,
                             )));
                     }
                     "groundcover" => {
-                        if !seen_groundcover.insert(value.clone()) {
+                        if !seen_groundcover.insert(value.to_owned()) {
                             bail_config!(
                                 duplicate_groundcover_file,
-                                value,
+                                value.to_owned(),
                                 cfg_file_path,
                                 line_no
                             );
                         }
                         self.settings
                             .push(SettingValue::Groundcover(FileSetting::new(
-                                &value,
+                                value,
                                 &cfg_file_path,
                                 &mut queued_comment,
                             )));
                     }
                     "fallback-archive" => {
-                        if !seen_archives.insert(value.clone()) {
-                            bail_config!(duplicate_archive_file, value, cfg_file_path, line_no);
+                        if !seen_archives.insert(value.to_owned()) {
+                            bail_config!(duplicate_archive_file, value.to_owned(), cfg_file_path, line_no);
                         }
                         self.settings
                             .push(SettingValue::BethArchive(FileSetting::new(
-                                &value,
+                                value,
                                 &cfg_file_path,
                                 &mut queued_comment,
                             )));
                     }
                     "fallback" => {
-                        self.set_game_setting(
-                            &value,
-                            Some(cfg_file_path.clone()),
+                        let game_setting = GameSettingType::try_from((
+                            value.to_owned(),
+                            cfg_file_path.clone(),
                             &mut queued_comment,
-                        )
+                        ))
                         .map_err(|error| match error {
                             ConfigError::InvalidGameSetting {
                                 value,
@@ -948,10 +1010,12 @@ impl OpenMWConfiguration {
                             },
                             _ => error,
                         })?;
+
+                        self.settings.push(SettingValue::GameSetting(game_setting));
                     }
                     "encoding" => {
                         let encoding = EncodingSetting::try_from((
-                            value,
+                            value.to_owned(),
                             &cfg_file_path,
                             &mut queued_comment,
                         ))
@@ -970,13 +1034,13 @@ impl OpenMWConfiguration {
                         self.set_encoding(Some(encoding));
                     }
                     "config" => {
-                        sub_configs.push((value, std::mem::take(&mut queued_comment)));
+                        sub_configs.push((value.to_owned(), std::mem::take(&mut queued_comment)));
                     }
                     "data" => {
                         insert_dir_setting!(
                             self,
                             DataDirectory,
-                            &value,
+                            value,
                             cfg_file_path.clone(),
                             &mut queued_comment
                         );
@@ -985,7 +1049,7 @@ impl OpenMWConfiguration {
                         insert_dir_setting!(
                             self,
                             Resources,
-                            &value,
+                            value,
                             cfg_file_path.clone(),
                             &mut queued_comment
                         );
@@ -994,7 +1058,7 @@ impl OpenMWConfiguration {
                         insert_dir_setting!(
                             self,
                             UserData,
-                            &value,
+                            value,
                             cfg_file_path.clone(),
                             &mut queued_comment
                         );
@@ -1003,24 +1067,28 @@ impl OpenMWConfiguration {
                         insert_dir_setting!(
                             self,
                             DataLocal,
-                            &value,
+                            value,
                             cfg_file_path.clone(),
                             &mut queued_comment
                         );
                     }
-                    "replace" => match value.to_lowercase().as_str() {
+                    "replace" => match value.to_ascii_lowercase().as_str() {
                         "content" => {
-                            self.set_content_files(None);
+                            self.clear_matching_internal(|s| matches!(s, SettingValue::ContentFile(_)));
                             seen_content.clear();
                         }
-                        "data" => self.set_data_directories(None),
-                        "fallback" => self.set_game_settings(None)?,
+                        "data" => {
+                            self.clear_matching_internal(|s| matches!(s, SettingValue::DataDirectory(_)));
+                        }
+                        "fallback" => {
+                            self.clear_matching_internal(|s| matches!(s, SettingValue::GameSetting(_)));
+                        }
                         "fallback-archives" => {
-                            self.set_fallback_archives(None);
+                            self.clear_matching_internal(|s| matches!(s, SettingValue::BethArchive(_)));
                             seen_archives.clear();
                         }
                         "groundcover" => {
-                            self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_)));
+                            self.clear_matching_internal(|s| matches!(s, SettingValue::Groundcover(_)));
                             seen_groundcover.clear();
                         }
                         "data-local" => self.set_data_local(None),
@@ -1038,7 +1106,7 @@ impl OpenMWConfiguration {
                     },
                     _ => {
                         let setting =
-                            GenericSetting::new(key, &value, &cfg_file_path, &mut queued_comment);
+                            GenericSetting::new(key, value, &cfg_file_path, &mut queued_comment);
                         self.settings.push(SettingValue::Generic(setting));
                     }
                 }
@@ -1059,13 +1127,15 @@ impl OpenMWConfiguration {
                         depth: depth + 1,
                         status: ConfigChainStatus::SkippedMissing,
                     });
-                    util::debug_log(&format!(
+                    util::debug_log_lazy(|| format!(
                         "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
                         setting.parsed().display(),
                     ));
                 }
             }
         }
+
+        self.rebuild_indexes();
 
         Ok(())
     }
@@ -2126,5 +2196,192 @@ mod tests {
         assert!(!cloned.has_content_file("Bloodmoon.esm"));
         assert!(original.has_content_file("Bloodmoon.esm"));
         assert!(!original.has_content_file("Tribunal.esm"));
+    }
+
+    fn assert_indexes_consistent(config: &OpenMWConfiguration) {
+        use std::collections::{HashMap, HashSet};
+
+        let scanned_content: HashSet<String> = config
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::ContentFile(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+        let scanned_groundcover: HashSet<String> = config
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::Groundcover(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+        let scanned_archives: HashSet<String> = config
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::BethArchive(file) => Some(file.value().clone()),
+                _ => None,
+            })
+            .collect();
+        let scanned_data_dirs: HashSet<PathBuf> = config
+            .settings
+            .iter()
+            .filter_map(|setting| match setting {
+                SettingValue::DataDirectory(dir) => Some(dir.parsed().to_path_buf()),
+                _ => None,
+            })
+            .collect();
+
+        let mut scanned_game_setting_last = HashMap::new();
+        for (index, setting) in config.settings.iter().enumerate() {
+            if let SettingValue::GameSetting(game_setting) = setting {
+                scanned_game_setting_last.insert(game_setting.key().clone(), index);
+            }
+        }
+
+        let mut scanned_game_setting_order = Vec::new();
+        let mut seen = HashSet::new();
+        for (index, setting) in config.settings.iter().enumerate().rev() {
+            if let SettingValue::GameSetting(game_setting) = setting
+                && seen.insert(game_setting.key())
+            {
+                scanned_game_setting_order.push(index);
+            }
+        }
+
+        assert_eq!(config.indexed_content, scanned_content);
+        assert_eq!(config.indexed_groundcover, scanned_groundcover);
+        assert_eq!(config.indexed_archives, scanned_archives);
+        assert_eq!(config.indexed_data_dirs, scanned_data_dirs);
+        assert_eq!(config.indexed_game_setting_last, scanned_game_setting_last);
+        assert_eq!(config.indexed_game_setting_order, scanned_game_setting_order);
+
+        for file in &config.indexed_content {
+            assert!(config.has_content_file(file));
+        }
+        for file in &config.indexed_groundcover {
+            assert!(config.has_groundcover_file(file));
+        }
+        for file in &config.indexed_archives {
+            assert!(config.has_archive_file(file));
+        }
+        for dir in &config.indexed_data_dirs {
+            assert!(config.has_data_dir(dir.to_string_lossy().as_ref()));
+        }
+
+        let iter_keys: Vec<String> = config
+            .game_settings()
+            .map(|setting| setting.key().clone())
+            .collect();
+        let expected_keys: Vec<String> = config
+            .indexed_game_setting_order
+            .iter()
+            .filter_map(|index| match &config.settings[*index] {
+                SettingValue::GameSetting(game_setting) => Some(game_setting.key().clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(iter_keys, expected_keys);
+
+        for (key, index) in &config.indexed_game_setting_last {
+            let expected_value = match &config.settings[*index] {
+                SettingValue::GameSetting(game_setting) => game_setting.value(),
+                _ => unreachable!("game setting index points to non-game setting"),
+            };
+            assert_eq!(
+                config.get_game_setting(key).map(GameSettingType::value),
+                Some(expected_value)
+            );
+        }
+    }
+
+    #[test]
+    fn test_indexes_remain_coherent_through_mutations() {
+        let mut config = load(
+            "content=Morrowind.esm\n\
+content=Tribunal.esm\n\
+groundcover=Grass.esp\n\
+data=/tmp/data\n\
+fallback-archive=Morrowind.bsa\n\
+fallback=iGamma,1.00\n",
+        );
+        assert_indexes_consistent(&config);
+
+        config.add_content_file("Bloodmoon.esm").unwrap();
+        assert_indexes_consistent(&config);
+
+        config.remove_content_file("Tribunal.esm");
+        assert_indexes_consistent(&config);
+
+        config.add_groundcover_file("Flora.esp").unwrap();
+        assert_indexes_consistent(&config);
+
+        config.remove_groundcover_file("Grass.esp");
+        assert_indexes_consistent(&config);
+
+        config.add_archive_file("Tribunal.bsa").unwrap();
+        assert_indexes_consistent(&config);
+
+        config.remove_archive_file("Morrowind.bsa");
+        assert_indexes_consistent(&config);
+
+        config.add_data_directory(Path::new("/tmp/extra-data"));
+        assert_indexes_consistent(&config);
+
+        config.remove_data_directory(&PathBuf::from("/tmp/data"));
+        assert_indexes_consistent(&config);
+
+        config.set_content_files(Some(vec!["One.esp".to_string(), "Two.esp".to_string()]));
+        assert_indexes_consistent(&config);
+
+        config.set_fallback_archives(Some(vec!["Only.bsa".to_string()]));
+        assert_indexes_consistent(&config);
+
+        config.set_game_settings(Some(vec![
+            "iFoo,10".to_string(),
+            "iFoo,11".to_string(),
+            "fBar,1.5".to_string(),
+        ]))
+        .unwrap();
+        assert_indexes_consistent(&config);
+
+        let err = config.set_game_settings(Some(vec!["invalid-no-comma".to_string()]));
+        assert!(err.is_err());
+        assert_indexes_consistent(&config);
+
+        config.clear_matching(|setting| matches!(setting, SettingValue::ContentFile(_)));
+        assert_indexes_consistent(&config);
+    }
+
+    #[test]
+    fn test_indexes_coherent_after_replace_during_load() {
+        let config = load(
+            "content=Root.esm\n\
+replace=content\n\
+content=AfterReplace.esm\n\
+groundcover=GrassRoot.esp\n\
+replace=groundcover\n\
+groundcover=GrassAfter.esp\n\
+fallback-archive=Root.bsa\n\
+replace=fallback-archives\n\
+fallback-archive=After.bsa\n\
+fallback=iFoo,1\n\
+replace=fallback\n\
+fallback=iFoo,2\n",
+        );
+
+        assert_indexes_consistent(&config);
+        assert!(config.has_content_file("AfterReplace.esm"));
+        assert!(!config.has_content_file("Root.esm"));
+        assert!(config.has_groundcover_file("GrassAfter.esp"));
+        assert!(!config.has_groundcover_file("GrassRoot.esp"));
+        assert!(config.has_archive_file("After.bsa"));
+        assert!(!config.has_archive_file("Root.bsa"));
+        assert_eq!(
+            config.get_game_setting("iFoo").map(GameSettingType::value),
+            Some("2".into())
+        );
     }
 }
