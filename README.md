@@ -6,29 +6,48 @@ OpenMW's own configuration parser, supporting configuration chains, directory to
 replacement semantics. For comprehensive VFS coverage, combine with
 [vfstool_lib](https://crates.io/crates/vfstool_lib).
 
+- [Why Use It](#why-use-it)
+- [Features](#features)
+- [Rust Quick Start](#rust-quick-start)
+- [Lua Quick Start](#lua-quick-start)
+- [Rust Usage](#rust-usage)
+- [Lua Bindings (`mlua`)](#lua-bindings-mlua)
+- [Advanced Behavior](#advanced-behavior)
+- [Quality & Testing](#quality--testing)
+- [Manual Diagnostics](#manual-diagnostics)
+- [Compatibility Guarantees](#compatibility-guarantees)
+- [Known Limitations](#known-limitations)
+
+## Why Use It
+
+- **OpenMW-accurate semantics** - models `config=` traversal, `replace=*` behavior, and token
+  expansion (`?userdata?`, `?userconfig?`) to match real parser behavior.
+- **Safe persistence model** - `save_user()` and `save_subconfig()` use atomic write semantics to
+  avoid partial writes.
+- **Integration-friendly API** - ergonomic Rust API plus embedded Lua host bindings via `mlua`,
+  with a camelCase-only Lua surface.
+- **Diagnostics and predictability** - line-aware parse errors, explicit chain introspection, and
+  deterministic roundtrip serialization.
+
 ## Features
 
-- **Accurate parsing** — mirrors OpenMW's config resolution, including `config=`, `replace=`, and
+- **Accurate parsing** - mirrors OpenMW's config resolution, including `config=`, `replace=`, and
   tokens like `?userdata?` and `?userconfig?`.
-- **Multi-file chains** — multiple `openmw.cfg` files are merged according to OpenMW's rules;
+- **Multi-file chains** - multiple `openmw.cfg` files are merged according to OpenMW's rules;
   last-defined wins.
-- **Round-trip serialization** — `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
+- **Round-trip serialization** - `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
   preserving comments.
-- **Minimal dependencies** — only [`dirs`](https://crates.io/crates/dirs) and
-  [`shellexpand`](https://crates.io/crates/shellexpand).
+- **Minimal core dependencies** - base functionality only depends on
+  [`dirs`](https://crates.io/crates/dirs) and [`shellexpand`](https://crates.io/crates/shellexpand);
+  Lua support is optional via the `lua` feature.
 
-## Quick Start
+## Rust Quick Start
+
+Load the active config chain, inspect values, mutate, and save in a few lines:
 
 ```toml
 [dependencies]
 openmw-config = "1"
-```
-
-For Lua bindings with vendored LuaJIT + 5.2 compatibility:
-
-```toml
-[dependencies]
-openmw-config = { version = "1", features = ["lua"] }
 ```
 
 ```rust,no_run
@@ -46,11 +65,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", dir.parsed().display());
     }
 
+    // Mutate and persist to the user config with atomic write behavior
+    let mut config = config;
+    config.add_content_file("Extra.esp")?;
+    config.save_user()?;
+
     Ok(())
 }
 ```
 
-## Loading a specific config
+See [Rust Usage](#rust-usage) and [API Overview](#api-overview) for more patterns.
+
+## Lua Quick Start
+
+Embed `openmwConfig` into a host-created Lua state:
+
+```toml
+[dependencies]
+openmw-config = { version = "1", features = ["lua"] }
+mlua = { version = "0.10", default-features = false, features = ["luajit52", "vendored"] }
+```
+
+```rust,ignore
+use mlua::Lua;
+use openmw_config::create_lua_module;
+
+fn main() -> Result<(), mlua::Error> {
+    let lua = Lua::new();
+    let openmw = create_lua_module(&lua)?;
+    lua.globals().set("openmwConfig", openmw)?;
+
+    lua.load(r#"
+      local cfg = openmwConfig.fromEnv()
+      cfg:addContentFile("MyPlugin.esp")
+      cfg:saveUser()
+    "#).exec()?;
+
+    Ok(())
+}
+```
+
+This is embedded-host integration, not a standalone `require("openmw_config")` Lua module.
+See [Lua Bindings (`mlua`)](#lua-bindings-mlua) for the full Lua API surface.
+
+## Rust Usage
+
+### Loading a specific config
 
 `new()` accepts either a directory containing `openmw.cfg` or a direct path to the file:
 
@@ -66,7 +126,7 @@ let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/ope
 # Ok::<(), openmw_config::ConfigError>(())
 ```
 
-## Modifying and saving
+### Modifying and saving
 
 ```rust,no_run
 use std::path::PathBuf;
@@ -91,7 +151,7 @@ config.save_user()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-## Serialization
+### Serialization
 
 `OpenMWConfiguration` implements `Display`, which produces a valid `openmw.cfg` string with
 comments preserved:
@@ -106,51 +166,38 @@ println!("{config}");
 
 ## API Overview
 
-| `OpenMWConfiguration` methods | Description |
+| Core Rust API | Description |
 |---|---|
-| `from_env()` | Load from `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`, then platform default |
-| `new(path)` | Load from a specific file/directory path, or platform default when `None` |
-| `root_config_file()` / `root_config_dir()` | Return the root `openmw.cfg` path or its parent directory |
-| `is_user_config()` | Return `true` when root and user config resolve to the same directory |
-| `user_config(self)` / `user_config_ref(&self)` | Load the highest-priority user config (consuming or non-consuming) |
-| `user_config_path()` | Return the directory of the highest-priority user config |
-| `sub_configs()` | Iterate effective `config=` entries after `replace=config` handling |
-| `config_chain()` | Iterate parser-order chain events (`Loaded` / `SkippedMissing`) |
-| `content_files_iter()` / `groundcover_iter()` / `fallback_archives_iter()` | Iterate loaded `content=`, `groundcover=`, and `fallback-archive=` entries |
-| `data_directories_iter()` | Iterate loaded `data=` directories |
-| `game_settings()` / `get_game_setting(key)` | Iterate deduplicated `fallback=` entries or look up one by key |
-| `add_content_file(name)` / `add_groundcover_file(name)` / `add_archive_file(name)` | Append file entries (error on duplicates) |
-| `add_data_directory(path)` | Append a `data=` directory entry |
-| `remove_content_file(name)` / `remove_groundcover_file(name)` / `remove_archive_file(name)` | Remove matching file entries |
-| `remove_data_directory(path)` | Remove a matching `data=` directory entry |
-| `set_content_files(list)` / `set_fallback_archives(list)` / `set_data_directories(list)` | Replace full collections (`None` clears) |
-| `set_game_setting(value, source, comment)` / `set_game_settings(list)` | Add/replace one or many `fallback=` entries |
-| `userdata()` / `resources()` / `data_local()` / `encoding()` | Read singleton settings |
-| `set_userdata(value)` / `set_resources(value)` / `set_data_local(value)` / `set_encoding(value)` | Replace singleton settings |
-| `has_content_file(name)` / `has_groundcover_file(name)` / `has_archive_file(name)` / `has_data_dir(path)` | Presence checks for loaded entries |
-| `save_user()` / `save_subconfig(path)` | Write user or selected loaded config back to disk |
+| `OpenMWConfiguration::from_env()` / `OpenMWConfiguration::new(path)` | Load from env/defaults or explicit file/directory path |
+| `root_config_file()` / `root_config_dir()` | Root config file and parent directory |
+| `user_config_ref()` / `user_config_path()` | Resolve highest-priority user config |
+| `sub_configs()` / `config_chain()` | Traverse effective subconfigs and parser-order chain events |
+| `content_files_iter()` / `groundcover_iter()` / `fallback_archives_iter()` | Read loaded file collections |
+| `data_directories_iter()` / `game_settings()` / `get_game_setting(key)` | Read resolved directories and `fallback=` settings |
+| `add_*` / `remove_*` / `set_*` methods | Mutate loaded values |
+| `save_user()` / `save_subconfig(path)` | Persist changes using atomic writes |
+| `default_*` and `try_default_*` free functions | Resolve default config/user paths (panic or fallible variants) |
+| `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua table for embedded host integration |
 
-| Free functions | Description |
-|---|---|
-| `default_config_path()` / `default_userdata_path()` / `default_data_local_path()` | Platform default paths (panic on unsupported platform path discovery failures) |
-| `try_default_config_path()` / `try_default_userdata_path()` | Fallible variants of platform default path resolution |
-| `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua module table exposing camelCase userdata/functions |
+For the complete API surface (including helper structs and all methods), see
+[`docs.rs/openmw-config`](https://docs.rs/openmw-config).
 
-| Setting helper methods | Description |
-|---|---|
-| `DirectorySetting::original()` / `DirectorySetting::original_str()` / `DirectorySetting::parsed()` | Access raw and parsed directory values |
-| `FileSetting::value()` / `FileSetting::value_str()` | Access file value as `&String` or `&str` |
-| `GameSettingType::key()` / `GameSettingType::key_str()` / `GameSettingType::value()` | Access `fallback=` key/value views |
-| `ConfigChainEntry::path()` / `ConfigChainEntry::depth()` / `ConfigChainEntry::status()` | Inspect per-node chain traversal metadata |
+Task-oriented map:
 
-## Advanced
+- **Load config state** - `OpenMWConfiguration::from_env()`, `OpenMWConfiguration::new(path)`
+- **Inspect chain resolution** - `sub_configs()`, `config_chain()`, `user_config_path()`
+- **Edit plugin/data lists** - `add_*`, `remove_*`, `set_*` method families
+- **Read/write settings** - `game_settings()`, `get_game_setting(key)`, `set_game_setting(...)`
+- **Persist safely** - `save_user()`, `save_subconfig(path)`
 
-- **Config chains** — `sub_configs()` walks the `config=` entries that were loaded. The last entry
+## Advanced Behavior
+
+- **Config chains** - `sub_configs()` walks the `config=` entries that were loaded. The last entry
   is the user config; everything above it is read-only from OpenMW's perspective.
-- **Replace semantics** — `replace=content`, `replace=data`, etc. are honoured during load, exactly
+- **Replace semantics** - `replace=content`, `replace=data`, etc. are honoured during load, exactly
   as OpenMW handles them. `replace=config` resets earlier settings and queued `config=` entries
   from the same parse scope before continuing.
-- **Token expansion** — `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
+- **Token expansion** - `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
   platform-correct directories at load time.
 
 `config_chain()` provides parser-order traversal details, including skipped missing subconfigs:
@@ -212,46 +259,13 @@ Module exports (`openmwConfig`):
 | `setUserData(pathOrNil)` / `setResources(pathOrNil)` / `setDataLocal(pathOrNil)` / `setEncoding(valueOrNil)` | `nil` | Singleton setters, `nil` clears |
 | `saveUser()` / `saveSubconfig(path)` | `nil` | Write to user config or loaded subconfig |
 
-Error behavior:
-
-- Most methods throw Lua runtime errors on invalid operations (`pcall`-friendly).
-- `tryDefault*` helpers return tuple-style `(value, err)` and do not throw.
-
 ### Host Integration (Embedded Lua)
 
 This crate's Lua support is host-embedded: your Rust application creates a Lua state and injects
-the `openmwConfig` table for scripts to consume.
+the `openmwConfig` table for scripts to consume. For setup and registration, use
+[Lua Quick Start](#lua-quick-start).
 
-#### 1) Enable features in your host crate
-
-```toml
-[dependencies]
-openmw-config = { version = "1", features = ["lua"] }
-mlua = { version = "0.10", default-features = false, features = ["luajit52", "vendored"] }
-```
-
-#### 2) Register `openmwConfig` in Lua globals
-
-```rust,ignore
-use mlua::Lua;
-use openmw_config::create_lua_module;
-
-fn main() -> Result<(), mlua::Error> {
-    let lua = Lua::new();
-
-    let openmw = create_lua_module(&lua)?;
-    lua.globals().set("openmwConfig", openmw)?;
-
-    lua.load(r#"
-      local cfg = openmwConfig.fromEnv()
-      print(cfg:rootConfigFile())
-    "#).exec()?;
-
-    Ok(())
-}
-```
-
-#### 3) Example mutation + save flow from Lua
+Typical mutation and persistence flow from Lua:
 
 ```lua
 local cfg = openmwConfig.new(nil)
@@ -270,26 +284,8 @@ cfg:saveUser()
 
 ### Lua Stability Contract
 
-- The following Lua entry points are intended to remain stable across 1.x releases:
-  - `openmwConfig.fromEnv()`
-  - `openmwConfig.new(pathOrNil)`
-  - `openmwConfig.defaultConfigPath()`
-  - `openmwConfig.defaultUserDataPath()`
-  - `openmwConfig.defaultDataLocalPath()`
-  - `openmwConfig.tryDefaultConfigPath()`
-  - `openmwConfig.tryDefaultUserDataPath()`
-  - `cfg:rootConfigFile()`, `cfg:rootConfigDir()`, `cfg:isUserConfig()`, `cfg:userConfigPath()`
-  - `cfg:subConfigs()`, `cfg:configChain()`
-  - `cfg:contentFiles()`, `cfg:groundcoverFiles()`, `cfg:fallbackArchives()`, `cfg:dataDirectories()`
-  - `cfg:gameSettings()`, `cfg:getGameSetting(key)`
-  - `cfg:userData()`, `cfg:resources()`, `cfg:dataLocal()`, `cfg:encoding()`
-  - `cfg:hasContentFile(name)`, `cfg:hasGroundcoverFile(name)`, `cfg:hasArchiveFile(name)`, `cfg:hasDataDir(path)`
-  - `cfg:addContentFile(name)`, `cfg:addGroundcoverFile(name)`, `cfg:addArchiveFile(name)`, `cfg:addDataDirectory(path)`
-  - `cfg:removeContentFile(name)`, `cfg:removeGroundcoverFile(name)`, `cfg:removeArchiveFile(name)`, `cfg:removeDataDirectory(path)`
-  - `cfg:setContentFiles(listOrNil)`, `cfg:setFallbackArchives(listOrNil)`, `cfg:setDataDirectories(listOrNil)`
-  - `cfg:setGameSetting(value, sourcePathOrNil, commentOrNil)`, `cfg:setGameSettings(listOrNil)`
-  - `cfg:setUserData(pathOrNil)`, `cfg:setResources(pathOrNil)`, `cfg:setDataLocal(pathOrNil)`, `cfg:setEncoding(valueOrNil)`
-  - `cfg:saveUser()`, `cfg:saveSubconfig(path)`
+- Across 1.x releases, the documented `openmwConfig.*` constructors/default-path helpers and
+  `cfg:*` read, mutate, and save method families are intended to remain stable.
 - Table shapes are stable:
   - `configChain()` rows: `{ path, depth, status }`
   - `gameSettings()` / `getGameSetting()` rows: `{ key, value, kind }`
@@ -297,23 +293,37 @@ cfg:saveUser()
 - `kind` is one of `Color`, `String`, `Float`, or `Int`.
 - `nil` inputs are used to clear optional settings in setter methods.
 
-Example embedding usage:
+## Quality & Testing
 
-```rust,ignore
-use mlua::Lua;
-use openmw_config::create_lua_module;
+- Unit and integration tests cover parser behavior across config chains, including
+  `replace=config` queue semantics and missing subconfig traversal outcomes.
+- Roundtrip behavior is validated to preserve comments and fallback lexical forms where relevant.
+- Parse diagnostics include line context on malformed input variants for easier debugging.
+- CI/local lint posture is strict: `cargo clippy --all-targets --features lua -- -W clippy::pedantic -D warnings`.
+- Lua integration tests validate module exports, mutation flows, persistence, and error behavior.
 
-let lua = Lua::new();
-let module = create_lua_module(&lua)?;
-lua.globals().set("openmwConfig", module)?;
+## Manual Diagnostics
 
-lua.load(r#"
-  local cfg = openmwConfig.fromEnv()
-  local files = cfg:contentFiles()
-  print(#files)
-"#).exec()?;
-# Ok::<(), mlua::Error>(())
+The repository includes an ignored integration test that dumps the resolved real-world config
+chain to a local file for inspection.
+
+- Test: `dump_real_config_chain_to_repo_local_file`
+- Source: `tests/integration_manual_chain_dump.rs`
+- Output file: `real_config_chain_paths.txt` (repo root)
+- Purpose: verify chain resolution against your actual platform/user setup
+
+Run it manually:
+
+```bash
+cargo test --test integration_manual_chain_dump -- --ignored --exact dump_real_config_chain_to_repo_local_file
 ```
+
+Notes:
+
+- Run this when validating chain resolution on an actual machine/profile setup.
+- This test is intentionally ignored in normal test runs and CI.
+- Output format is one absolute `openmw.cfg` path per line, in traversal order.
+- It writes a local artifact intended for debugging and verification.
 
 ## Compatibility Guarantees
 
