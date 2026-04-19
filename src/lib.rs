@@ -128,6 +128,13 @@ fn flatpak_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
 
 /// Fallible variant of [`default_config_path`].
 ///
+/// Resolution precedence:
+/// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/config/openmw`) when Flatpak mode is enabled.
+/// 2. Platform default path from `dirs`.
+///
+/// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
+/// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
+///
 /// # Errors
 /// Returns [`ConfigError::PlatformPathUnavailable`] if no platform config directory can be discovered.
 pub fn try_default_config_path() -> Result<std::path::PathBuf, ConfigError> {
@@ -165,6 +172,13 @@ pub fn default_config_path() -> std::path::PathBuf {
 }
 
 /// Fallible variant of [`default_userdata_path`].
+///
+/// Resolution precedence:
+/// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/data/openmw`) when Flatpak mode is enabled.
+/// 2. Platform default path from `dirs`.
+///
+/// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
+/// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
 ///
 /// # Errors
 /// Returns [`ConfigError::PlatformPathUnavailable`] if no platform userdata directory can be discovered.
@@ -254,6 +268,8 @@ pub fn default_local_path() -> std::path::PathBuf {
 /// 1. `OPENMW_GLOBAL_PATH` when set.
 /// 2. Flatpak default (`/app/share/games`) when Flatpak mode is active.
 /// 3. Platform default (`/usr/share/games` on Unix-like systems, `/Library/Application Support` on macOS).
+///
+/// Flatpak app id selection is: `OPENMW_FLATPAK_ID` > `FLATPAK_ID` > `org.openmw.OpenMW`.
 ///
 /// # Errors
 /// Returns [`ConfigError::PlatformPathUnavailable`] on unsupported platforms.

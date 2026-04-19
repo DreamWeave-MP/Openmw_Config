@@ -21,7 +21,7 @@ replacement semantics. For comprehensive VFS coverage, combine with
 ## Why Use It
 
 - **OpenMW-accurate semantics** - models `config=` traversal, `replace=*` behavior, and token
-  expansion (`?userdata?`, `?userconfig?`) to match real parser behavior.
+  expansion (`?local?`, `?global?`, `?userdata?`, `?userconfig?`) to match real parser behavior.
 - **Safe persistence model** - `save_user()` and `save_subconfig()` use atomic write semantics to
   avoid partial writes.
 - **Integration-friendly API** - ergonomic Rust API plus embedded Lua host bindings via `mlua`,
@@ -32,7 +32,7 @@ replacement semantics. For comprehensive VFS coverage, combine with
 ## Features
 
 - **Accurate parsing** - mirrors OpenMW's config resolution, including `config=`, `replace=`, and
-  tokens like `?userdata?` and `?userconfig?`.
+  tokens like `?local?`, `?global?`, `?userdata?`, and `?userconfig?`.
 - **Multi-file chains** - multiple `openmw.cfg` files are merged according to OpenMW's rules;
   last-defined wins.
 - **Round-trip serialization** - `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
@@ -197,8 +197,17 @@ Task-oriented map:
 - **Replace semantics** - `replace=content`, `replace=data`, etc. are honoured during load, exactly
   as OpenMW handles them. `replace=config` resets earlier settings and queued `config=` entries
   from the same parse scope before continuing.
-- **Token expansion** - `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
-  platform-correct directories at load time.
+- **Token expansion** - `?local?`, `?global?`, `?userdata?`, and `?userconfig?` in `data=` paths
+  are expanded to platform-correct directories at load time.
+
+Flatpak and token-resolution controls:
+
+- `OPENMW_CONFIG_USING_FLATPAK` - if set to any value, Flatpak path mode is enabled.
+- Auto-detection also enables Flatpak mode when `FLATPAK_ID` is set or `/.flatpak-info` exists.
+- `OPENMW_FLATPAK_ID` - optional app-id override (falls back to `FLATPAK_ID`, then `org.openmw.OpenMW`).
+- `OPENMW_GLOBAL_PATH` - optional override for the `?global?` token target.
+- In Flatpak mode, `?userconfig?` and `?userdata?` resolve to `~/.var/app/<app-id>/config/openmw`
+  and `~/.var/app/<app-id>/data/openmw` respectively.
 
 `config_chain()` provides parser-order traversal details, including skipped missing subconfigs:
 
@@ -231,8 +240,12 @@ Module exports (`openmwConfig`):
 | `defaultConfigPath()` | `string` | Platform default config dir |
 | `defaultUserDataPath()` | `string` | Platform default userdata dir |
 | `defaultDataLocalPath()` | `string` | Platform default data-local dir |
+| `defaultLocalPath()` | `string` | Path backing the `?local?` token |
+| `defaultGlobalPath()` | `string` | Path backing the `?global?` token (throws on unsupported platforms) |
 | `tryDefaultConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `tryDefaultUserDataPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `tryDefaultLocalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `tryDefaultGlobalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `version` | `string` field | Crate version string |
 
 `config` userdata methods:
@@ -279,7 +292,8 @@ cfg:saveUser()
 
 - Lua API naming is `camelCase` only.
 - Most method failures throw Lua runtime errors (`pcall`-friendly).
-- `tryDefaultConfigPath()` and `tryDefaultUserDataPath()` return `(value, err)` tuples instead of throwing.
+- `tryDefaultConfigPath()`, `tryDefaultUserDataPath()`, `tryDefaultLocalPath()`, and
+  `tryDefaultGlobalPath()` return `(value, err)` tuples instead of throwing.
 - This is not a standalone Lua module distribution (`require("openmw_config")`); integration is via Rust host registration.
 
 ### Lua Stability Contract
