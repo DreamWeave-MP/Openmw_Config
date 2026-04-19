@@ -11,12 +11,12 @@ pub struct ColorGameSetting {
     meta: GameSettingMeta,
     key: String,
     value: (u8, u8, u8),
+    raw_value: String,
 }
 
 impl std::fmt::Display for ColorGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (r, g, b) = self.value;
-        write!(f, "{}fallback={},{r},{g},{b}", self.meta.comment, self.key)
+        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.raw_value)
     }
 }
 
@@ -44,6 +44,7 @@ pub struct FloatGameSetting {
     meta: GameSettingMeta,
     key: String,
     value: f64,
+    raw_value: String,
 }
 
 impl std::fmt::Display for FloatGameSetting {
@@ -51,7 +52,7 @@ impl std::fmt::Display for FloatGameSetting {
         write!(
             f,
             "{}fallback={},{}",
-            self.meta.comment, self.key, self.value
+            self.meta.comment, self.key, self.raw_value
         )
     }
 }
@@ -62,6 +63,7 @@ pub struct IntGameSetting {
     meta: GameSettingMeta,
     key: String,
     value: i64,
+    raw_value: String,
 }
 
 impl std::fmt::Display for IntGameSetting {
@@ -69,7 +71,7 @@ impl std::fmt::Display for IntGameSetting {
         write!(
             f,
             "{}fallback={},{}",
-            self.meta.comment, self.key, self.value
+            self.meta.comment, self.key, self.raw_value
         )
     }
 }
@@ -132,12 +134,18 @@ impl GameSettingType {
     pub fn value(&self) -> Cow<'_, str> {
         match self {
             GameSettingType::Color(setting) => {
-                let (r, g, b) = setting.value;
-                Cow::Owned(format!("{r},{g},{b}"))
+                let _ = setting.value;
+                Cow::Borrowed(&setting.raw_value)
             }
             GameSettingType::String(setting) => Cow::Borrowed(&setting.value),
-            GameSettingType::Float(setting) => Cow::Owned(setting.value.to_string()),
-            GameSettingType::Int(setting) => Cow::Owned(setting.value.to_string()),
+            GameSettingType::Float(setting) => {
+                let _ = setting.value;
+                Cow::Borrowed(&setting.raw_value)
+            }
+            GameSettingType::Int(setting) => {
+                let _ = setting.value;
+                Cow::Borrowed(&setting.raw_value)
+            }
         }
     }
 }
@@ -221,6 +229,7 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
                 meta,
                 key,
                 value: color,
+                raw_value: value,
             }));
         }
 
@@ -231,6 +240,7 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
                 meta,
                 key,
                 value: f,
+                raw_value: value,
             }));
         }
 
@@ -239,6 +249,7 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
                 meta,
                 key,
                 value: i,
+                raw_value: value,
             }));
         }
 
@@ -293,6 +304,7 @@ mod tests {
             meta: default_meta(),
             key: "MaxEyesOfTodd".into(),
             value: 3,
+            raw_value: "3".into(),
         });
 
         assert_eq!(setting.value(), "3");
@@ -304,6 +316,7 @@ mod tests {
             meta: default_meta(),
             key: "FLightAttenuationEnfuckulation".into(),
             value: 0.75,
+            raw_value: "0.75".into(),
         });
 
         assert_eq!(setting.value(), "0.75");
@@ -315,6 +328,7 @@ mod tests {
             meta: default_meta(),
             key: "hud_color".into(),
             value: (255, 128, 64),
+            raw_value: "255,128,64".into(),
         });
 
         assert_eq!(setting.value(), "255,128,64");
@@ -337,6 +351,7 @@ mod tests {
             meta: default_meta(),
             key: "iMaxSpeed".into(),
             value: 42,
+            raw_value: "42".into(),
         });
 
         assert_eq!(setting.to_string(), "fallback=iMaxSpeed,42");
@@ -348,6 +363,7 @@ mod tests {
             meta: default_meta(),
             key: "fJumpHeight".into(),
             value: 1.75,
+            raw_value: "1.75".into(),
         });
 
         assert_eq!(setting.to_string(), "fallback=fJumpHeight,1.75");
@@ -359,6 +375,7 @@ mod tests {
             meta: default_meta(),
             key: "iHUDColor".into(),
             value: (128, 64, 255),
+            raw_value: "128,64,255".into(),
         });
 
         assert_eq!(setting.to_string(), "fallback=iHUDColor,128,64,255");
@@ -373,6 +390,7 @@ mod tests {
             },
             key: "iHUDColor".into(),
             value: (128, 64, 255),
+            raw_value: "128,64,255".into(),
         });
 
         assert_eq!(

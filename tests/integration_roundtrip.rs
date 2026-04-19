@@ -70,6 +70,21 @@ fn test_roundtrip_complex_config_semantics_stable() {
     assert!(serialized.contains("unknown-key=unknown-value"));
 }
 
+#[test]
+fn test_roundtrip_preserves_fallback_float_lexeme() {
+    let cfg = "fallback=fValue,1.0\n";
+
+    let config = load_from_contents("roundtrip_fallback_float_a", cfg);
+    let serialized = config.to_string();
+    let reparsed = load_from_contents("roundtrip_fallback_float_b", &serialized);
+
+    assert!(serialized.contains("fallback=fValue,1.0"));
+    assert_eq!(
+        config.get_game_setting("fValue").unwrap().value(),
+        reparsed.get_game_setting("fValue").unwrap().value()
+    );
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
 
