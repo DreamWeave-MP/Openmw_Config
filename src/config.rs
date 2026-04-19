@@ -1299,6 +1299,18 @@ mod tests {
     }
 
     #[test]
+    fn test_duplicate_content_file_error_reports_line_number() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\ncontent=Morrowind.esm\n");
+
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(
+            result,
+            Err(ConfigError::DuplicateContentFile { line: Some(2), .. })
+        ));
+    }
+
+    #[test]
     fn test_add_content_file_appends() {
         let mut config = load("content=Morrowind.esm\n");
         config.add_content_file("MyMod.esp").unwrap();
@@ -1377,6 +1389,18 @@ mod tests {
     }
 
     #[test]
+    fn test_duplicate_archive_error_reports_line_number() {
+        let dir = temp_dir();
+        write_cfg(&dir, "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n");
+
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(
+            result,
+            Err(ConfigError::DuplicateArchiveFile { line: Some(2), .. })
+        ));
+    }
+
+    #[test]
     fn test_remove_archive_file() {
         let mut config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
         config.remove_archive_file("Morrowind.bsa");
@@ -1407,6 +1431,18 @@ mod tests {
         let dir = temp_dir();
         write_cfg(&dir, "groundcover=Grass.esp\ngroundcover=Grass.esp\n");
         assert!(OpenMWConfiguration::new(Some(dir)).is_err());
+    }
+
+    #[test]
+    fn test_duplicate_groundcover_error_reports_line_number() {
+        let dir = temp_dir();
+        write_cfg(&dir, "groundcover=Grass.esp\ngroundcover=Grass.esp\n");
+
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(
+            result,
+            Err(ConfigError::DuplicateGroundcoverFile { line: Some(2), .. })
+        ));
     }
 
     // -----------------------------------------------------------------------
@@ -1502,6 +1538,18 @@ mod tests {
         assert_eq!(setting.value(), "9.81");
     }
 
+    #[test]
+    fn test_invalid_game_setting_error_reports_line_number() {
+        let dir = temp_dir();
+        write_cfg(&dir, "fallback=iGood,1\nfallback=InvalidEntry\n");
+
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidGameSetting { line: Some(2), .. })
+        ));
+    }
+
     // -----------------------------------------------------------------------
     // Encoding
     // -----------------------------------------------------------------------
@@ -1518,6 +1566,18 @@ mod tests {
         let dir = temp_dir();
         write_cfg(&dir, "encoding=utf8\n");
         assert!(OpenMWConfiguration::new(Some(dir)).is_err());
+    }
+
+    #[test]
+    fn test_invalid_encoding_error_reports_line_number() {
+        let dir = temp_dir();
+        write_cfg(&dir, "content=Morrowind.esm\nencoding=utf8\n");
+
+        let result = OpenMWConfiguration::new(Some(dir));
+        assert!(matches!(
+            result,
+            Err(ConfigError::BadEncoding { line: Some(2), .. })
+        ));
     }
 
     // -----------------------------------------------------------------------
