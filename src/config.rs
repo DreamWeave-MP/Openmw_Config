@@ -1084,7 +1084,10 @@ impl fmt::Display for OpenMWConfiguration {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    };
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -1107,6 +1110,13 @@ mod tests {
         let base = std::env::temp_dir().join(format!("openmw_cfg_test_{id}"));
         std::fs::create_dir_all(&base).unwrap();
         base
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn load(cfg_contents: &str) -> OpenMWConfiguration {
@@ -1529,6 +1539,7 @@ mod tests {
 
     #[test]
     fn test_from_env_openmw_config_dir() {
+        let _guard = env_lock();
         let dir = temp_dir();
         write_cfg(&dir, "content=Morrowind.esm\n");
 
@@ -1543,6 +1554,7 @@ mod tests {
 
     #[test]
     fn test_from_env_openmw_config_file() {
+        let _guard = env_lock();
         let dir = temp_dir();
         let cfg = write_cfg(&dir, "content=Tribunal.esm\n");
 
