@@ -8,7 +8,8 @@ use std::{fmt, path::PathBuf};
 ///
 /// Stores both the *original* string exactly as it appeared in the file (for round-trip
 /// serialisation) and a *parsed* `PathBuf` with quotes stripped, token substitution applied
-/// (`?userdata?`, `?userconfig?`), and the path resolved relative to the config file's directory.
+/// (`?local?`, `?global?`, `?userdata?`, `?userconfig?`), and the path resolved relative to the
+/// config file's directory.
 #[derive(Debug, Clone)]
 pub struct DirectorySetting {
     pub meta: crate::GameSettingMeta,
@@ -280,6 +281,52 @@ mod tests {
         let mut comment = String::new();
         let setting = DirectorySetting::new("?userdata?/saves/slot1", config, &mut comment);
         let expected = crate::default_userdata_path().join("saves").join("slot1");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    #[test]
+    fn test_local_token_only() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?local?", config, &mut comment);
+        assert_eq!(setting.parsed(), &crate::default_local_path());
+    }
+
+    #[test]
+    fn test_local_token_with_nested_path() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?local?/mods/common", config, &mut comment);
+        let expected = crate::default_local_path().join("mods").join("common");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_global_token_only_on_supported_platforms() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?global?", config, &mut comment);
+        assert_eq!(setting.parsed(), &crate::default_global_path());
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_global_token_with_nested_path_on_supported_platforms() {
+        let config = mock_path("/irrelevant");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?global?/openmw", config, &mut comment);
+        let expected = crate::default_global_path().join("openmw");
+        assert_eq!(setting.parsed(), &expected);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_global_token_is_left_unexpanded_on_windows() {
+        let config = mock_path(r"C:\OpenMW");
+        let mut comment = String::new();
+        let setting = DirectorySetting::new("?global?/data", config.clone(), &mut comment);
+        let expected = config.join("?global?").join("data");
         assert_eq!(setting.parsed(), &expected);
     }
 

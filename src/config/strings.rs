@@ -5,6 +5,11 @@ use std::path::PathBuf;
 
 const SEPARATORS: [char; 2] = ['/', '\\'];
 
+fn join_token_suffix(base: &std::path::Path, raw: &str, token: &str) -> String {
+    let suffix = raw[token.len()..].trim_start_matches(&SEPARATORS[..]);
+    base.join(suffix).to_string_lossy().to_string()
+}
+
 /// Parses a data directory string according to `OpenMW` rules.
 /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#openmw-cfg-syntax>
 pub fn parse_data_directory<P: AsRef<std::path::Path>>(config_dir: &P, data_dir: &str) -> PathBuf {
@@ -30,19 +35,21 @@ pub fn parse_data_directory<P: AsRef<std::path::Path>>(config_dir: &P, data_dir:
 
     // Token replacement
     if data_dir.starts_with("?userdata?") {
-        let suffix = data_dir["?userdata?".len()..].trim_start_matches(&SEPARATORS[..]);
-
-        data_dir = crate::default_userdata_path()
-            .join(suffix)
-            .to_string_lossy()
-            .to_string();
+        if let Ok(base) = crate::try_default_userdata_path() {
+            data_dir = join_token_suffix(&base, &data_dir, "?userdata?");
+        }
     } else if data_dir.starts_with("?userconfig?") {
-        let suffix = data_dir["?userconfig?".len()..].trim_start_matches(&SEPARATORS[..]);
-
-        data_dir = crate::default_config_path()
-            .join(suffix)
-            .to_string_lossy()
-            .to_string();
+        if let Ok(base) = crate::try_default_config_path() {
+            data_dir = join_token_suffix(&base, &data_dir, "?userconfig?");
+        }
+    } else if data_dir.starts_with("?local?") {
+        if let Ok(base) = crate::try_default_local_path() {
+            data_dir = join_token_suffix(&base, &data_dir, "?local?");
+        }
+    } else if data_dir.starts_with("?global?")
+        && let Ok(base) = crate::try_default_global_path()
+    {
+        data_dir = join_token_suffix(&base, &data_dir, "?global?");
     }
 
     let data_dir = data_dir.replace(SEPARATORS, std::path::MAIN_SEPARATOR_STR);
