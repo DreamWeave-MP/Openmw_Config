@@ -37,8 +37,8 @@ replacement semantics. For comprehensive VFS coverage, combine with
   last-defined wins.
 - **Round-trip serialization** - `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
   preserving comments.
-- **Minimal core dependencies** - base functionality only depends on
-  [`dirs`](https://crates.io/crates/dirs) and [`shellexpand`](https://crates.io/crates/shellexpand);
+- **Dependency-light core** - Unix/macOS path resolution and env expansion are implemented with
+  `std`; Windows default paths use Known Folder APIs via `windows-sys` (Windows-only target dep).
   Lua support is optional via the `lua` feature.
 
 ## Rust Quick Start
