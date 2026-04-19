@@ -72,6 +72,12 @@ impl FileSetting {
     pub fn value(&self) -> &String {
         &self.value
     }
+
+    /// Borrowed string view of [`Self::value`].
+    #[must_use]
+    pub fn value_str(&self) -> &str {
+        &self.value
+    }
 }
 
 #[cfg(test)]
@@ -87,6 +93,7 @@ mod tests {
         let setting = FileSetting::new("Morrowind.esm", &source, &mut comment);
 
         assert_eq!(setting.value(), "Morrowind.esm");
+        assert_eq!(setting.value_str(), "Morrowind.esm");
         assert_eq!(setting.meta().source_config, source);
         assert_eq!(setting.meta().comment, "# note\n");
         assert!(comment.is_empty());

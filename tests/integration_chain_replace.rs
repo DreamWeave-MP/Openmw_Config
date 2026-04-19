@@ -196,9 +196,12 @@ fn test_user_config_and_is_user_config_contract() {
     let chained = OpenMWConfiguration::new(Some(root_dir)).unwrap();
     assert!(!chained.is_user_config());
 
-    let user_only = chained.user_config().unwrap();
+    let user_only_ref = chained.user_config_ref().unwrap();
+    let user_only = chained.clone().user_config().unwrap();
     assert!(user_only.has_content_file("Sub.esm"));
+    assert!(user_only_ref.has_content_file("Sub.esm"));
     assert!(!user_only.has_content_file("Root.esm"));
+    assert!(!user_only_ref.has_content_file("Root.esm"));
 }
 
 #[test]

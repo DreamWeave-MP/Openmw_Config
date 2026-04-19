@@ -120,6 +120,17 @@ impl GameSettingType {
         }
     }
 
+    /// Borrowed string view of [`Self::key`].
+    #[must_use]
+    pub fn key_str(&self) -> &str {
+        match self {
+            GameSettingType::Color(setting) => &setting.key,
+            GameSettingType::String(setting) => &setting.key,
+            GameSettingType::Float(setting) => &setting.key,
+            GameSettingType::Int(setting) => &setting.key,
+        }
+    }
+
     /// Returns the setting value — the text after the first comma in a `fallback=Key,Value` entry.
     ///
     /// ```
@@ -410,6 +421,7 @@ mod tests {
         let setting = parse("sMyKey,hello world").unwrap();
         assert!(matches!(setting, GameSettingType::String(_)));
         assert_eq!(setting.key(), "sMyKey");
+        assert_eq!(setting.key_str(), "sMyKey");
         assert_eq!(setting.value(), "hello world");
     }
 

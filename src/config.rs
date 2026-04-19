@@ -344,6 +344,17 @@ impl OpenMWConfiguration {
         }
     }
 
+    /// # Errors
+    /// Returns [`ConfigError`] if the user config path cannot be loaded.
+    pub fn user_config_ref(&self) -> Result<Self, ConfigError> {
+        let user_path = self.user_config_path();
+        if self.root_config_dir() == user_path {
+            Ok(self.clone())
+        } else {
+            Self::new(Some(user_path))
+        }
+    }
+
     /// In order of priority, the list of all openmw.cfg files which were loaded by the configuration chain after the root.
     /// If the root openmw.cfg is different than the user one, this list will contain the user openmw.cfg as its last element.
     /// If the root and user openmw.cfg are the *same*, then this list will be empty and the root config should be considered the user config.

@@ -62,6 +62,12 @@ impl DirectorySetting {
         &self.original
     }
 
+    /// Borrowed string view of [`Self::original`].
+    #[must_use]
+    pub fn original_str(&self) -> &str {
+        &self.original
+    }
+
     /// The resolved, normalised path after quote-stripping, token substitution, and
     /// relative-to-config-dir resolution.
     ///
@@ -188,6 +194,7 @@ mod tests {
         let mut comment = String::new();
         let setting = DirectorySetting::new("/absolute/data", config, &mut comment);
         assert_eq!(setting.original(), "/absolute/data");
+        assert_eq!(setting.original_str(), "/absolute/data");
     }
 
     // --- Backslash / separator normalisation ---
