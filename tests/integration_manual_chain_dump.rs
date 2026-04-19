@@ -14,11 +14,17 @@ fn absolute_path(path: &Path) -> std::io::Result<PathBuf> {
 fn dump_real_config_chain_to_repo_local_file() {
     let root_cfg = openmw_config::default_config_path().join("openmw.cfg");
 
-    let config = OpenMWConfiguration::new(Some(root_cfg.clone()))
-        .unwrap_or_else(|err| panic!("failed to load config chain from {}: {err}", root_cfg.display()));
+    let config = OpenMWConfiguration::new(Some(root_cfg.clone())).unwrap_or_else(|err| {
+        panic!(
+            "failed to load config chain from {}: {err}",
+            root_cfg.display()
+        )
+    });
 
     let mut chain_paths = Vec::new();
-    chain_paths.push(absolute_path(config.root_config_file()).expect("failed to absolutize root config path"));
+    chain_paths.push(
+        absolute_path(config.root_config_file()).expect("failed to absolutize root config path"),
+    );
     chain_paths.extend(config.sub_configs().map(|sub| {
         absolute_path(&sub.parsed().join("openmw.cfg"))
             .expect("failed to absolutize sub-config path")

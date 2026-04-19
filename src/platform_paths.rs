@@ -17,10 +17,9 @@ pub(crate) fn home_dir() -> Result<PathBuf, ConfigError> {
             return Ok(path);
         }
 
-        if let (Some(home_drive), Some(home_path)) = (
-            std::env::var_os("HOMEDRIVE"),
-            std::env::var_os("HOMEPATH"),
-        ) {
+        if let (Some(home_drive), Some(home_path)) =
+            (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
+        {
             let mut merged = std::ffi::OsString::new();
             merged.push(home_drive);
             merged.push(home_path);
@@ -71,8 +70,11 @@ pub(crate) fn data_dir() -> Result<PathBuf, ConfigError> {
 
     #[cfg(target_os = "macos")]
     {
-        return home_dir()
-            .map(|path| path.join("Library").join("Application Support").join("openmw"));
+        return home_dir().map(|path| {
+            path.join("Library")
+                .join("Application Support")
+                .join("openmw")
+        });
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]

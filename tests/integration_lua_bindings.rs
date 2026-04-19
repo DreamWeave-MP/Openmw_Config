@@ -12,10 +12,8 @@ mod lua_tests {
     }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "openmw_cfg_lua_{name}_{}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("openmw_cfg_lua_{name}_{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         base
     }

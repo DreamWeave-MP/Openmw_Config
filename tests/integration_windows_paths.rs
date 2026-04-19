@@ -57,5 +57,8 @@ fn test_windows_default_paths_match_known_documents_folder() {
     let expected = documents.join("My Games").join("openmw");
 
     assert_eq!(openmw_config::try_default_config_path().unwrap(), expected);
-    assert_eq!(openmw_config::try_default_userdata_path().unwrap(), expected);
+    assert_eq!(
+        openmw_config::try_default_userdata_path().unwrap(),
+        expected
+    );
 }

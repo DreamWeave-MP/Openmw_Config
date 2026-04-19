@@ -32,14 +32,12 @@
 //! platform default.
 
 mod config;
-mod platform_paths;
 #[cfg(feature = "lua")]
 pub mod lua;
+mod platform_paths;
 
 pub use config::{
-    ConfigChainEntry,
-    ConfigChainStatus,
-    OpenMWConfiguration,
+    ConfigChainEntry, ConfigChainStatus, OpenMWConfiguration,
     directorysetting::DirectorySetting,
     encodingsetting::{EncodingSetting, EncodingType},
     error::ConfigError,
@@ -91,11 +89,19 @@ fn has_flatpak_info_file() -> bool {
 }
 
 fn flatpak_mode_enabled() -> bool {
-    if std::env::var_os("OPENMW_CONFIG_USING_FLATPAK").is_some() {
-        return true;
+    #[cfg(not(target_os = "linux"))]
+    {
+        return false;
     }
 
-    std::env::var_os("FLATPAK_ID").is_some() || has_flatpak_info_file()
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("OPENMW_CONFIG_USING_FLATPAK").is_some() {
+            return true;
+        }
+
+        std::env::var_os("FLATPAK_ID").is_some() || has_flatpak_info_file()
+    }
 }
 
 fn flatpak_app_id() -> String {
@@ -111,14 +117,13 @@ fn flatpak_app_id() -> String {
 }
 
 fn flatpak_userconfig_path() -> Result<std::path::PathBuf, ConfigError> {
-    platform_paths::home_dir()
-        .map(|home| {
-            home.join(".var")
-                .join("app")
-                .join(flatpak_app_id())
-                .join("config")
-                .join("openmw")
-        })
+    platform_paths::home_dir().map(|home| {
+        home.join(".var")
+            .join("app")
+            .join(flatpak_app_id())
+            .join("config")
+            .join("openmw")
+    })
 }
 
 fn flatpak_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
@@ -137,14 +142,16 @@ fn flatpak_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
 /// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/config/openmw`) when Flatpak mode is enabled.
 /// 2. Platform default path from platform-specific resolvers.
 ///
-/// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
+/// On Linux, Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
 /// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
 ///
 /// # Errors
 /// Returns [`ConfigError::PlatformPathUnavailable`] if no platform config directory can be discovered.
 pub fn try_default_config_path() -> Result<std::path::PathBuf, ConfigError> {
     #[cfg(target_os = "android")]
-    return Ok(std::path::PathBuf::from("/storage/emulated/0/Alpha3/config"));
+    return Ok(std::path::PathBuf::from(
+        "/storage/emulated/0/Alpha3/config",
+    ));
 
     #[cfg(not(target_os = "android"))]
     {
@@ -174,7 +181,7 @@ pub fn default_config_path() -> std::path::PathBuf {
 /// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/data/openmw`) when Flatpak mode is enabled.
 /// 2. Platform default path from platform-specific resolvers.
 ///
-/// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
+/// On Linux, Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
 /// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
 ///
 /// # Errors
@@ -275,12 +282,16 @@ pub fn try_default_global_path() -> Result<std::path::PathBuf, ConfigError> {
         return Err(ConfigError::PlatformPathUnavailable("global"));
     }
 
-    if cfg!(target_os = "macos") {
-        return Ok(std::path::PathBuf::from("/Library/Application Support"));
-    }
-
+    // NOTE: Flatpak path behavior is intentionally Linux-only.
+    // We are not fully certain whether OpenMW Flatpak builds should prefer a global
+    // or local config path in all packaging variants, so we keep this conservative:
+    // only Linux Flatpak mode maps ?global? to /app/share/games.
     if flatpak_mode_enabled() {
         return Ok(std::path::PathBuf::from("/app/share/games"));
+    }
+
+    if cfg!(target_os = "macos") {
+        return Ok(std::path::PathBuf::from("/Library/Application Support"));
     }
 
     Ok(std::path::PathBuf::from("/usr/share/games"))
@@ -331,6 +342,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_flatpak_env_flag_forces_flatpak_paths() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
         let Ok(home) = platform_paths::home_dir() else {
@@ -371,6 +383,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_flatpak_app_id_override_precedence() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
         let Ok(home) = platform_paths::home_dir() else {
@@ -403,6 +416,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_flatpak_auto_detect_via_flatpak_id() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
         let Ok(home) = platform_paths::home_dir() else {
@@ -499,5 +513,48 @@ mod tests {
             try_default_global_path(),
             Err(ConfigError::PlatformPathUnavailable("global"))
         ));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn test_flatpak_mode_is_ignored_off_linux() {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::set_var("OPENMW_CONFIG_USING_FLATPAK", "1");
+            std::env::set_var("FLATPAK_ID", "org.example.Flatpak");
+            std::env::remove_var("OPENMW_GLOBAL_PATH");
+        }
+
+        assert!(!flatpak_mode_enabled());
+
+        assert_eq!(
+            try_default_config_path().ok(),
+            platform_paths::config_dir().ok()
+        );
+        assert_eq!(
+            try_default_userdata_path().ok(),
+            platform_paths::data_dir().ok()
+        );
+
+        if cfg!(windows) {
+            assert!(matches!(
+                try_default_global_path(),
+                Err(ConfigError::PlatformPathUnavailable("global"))
+            ));
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(
+                try_default_global_path().expect("macOS global path should resolve"),
+                std::path::PathBuf::from("/Library/Application Support")
+            );
+        }
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("FLATPAK_ID");
+            std::env::remove_var("OPENMW_GLOBAL_PATH");
+        }
     }
 }

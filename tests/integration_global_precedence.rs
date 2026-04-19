@@ -2,11 +2,17 @@ mod common;
 
 use common::{temp_dir, write_cfg};
 use openmw_config::OpenMWConfiguration;
-use std::{ffi::OsString, path::{Path, PathBuf}, sync::{Mutex, OnceLock}};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn snapshot_env(keys: &[&str]) -> Vec<(String, Option<OsString>)> {
@@ -62,7 +68,7 @@ fn test_global_token_prefers_openmw_global_path_override() {
 }
 
 #[test]
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn test_global_token_uses_flatpak_default_when_mode_enabled() {
     let _guard = env_lock();
     let snapshot = snapshot_env(&[

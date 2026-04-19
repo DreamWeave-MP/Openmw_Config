@@ -806,13 +806,14 @@ impl OpenMWConfiguration {
             let mut empty = String::default();
 
             for setting in settings {
-                let parsed = match GameSettingType::try_from((setting, cfg_path.clone(), &mut empty)) {
-                    Ok(parsed) => parsed,
-                    Err(error) => {
-                        self.rebuild_indexes();
-                        return Err(error);
-                    }
-                };
+                let parsed =
+                    match GameSettingType::try_from((setting, cfg_path.clone(), &mut empty)) {
+                        Ok(parsed) => parsed,
+                        Err(error) => {
+                            self.rebuild_indexes();
+                            return Err(error);
+                        }
+                    };
 
                 self.settings.push(SettingValue::GameSetting(parsed));
             }
@@ -982,7 +983,12 @@ impl OpenMWConfiguration {
                 match key {
                     "content" => {
                         if !seen_content.insert(value.to_owned()) {
-                            bail_config!(duplicate_content_file, value.to_owned(), cfg_file_path, line_no);
+                            bail_config!(
+                                duplicate_content_file,
+                                value.to_owned(),
+                                cfg_file_path,
+                                line_no
+                            );
                         }
                         self.settings
                             .push(SettingValue::ContentFile(FileSetting::new(
@@ -1009,7 +1015,12 @@ impl OpenMWConfiguration {
                     }
                     "fallback-archive" => {
                         if !seen_archives.insert(value.to_owned()) {
-                            bail_config!(duplicate_archive_file, value.to_owned(), cfg_file_path, line_no);
+                            bail_config!(
+                                duplicate_archive_file,
+                                value.to_owned(),
+                                cfg_file_path,
+                                line_no
+                            );
                         }
                         self.settings
                             .push(SettingValue::BethArchive(FileSetting::new(
@@ -1026,9 +1037,7 @@ impl OpenMWConfiguration {
                         ))
                         .map_err(|error| match error {
                             ConfigError::InvalidGameSetting {
-                                value,
-                                config_path,
-                                ..
+                                value, config_path, ..
                             } => ConfigError::InvalidGameSetting {
                                 value,
                                 config_path,
@@ -1047,9 +1056,7 @@ impl OpenMWConfiguration {
                         ))
                         .map_err(|error| match error {
                             ConfigError::BadEncoding {
-                                value,
-                                config_path,
-                                ..
+                                value, config_path, ..
                             } => ConfigError::BadEncoding {
                                 value,
                                 config_path,
@@ -1100,21 +1107,31 @@ impl OpenMWConfiguration {
                     }
                     "replace" => match value.to_ascii_lowercase().as_str() {
                         "content" => {
-                            self.clear_matching_internal(|s| matches!(s, SettingValue::ContentFile(_)));
+                            self.clear_matching_internal(|s| {
+                                matches!(s, SettingValue::ContentFile(_))
+                            });
                             seen_content.clear();
                         }
                         "data" => {
-                            self.clear_matching_internal(|s| matches!(s, SettingValue::DataDirectory(_)));
+                            self.clear_matching_internal(|s| {
+                                matches!(s, SettingValue::DataDirectory(_))
+                            });
                         }
                         "fallback" => {
-                            self.clear_matching_internal(|s| matches!(s, SettingValue::GameSetting(_)));
+                            self.clear_matching_internal(|s| {
+                                matches!(s, SettingValue::GameSetting(_))
+                            });
                         }
                         "fallback-archives" => {
-                            self.clear_matching_internal(|s| matches!(s, SettingValue::BethArchive(_)));
+                            self.clear_matching_internal(|s| {
+                                matches!(s, SettingValue::BethArchive(_))
+                            });
                             seen_archives.clear();
                         }
                         "groundcover" => {
-                            self.clear_matching_internal(|s| matches!(s, SettingValue::Groundcover(_)));
+                            self.clear_matching_internal(|s| {
+                                matches!(s, SettingValue::Groundcover(_))
+                            });
                             seen_groundcover.clear();
                         }
                         "data-local" => self.set_data_local(None),
@@ -1153,10 +1170,12 @@ impl OpenMWConfiguration {
                         depth: depth + 1,
                         status: ConfigChainStatus::SkippedMissing,
                     });
-                    util::debug_log_lazy(|| format!(
-                        "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
-                        setting.parsed().display(),
-                    ));
+                    util::debug_log_lazy(|| {
+                        format!(
+                            "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
+                            setting.parsed().display(),
+                        )
+                    });
                 }
             }
         }
@@ -1487,7 +1506,10 @@ mod tests {
     #[test]
     fn test_duplicate_archive_error_reports_line_number() {
         let dir = temp_dir();
-        write_cfg(&dir, "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n");
+        write_cfg(
+            &dir,
+            "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n",
+        );
 
         let result = OpenMWConfiguration::new(Some(dir));
         assert!(matches!(
@@ -2283,8 +2305,14 @@ mod tests {
         assert_eq!(config.indexed_groundcover, scanned_groundcover);
         assert_eq!(config.indexed_archives, scanned_archives);
         assert_eq!(config.indexed_data_dirs, scanned_data_dirs);
-        assert_eq!(*config.indexed_game_setting_last.borrow(), scanned_game_setting_last);
-        assert_eq!(*config.indexed_game_setting_order.borrow(), scanned_game_setting_order);
+        assert_eq!(
+            *config.indexed_game_setting_last.borrow(),
+            scanned_game_setting_last
+        );
+        assert_eq!(
+            *config.indexed_game_setting_order.borrow(),
+            scanned_game_setting_order
+        );
 
         for file in &config.indexed_content {
             assert!(config.has_content_file(file));
@@ -2368,12 +2396,13 @@ fallback=iGamma,1.00\n",
         config.set_fallback_archives(Some(vec!["Only.bsa".to_string()]));
         assert_indexes_consistent(&config);
 
-        config.set_game_settings(Some(vec![
-            "iFoo,10".to_string(),
-            "iFoo,11".to_string(),
-            "fBar,1.5".to_string(),
-        ]))
-        .unwrap();
+        config
+            .set_game_settings(Some(vec![
+                "iFoo,10".to_string(),
+                "iFoo,11".to_string(),
+                "fBar,1.5".to_string(),
+            ]))
+            .unwrap();
         assert_indexes_consistent(&config);
 
         let err = config.set_game_settings(Some(vec!["invalid-no-comma".to_string()]));

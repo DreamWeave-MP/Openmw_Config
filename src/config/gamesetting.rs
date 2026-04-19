@@ -16,7 +16,11 @@ pub struct ColorGameSetting {
 
 impl std::fmt::Display for ColorGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.raw_value)
+        write!(
+            f,
+            "{}fallback={},{}",
+            self.meta.comment, self.key, self.raw_value
+        )
     }
 }
 

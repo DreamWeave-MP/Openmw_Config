@@ -24,12 +24,11 @@ where
 #[must_use]
 pub fn expand_leading_tilde(path: &str) -> std::path::PathBuf {
     if path == "~" {
-        return crate::platform_paths::home_dir().unwrap_or_else(|_| std::path::PathBuf::from(path));
+        return crate::platform_paths::home_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from(path));
     }
 
-    if let Some(rest) = path
-        .strip_prefix("~/")
-        .or_else(|| path.strip_prefix("~\\"))
+    if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
         && let Ok(home) = crate::platform_paths::home_dir()
     {
         return home.join(rest);

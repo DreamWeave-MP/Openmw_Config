@@ -12,7 +12,11 @@ fn lua_err(error: impl std::fmt::Display) -> mlua::Error {
 }
 
 fn dir_setting_from_value(path: &str, source_config: &Path) -> DirectorySetting {
-    DirectorySetting::new(path.to_owned(), source_config.to_path_buf(), &mut String::new())
+    DirectorySetting::new(
+        path.to_owned(),
+        source_config.to_path_buf(),
+        &mut String::new(),
+    )
 }
 
 fn collect_strings<I>(iter: I) -> Vec<String>
@@ -68,17 +72,16 @@ impl UserData for LuaOpenMWConfiguration {
             Ok(this.inner.root_config_dir().display().to_string())
         });
 
-        methods.add_method("isUserConfig", |_, this, ()| Ok(this.inner.is_user_config()));
+        methods.add_method("isUserConfig", |_, this, ()| {
+            Ok(this.inner.is_user_config())
+        });
 
         methods.add_method("userConfigPath", |_, this, ()| {
             Ok(this.inner.user_config_path().display().to_string())
         });
 
         methods.add_method("userConfig", |_, this, ()| {
-            this.inner
-                .user_config_ref()
-                .map(Self::new)
-                .map_err(lua_err)
+            this.inner.user_config_ref().map(Self::new).map_err(lua_err)
         });
 
         methods.add_method("toString", |_, this, ()| Ok(this.inner.to_string()));
@@ -111,11 +114,19 @@ impl UserData for LuaOpenMWConfiguration {
         });
 
         methods.add_method("contentFiles", |_, this, ()| {
-            Ok(collect_strings(this.inner.content_files_iter().map(crate::FileSetting::value_str)))
+            Ok(collect_strings(
+                this.inner
+                    .content_files_iter()
+                    .map(crate::FileSetting::value_str),
+            ))
         });
 
         methods.add_method("groundcoverFiles", |_, this, ()| {
-            Ok(collect_strings(this.inner.groundcover_iter().map(crate::FileSetting::value_str)))
+            Ok(collect_strings(
+                this.inner
+                    .groundcover_iter()
+                    .map(crate::FileSetting::value_str),
+            ))
         });
 
         methods.add_method("fallbackArchives", |_, this, ()| {
@@ -250,11 +261,14 @@ impl UserData for LuaOpenMWConfiguration {
             },
         );
 
-        methods.add_method_mut("setDataDirectories", |_, this, dirs: Option<Vec<String>>| {
-            let parsed = dirs.map(|items| items.into_iter().map(PathBuf::from).collect());
-            this.inner.set_data_directories(parsed);
-            Ok(())
-        });
+        methods.add_method_mut(
+            "setDataDirectories",
+            |_, this, dirs: Option<Vec<String>>| {
+                let parsed = dirs.map(|items| items.into_iter().map(PathBuf::from).collect());
+                this.inner.set_data_directories(parsed);
+                Ok(())
+            },
+        );
 
         methods.add_method_mut(
             "setGameSetting",
@@ -267,27 +281,36 @@ impl UserData for LuaOpenMWConfiguration {
             },
         );
 
-        methods.add_method_mut("setGameSettings", |_, this, settings: Option<Vec<String>>| {
-            this.inner.set_game_settings(settings).map_err(lua_err)
-        });
+        methods.add_method_mut(
+            "setGameSettings",
+            |_, this, settings: Option<Vec<String>>| {
+                this.inner.set_game_settings(settings).map_err(lua_err)
+            },
+        );
 
         methods.add_method_mut("setUserData", |_, this, path: Option<String>| {
             let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path.as_deref().map(|value| dir_setting_from_value(value, &source));
+            let setting = path
+                .as_deref()
+                .map(|value| dir_setting_from_value(value, &source));
             this.inner.set_userdata(setting);
             Ok(())
         });
 
         methods.add_method_mut("setResources", |_, this, path: Option<String>| {
             let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path.as_deref().map(|value| dir_setting_from_value(value, &source));
+            let setting = path
+                .as_deref()
+                .map(|value| dir_setting_from_value(value, &source));
             this.inner.set_resources(setting);
             Ok(())
         });
 
         methods.add_method_mut("setDataLocal", |_, this, path: Option<String>| {
             let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path.as_deref().map(|value| dir_setting_from_value(value, &source));
+            let setting = path
+                .as_deref()
+                .map(|value| dir_setting_from_value(value, &source));
             this.inner.set_data_local(setting);
             Ok(())
         });
@@ -297,7 +320,8 @@ impl UserData for LuaOpenMWConfiguration {
 
             let setting = match value {
                 Some(value) => Some(
-                    EncodingSetting::try_from((value, source, &mut String::new())).map_err(lua_err)?,
+                    EncodingSetting::try_from((value, source, &mut String::new()))
+                        .map_err(lua_err)?,
                 ),
                 None => None,
             };

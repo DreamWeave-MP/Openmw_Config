@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
-use std::{fmt, path::{Path, PathBuf}};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 #[macro_export]
 macro_rules! config_err {
@@ -268,7 +271,12 @@ impl fmt::Display for ConfigError {
                 file,
                 config_path,
                 line,
-            } => f.write_str(&duplicate_message(file, "content files", config_path, *line)),
+            } => f.write_str(&duplicate_message(
+                file,
+                "content files",
+                config_path,
+                *line,
+            )),
             ConfigError::CannotAddContentFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",

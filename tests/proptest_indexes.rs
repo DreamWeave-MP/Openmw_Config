@@ -40,7 +40,9 @@ fn assert_public_consistency(config: &OpenMWConfiguration) {
     let game_settings: Vec<_> = config.game_settings().collect();
     for game_setting in game_settings {
         let key = game_setting.key();
-        let from_lookup = config.get_game_setting(key).expect("lookup by iterated key");
+        let from_lookup = config
+            .get_game_setting(key)
+            .expect("lookup by iterated key");
         assert_eq!(from_lookup.value(), game_setting.value());
     }
 }
