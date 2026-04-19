@@ -32,6 +32,7 @@
 //! platform default.
 
 mod config;
+mod platform_paths;
 #[cfg(feature = "lua")]
 pub mod lua;
 
@@ -103,8 +104,7 @@ fn flatpak_app_id() -> String {
 }
 
 fn flatpak_userconfig_path() -> Result<std::path::PathBuf, ConfigError> {
-    dirs::home_dir()
-        .ok_or(ConfigError::PlatformPathUnavailable("config"))
+    platform_paths::home_dir()
         .map(|home| {
             home.join(".var")
                 .join("app")
@@ -115,22 +115,20 @@ fn flatpak_userconfig_path() -> Result<std::path::PathBuf, ConfigError> {
 }
 
 fn flatpak_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
-    dirs::home_dir()
-        .ok_or(ConfigError::PlatformPathUnavailable("userdata"))
-        .map(|home| {
-            home.join(".var")
-                .join("app")
-                .join(flatpak_app_id())
-                .join("data")
-                .join("openmw")
-        })
+    platform_paths::home_dir().map(|home| {
+        home.join(".var")
+            .join("app")
+            .join(flatpak_app_id())
+            .join("data")
+            .join("openmw")
+    })
 }
 
 /// Fallible variant of [`default_config_path`].
 ///
 /// Resolution precedence:
 /// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/config/openmw`) when Flatpak mode is enabled.
-/// 2. Platform default path from `dirs`.
+/// 2. Platform default path from platform-specific resolvers.
 ///
 /// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
 /// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
@@ -147,15 +145,7 @@ pub fn try_default_config_path() -> Result<std::path::PathBuf, ConfigError> {
             return flatpak_userconfig_path();
         }
 
-        if cfg!(windows) {
-            dirs::document_dir()
-                .ok_or(ConfigError::PlatformPathUnavailable("config"))
-                .map(|p| p.join("My Games").join("openmw"))
-        } else {
-            dirs::preference_dir()
-                .ok_or(ConfigError::PlatformPathUnavailable("config"))
-                .map(|p| p.join("openmw"))
-        }
+        platform_paths::config_dir().map_err(|_| ConfigError::PlatformPathUnavailable("config"))
     }
 }
 
@@ -175,7 +165,7 @@ pub fn default_config_path() -> std::path::PathBuf {
 ///
 /// Resolution precedence:
 /// 1. Flatpak mode path (`$HOME/.var/app/<app-id>/data/openmw`) when Flatpak mode is enabled.
-/// 2. Platform default path from `dirs`.
+/// 2. Platform default path from platform-specific resolvers.
 ///
 /// Flatpak mode is enabled when `OPENMW_CONFIG_USING_FLATPAK` is set to any value, or
 /// auto-detected via `FLATPAK_ID` / `/.flatpak-info`.
@@ -192,13 +182,7 @@ pub fn try_default_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
             return flatpak_userdata_path();
         }
 
-        if cfg!(windows) {
-            try_default_config_path()
-        } else {
-            dirs::data_dir()
-                .ok_or(ConfigError::PlatformPathUnavailable("userdata"))
-                .map(|p| p.join("openmw"))
-        }
+        platform_paths::data_dir().map_err(|_| ConfigError::PlatformPathUnavailable("userdata"))
     }
 }
 
@@ -342,7 +326,7 @@ mod tests {
     #[test]
     fn test_flatpak_env_flag_forces_flatpak_paths() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
-        let Some(home) = dirs::home_dir() else {
+        let Ok(home) = platform_paths::home_dir() else {
             return;
         };
 
@@ -382,7 +366,7 @@ mod tests {
     #[test]
     fn test_flatpak_app_id_override_precedence() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
-        let Some(home) = dirs::home_dir() else {
+        let Ok(home) = platform_paths::home_dir() else {
             return;
         };
 
@@ -414,7 +398,7 @@ mod tests {
     #[test]
     fn test_flatpak_auto_detect_via_flatpak_id() {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
-        let Some(home) = dirs::home_dir() else {
+        let Ok(home) = platform_paths::home_dir() else {
             return;
         };
 
