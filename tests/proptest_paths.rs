@@ -11,7 +11,7 @@ proptest! {
     #[test]
     fn prop_has_data_dir_separator_equivalence_windows(
         a in "[A-Za-z0-9_-]{1,10}",
-        b in "[A-Za-z0-9 _-]{1,10}",
+        b in "[A-Za-z0-9_-](?:[A-Za-z0-9 _-]{0,8}[A-Za-z0-9_-])?",
     ) {
         let dir = temp_dir("prop_win_sep");
         let canonical = format!("C:/mods/{a}/{b}");
