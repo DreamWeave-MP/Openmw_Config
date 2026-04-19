@@ -361,6 +361,16 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
     )?;
 
     exports.set(
+        "defaultLocalPath",
+        lua.create_function(|_, ()| Ok(crate::default_local_path().display().to_string()))?,
+    )?;
+
+    exports.set(
+        "defaultGlobalPath",
+        lua.create_function(|_, ()| Ok(crate::default_global_path().display().to_string()))?,
+    )?;
+
+    exports.set(
         "tryDefaultConfigPath",
         lua.create_function(|_, ()| match crate::try_default_config_path() {
             Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
@@ -371,6 +381,22 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
     exports.set(
         "tryDefaultUserDataPath",
         lua.create_function(|_, ()| match crate::try_default_userdata_path() {
+            Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
+            Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
+        })?,
+    )?;
+
+    exports.set(
+        "tryDefaultLocalPath",
+        lua.create_function(|_, ()| match crate::try_default_local_path() {
+            Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
+            Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
+        })?,
+    )?;
+
+    exports.set(
+        "tryDefaultGlobalPath",
+        lua.create_function(|_, ()| match crate::try_default_global_path() {
             Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
             Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
         })?,

@@ -33,12 +33,21 @@ mod lua_tests {
             assert(type(openmwConfig.defaultConfigPath()) == "string")
             assert(type(openmwConfig.defaultUserDataPath()) == "string")
             assert(type(openmwConfig.defaultDataLocalPath()) == "string")
+            assert(type(openmwConfig.defaultLocalPath()) == "string")
+
+            if openmwConfig.tryDefaultGlobalPath then
+              local globalPath, globalErr = openmwConfig.tryDefaultGlobalPath()
+              assert((globalPath ~= nil and globalErr == nil) or (globalPath == nil and globalErr ~= nil))
+            end
 
             local cfgPath, cfgErr = openmwConfig.tryDefaultConfigPath()
             assert((cfgPath ~= nil and cfgErr == nil) or (cfgPath == nil and cfgErr ~= nil))
 
             local dataPath, dataErr = openmwConfig.tryDefaultUserDataPath()
             assert((dataPath ~= nil and dataErr == nil) or (dataPath == nil and dataErr ~= nil))
+
+            local localPath, localErr = openmwConfig.tryDefaultLocalPath()
+            assert((localPath ~= nil and localErr == nil) or (localPath == nil and localErr ~= nil))
         "#,
         )
         .exec()
