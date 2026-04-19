@@ -1,9 +1,9 @@
 [package]
 name = "openmw-config"
 description = "A library for interacting with the Openmw Configuration system."
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Dave Corley (S3kshun8) <corleycomputerrepair@protonmail.ch>"]
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/DreamWeave-MP/Openmw_Config"
 readme = "README.md"
 keywords = ["openmw", "config", "parsing", "gamedev"]
