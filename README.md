@@ -24,6 +24,13 @@ replacement semantics. For comprehensive VFS coverage, combine with
 openmw-config = "1"
 ```
 
+For Lua bindings with vendored LuaJIT + 5.2 compatibility:
+
+```toml
+[dependencies]
+openmw-config = { version = "1", features = ["lua"] }
+```
+
 ```rust,no_run
 use openmw_config::OpenMWConfiguration;
 
@@ -127,6 +134,7 @@ println!("{config}");
 |---|---|
 | `default_config_path()` / `default_userdata_path()` / `default_data_local_path()` | Platform default paths (panic on unsupported platform path discovery failures) |
 | `try_default_config_path()` / `try_default_userdata_path()` | Fallible variants of platform default path resolution |
+| `create_lua_module(lua)` *(with `lua` or `lua-module` feature)* | Build a Lua module table exposing camelCase userdata/functions |
 
 | Setting helper methods | Description |
 |---|---|
@@ -160,6 +168,31 @@ for entry in config.config_chain() {
     println!("[{status}] depth={} {}", entry.depth(), entry.path().display());
 }
 # Ok::<(), openmw_config::ConfigError>(())
+```
+
+## Lua Bindings (`mlua`)
+
+- Public Lua methods/functions are intentionally **camelCase only**.
+- `lua` feature: embeds vendored `LuaJIT` with 5.2 compatibility (`luajit52` + `vendored`).
+- `lua-module` feature: builds a loadable Lua module entrypoint (`mlua/module`), intended for environments with external Lua loading.
+- `lua` and `lua-module` are mutually exclusive by design.
+
+Example embedding usage:
+
+```rust,ignore
+use mlua::Lua;
+use openmw_config::create_lua_module;
+
+let lua = Lua::new();
+let module = create_lua_module(&lua)?;
+lua.globals().set("openmwConfig", module)?;
+
+lua.load(r#"
+  local cfg = openmwConfig.fromEnv()
+  local files = cfg:contentFiles()
+  print(#files)
+"#).exec()?;
+# Ok::<(), mlua::Error>(())
 ```
 
 ## Compatibility Guarantees
