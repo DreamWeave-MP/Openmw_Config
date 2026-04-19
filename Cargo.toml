@@ -19,7 +19,7 @@ mlua = { version = "0.10.5", optional = true, default-features = false }
 [features]
 default = []
 lua = ["dep:mlua", "mlua/luajit52", "mlua/vendored"]
-lua-module = ["lua", "mlua/module", "mlua/macros"]
+lua-module = ["dep:mlua", "mlua/luajit52", "mlua/module", "mlua/macros"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
