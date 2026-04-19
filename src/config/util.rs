@@ -38,7 +38,11 @@ pub fn validate_path(
     } else if check_path.is_absolute() {
         Ok(check_path)
     } else if check_path.is_relative() {
-        Ok(std::fs::canonicalize(check_path)?)
+        if check_path.exists() {
+            Ok(std::fs::canonicalize(check_path)?)
+        } else {
+            Err(crate::ConfigError::NotFileOrDirectory(check_path))
+        }
     } else {
         Err(crate::ConfigError::NotFileOrDirectory(check_path))
     }
