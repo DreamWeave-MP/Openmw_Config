@@ -79,3 +79,70 @@ fn test_from_env_openmw_config_dir_path_list_uses_first_existing_openmw_cfg() {
 
     assert!(config.has_content_file("Bloodmoon.esm"));
 }
+
+#[test]
+#[cfg(not(windows))]
+fn test_from_env_expands_tilde_in_openmw_config() {
+    let _guard = env_lock();
+    let home = std::env::var("HOME").expect("HOME must be set on non-windows");
+    let test_dir = std::path::Path::new(&home).join(".openmw_cfg_tilde_env_file");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let cfg_path = write_cfg(&test_dir, "content=Tildefile.esm\n");
+
+    let relative_cfg = cfg_path
+        .strip_prefix(&home)
+        .expect("test cfg should live under HOME")
+        .to_string_lossy()
+        .trim_start_matches(std::path::MAIN_SEPARATOR)
+        .to_string();
+    let openmw_config = format!("~/{relative_cfg}");
+
+    unsafe {
+        std::env::set_var("OPENMW_CONFIG", openmw_config);
+        std::env::remove_var("OPENMW_CONFIG_DIR");
+    }
+
+    let config = OpenMWConfiguration::from_env().unwrap();
+
+    unsafe {
+        std::env::remove_var("OPENMW_CONFIG");
+    }
+
+    std::fs::remove_dir_all(&test_dir).unwrap();
+    assert!(config.has_content_file("Tildefile.esm"));
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_from_env_expands_tilde_in_openmw_config_dir_list() {
+    let _guard = env_lock();
+    let home = std::env::var("HOME").expect("HOME must be set on non-windows");
+    let test_dir = std::path::Path::new(&home).join(".openmw_cfg_tilde_env_dir");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    write_cfg(&test_dir, "content=Tildedir.esm\n");
+
+    let missing = temp_dir("tilde_missing");
+    let sep = ':';
+    let relative_dir = test_dir
+        .strip_prefix(&home)
+        .expect("test dir should live under HOME")
+        .to_string_lossy()
+        .trim_start_matches(std::path::MAIN_SEPARATOR)
+        .to_string();
+    let tilde_dir = format!("~/{relative_dir}");
+    let var_value = format!("{}{}{}", missing.display(), sep, tilde_dir);
+
+    unsafe {
+        std::env::set_var("OPENMW_CONFIG_DIR", var_value);
+        std::env::remove_var("OPENMW_CONFIG");
+    }
+
+    let config = OpenMWConfiguration::from_env().unwrap();
+
+    unsafe {
+        std::env::remove_var("OPENMW_CONFIG_DIR");
+    }
+
+    std::fs::remove_dir_all(&test_dir).unwrap();
+    assert!(config.has_content_file("Tildedir.esm"));
+}
