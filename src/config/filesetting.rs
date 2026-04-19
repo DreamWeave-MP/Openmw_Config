@@ -73,3 +73,46 @@ impl FileSetting {
         &self.value
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_new_consumes_comment_and_sets_metadata() {
+        let source = PathBuf::from("/tmp/openmw.cfg");
+        let mut comment = String::from("# note\n");
+
+        let setting = FileSetting::new("Morrowind.esm", &source, &mut comment);
+
+        assert_eq!(setting.value(), "Morrowind.esm");
+        assert_eq!(setting.meta().source_config, source);
+        assert_eq!(setting.meta().comment, "# note\n");
+        assert!(comment.is_empty());
+    }
+
+    #[test]
+    fn test_display_outputs_only_file_value() {
+        let source = PathBuf::from("/tmp/openmw.cfg");
+        let mut comment = String::new();
+        let setting = FileSetting::new("Tribunal.esm", &source, &mut comment);
+
+        assert_eq!(setting.to_string(), "Tribunal.esm");
+    }
+
+    #[test]
+    fn test_partial_eq_variants_compare_by_value_only() {
+        let source = PathBuf::from("/tmp/openmw.cfg");
+        let mut comment = String::from("# ignored\n");
+
+        let lhs = FileSetting::new("Bloodmoon.esm", &source, &mut comment);
+        let rhs = FileSetting::new("Bloodmoon.esm", &source, &mut String::new());
+        let str_owned = String::from("Bloodmoon.esm");
+
+        assert_eq!(lhs, rhs);
+        assert_eq!(lhs, "Bloodmoon.esm");
+        assert_eq!(lhs, str_owned.as_str());
+        assert_eq!(lhs, &str_owned);
+    }
+}

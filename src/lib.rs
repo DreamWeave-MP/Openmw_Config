@@ -112,3 +112,26 @@ pub fn default_userdata_path() -> std::path::PathBuf {
 pub fn default_data_local_path() -> std::path::PathBuf {
     default_userdata_path().join("data")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_data_local_path_is_userdata_data_child() {
+        assert_eq!(
+            default_data_local_path(),
+            default_userdata_path().join("data")
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_windows_default_paths_contract() {
+        let cfg = default_config_path();
+        let cfg_str = cfg.to_string_lossy().to_lowercase();
+        assert!(cfg_str.contains("my games"));
+        assert!(cfg_str.contains("openmw"));
+        assert_eq!(default_userdata_path(), cfg);
+    }
+}

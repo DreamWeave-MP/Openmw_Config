@@ -233,3 +233,37 @@ impl From<std::io::Error> for ConfigError {
         ConfigError::Io(err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_messages_include_key_context() {
+        let path = PathBuf::from("/tmp/openmw.cfg");
+
+        let cannot_find = ConfigError::CannotFind(path.clone()).to_string();
+        assert!(cannot_find.contains("openmw.cfg"));
+
+        let duplicate = ConfigError::DuplicateContentFile {
+            file: "Morrowind.esm".into(),
+            config_path: path.clone(),
+        }
+        .to_string();
+        assert!(duplicate.contains("Morrowind.esm"));
+
+        let invalid_line = ConfigError::InvalidLine {
+            value: "broken".into(),
+            config_path: path,
+        }
+        .to_string();
+        assert!(invalid_line.contains("broken"));
+    }
+
+    #[test]
+    fn test_from_io_error_wraps_variant() {
+        let io = std::io::Error::other("boom");
+        let converted: ConfigError = io.into();
+        assert!(matches!(converted, ConfigError::Io(_)));
+    }
+}

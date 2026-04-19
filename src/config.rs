@@ -1125,6 +1125,11 @@ mod tests {
         OpenMWConfiguration::new(Some(dir)).unwrap()
     }
 
+    #[cfg(unix)]
+    fn symlink_dir(target: &std::path::Path, link: &std::path::Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
     // -----------------------------------------------------------------------
     // Content files
     // -----------------------------------------------------------------------
@@ -1407,6 +1412,15 @@ mod tests {
         assert!(config.has_data_dir("/new"));
     }
 
+    #[test]
+    fn test_replace_keeps_comment_adjacency() {
+        let config = load("content=Old.esm\nreplace=content\n\n# keep me\ncontent=New.esm\n");
+        let output = config.to_string();
+
+        assert!(!output.contains("Old.esm"));
+        assert!(output.contains("# keep me\ncontent=New.esm"));
+    }
+
     // -----------------------------------------------------------------------
     // Display / serialisation
     // -----------------------------------------------------------------------
@@ -1629,6 +1643,39 @@ mod tests {
         write_cfg(&dir, &format!("config={}\n", dir.display()));
         let result = OpenMWConfiguration::new(Some(dir));
         assert!(matches!(result, Err(ConfigError::MaxDepthExceeded(_))));
+    }
+
+    #[test]
+    fn test_error_max_depth_exceeded_for_circular_chain() {
+        let a = temp_dir();
+        let b = temp_dir();
+
+        write_cfg(&a, &format!("config={}\n", b.display()));
+        write_cfg(&b, &format!("config={}\n", a.display()));
+
+        let result = OpenMWConfiguration::new(Some(a));
+        assert!(matches!(result, Err(ConfigError::MaxDepthExceeded(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_symlinked_config_dir_loads_like_real_path() {
+        let real_dir = temp_dir();
+        write_cfg(&real_dir, "content=Morrowind.esm\n");
+
+        let link_parent = temp_dir();
+        let link_path = link_parent.join("symlinked-config");
+        if link_path.exists() {
+            let _ = std::fs::remove_file(&link_path);
+            let _ = std::fs::remove_dir_all(&link_path);
+        }
+        symlink_dir(&real_dir, &link_path);
+
+        let config = OpenMWConfiguration::new(Some(link_path.clone())).unwrap();
+
+        assert!(config.has_content_file("Morrowind.esm"));
+        assert_eq!(config.root_config_file(), link_path.join("openmw.cfg"));
+        assert_eq!(config.root_config_dir(), link_path);
     }
 
     // -----------------------------------------------------------------------
