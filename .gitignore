@@ -1,3 +1,4 @@
 /target
 Cargo.lock
 /real_config_chain_paths.txt
+/manual_chain_snapshot
