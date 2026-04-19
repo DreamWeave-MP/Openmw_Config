@@ -217,6 +217,86 @@ Error behavior:
 - Most methods throw Lua runtime errors on invalid operations (`pcall`-friendly).
 - `tryDefault*` helpers return tuple-style `(value, err)` and do not throw.
 
+### Host Integration (Embedded Lua)
+
+This crate's Lua support is host-embedded: your Rust application creates a Lua state and injects
+the `openmwConfig` table for scripts to consume.
+
+#### 1) Enable features in your host crate
+
+```toml
+[dependencies]
+openmw-config = { version = "1", features = ["lua"] }
+mlua = { version = "0.10", default-features = false, features = ["luajit52", "vendored"] }
+```
+
+#### 2) Register `openmwConfig` in Lua globals
+
+```rust,ignore
+use mlua::Lua;
+use openmw_config::create_lua_module;
+
+fn main() -> Result<(), mlua::Error> {
+    let lua = Lua::new();
+
+    let openmw = create_lua_module(&lua)?;
+    lua.globals().set("openmwConfig", openmw)?;
+
+    lua.load(r#"
+      local cfg = openmwConfig.fromEnv()
+      print(cfg:rootConfigFile())
+    "#).exec()?;
+
+    Ok(())
+}
+```
+
+#### 3) Example mutation + save flow from Lua
+
+```lua
+local cfg = openmwConfig.new(nil)
+cfg:addContentFile("MyPlugin.esp")
+cfg:setDataDirectories({"/path/to/data"})
+cfg:setGameSetting("fJumpHeight,1.0", nil, nil)
+cfg:saveUser()
+```
+
+#### Notes
+
+- Lua API naming is `camelCase` only.
+- Most method failures throw Lua runtime errors (`pcall`-friendly).
+- `tryDefaultConfigPath()` and `tryDefaultUserDataPath()` return `(value, err)` tuples instead of throwing.
+- This is not a standalone Lua module distribution (`require("openmw_config")`); integration is via Rust host registration.
+
+### Lua Stability Contract
+
+- The following Lua entry points are intended to remain stable across 1.x releases:
+  - `openmwConfig.fromEnv()`
+  - `openmwConfig.new(pathOrNil)`
+  - `openmwConfig.defaultConfigPath()`
+  - `openmwConfig.defaultUserDataPath()`
+  - `openmwConfig.defaultDataLocalPath()`
+  - `openmwConfig.tryDefaultConfigPath()`
+  - `openmwConfig.tryDefaultUserDataPath()`
+  - `cfg:rootConfigFile()`, `cfg:rootConfigDir()`, `cfg:isUserConfig()`, `cfg:userConfigPath()`
+  - `cfg:subConfigs()`, `cfg:configChain()`
+  - `cfg:contentFiles()`, `cfg:groundcoverFiles()`, `cfg:fallbackArchives()`, `cfg:dataDirectories()`
+  - `cfg:gameSettings()`, `cfg:getGameSetting(key)`
+  - `cfg:userData()`, `cfg:resources()`, `cfg:dataLocal()`, `cfg:encoding()`
+  - `cfg:hasContentFile(name)`, `cfg:hasGroundcoverFile(name)`, `cfg:hasArchiveFile(name)`, `cfg:hasDataDir(path)`
+  - `cfg:addContentFile(name)`, `cfg:addGroundcoverFile(name)`, `cfg:addArchiveFile(name)`, `cfg:addDataDirectory(path)`
+  - `cfg:removeContentFile(name)`, `cfg:removeGroundcoverFile(name)`, `cfg:removeArchiveFile(name)`, `cfg:removeDataDirectory(path)`
+  - `cfg:setContentFiles(listOrNil)`, `cfg:setFallbackArchives(listOrNil)`, `cfg:setDataDirectories(listOrNil)`
+  - `cfg:setGameSetting(value, sourcePathOrNil, commentOrNil)`, `cfg:setGameSettings(listOrNil)`
+  - `cfg:setUserData(pathOrNil)`, `cfg:setResources(pathOrNil)`, `cfg:setDataLocal(pathOrNil)`, `cfg:setEncoding(valueOrNil)`
+  - `cfg:saveUser()`, `cfg:saveSubconfig(path)`
+- Table shapes are stable:
+  - `configChain()` rows: `{ path, depth, status }`
+  - `gameSettings()` / `getGameSetting()` rows: `{ key, value, kind }`
+- `status` is one of `loaded` or `skippedMissing`.
+- `kind` is one of `Color`, `String`, `Float`, or `Int`.
+- `nil` inputs are used to clear optional settings in setter methods.
+
 Example embedding usage:
 
 ```rust,ignore
