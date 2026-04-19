@@ -83,12 +83,19 @@ const NO_LOCAL_DIR: &str = "FAILURE: COULD NOT READ LOCAL DIRECTORY";
 const NO_GLOBAL_DIR: &str = "FAILURE: COULD NOT READ GLOBAL DIRECTORY";
 const DEFAULT_FLATPAK_APP_ID: &str = "org.openmw.OpenMW";
 
+fn has_flatpak_info_file() -> bool {
+    use std::sync::OnceLock;
+
+    static HAS_FLATPAK_INFO: OnceLock<bool> = OnceLock::new();
+    *HAS_FLATPAK_INFO.get_or_init(|| std::path::Path::new("/.flatpak-info").exists())
+}
+
 fn flatpak_mode_enabled() -> bool {
     if std::env::var_os("OPENMW_CONFIG_USING_FLATPAK").is_some() {
         return true;
     }
 
-    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+    std::env::var_os("FLATPAK_ID").is_some() || has_flatpak_info_file()
 }
 
 fn flatpak_app_id() -> String {

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use std::{
+    cell::{Cell, RefCell},
     fmt::{self, Display},
     fs::{create_dir_all, metadata, read_to_string},
     path::{Path, PathBuf},
@@ -172,8 +173,9 @@ pub struct OpenMWConfiguration {
     indexed_groundcover: HashSet<String>,
     indexed_archives: HashSet<String>,
     indexed_data_dirs: HashSet<PathBuf>,
-    indexed_game_setting_last: HashMap<String, usize>,
-    indexed_game_setting_order: Vec<usize>,
+    indexed_game_setting_last: RefCell<HashMap<String, usize>>,
+    indexed_game_setting_order: RefCell<Vec<usize>>,
+    game_setting_indexes_dirty: Cell<bool>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -212,10 +214,8 @@ impl OpenMWConfiguration {
         self.indexed_groundcover.clear();
         self.indexed_archives.clear();
         self.indexed_data_dirs.clear();
-        self.indexed_game_setting_last.clear();
-        self.indexed_game_setting_order.clear();
 
-        for (index, setting) in self.settings.iter().enumerate() {
+        for setting in &self.settings {
             match setting {
                 SettingValue::ContentFile(file) => {
                     self.indexed_content.insert(file.value().clone());
@@ -229,22 +229,44 @@ impl OpenMWConfiguration {
                 SettingValue::DataDirectory(dir) => {
                     self.indexed_data_dirs.insert(dir.parsed().to_path_buf());
                 }
-                SettingValue::GameSetting(game_setting) => {
-                    self.indexed_game_setting_last
-                        .insert(game_setting.key().clone(), index);
-                }
                 _ => {}
             }
         }
 
+        self.mark_game_setting_indexes_dirty();
+    }
+
+    fn mark_game_setting_indexes_dirty(&self) {
+        self.game_setting_indexes_dirty.set(true);
+        self.indexed_game_setting_last.borrow_mut().clear();
+        self.indexed_game_setting_order.borrow_mut().clear();
+    }
+
+    fn ensure_game_setting_indexes(&self) {
+        if !self.game_setting_indexes_dirty.get() {
+            return;
+        }
+
+        let mut last = HashMap::new();
+        for (index, setting) in self.settings.iter().enumerate() {
+            if let SettingValue::GameSetting(game_setting) = setting {
+                last.insert(game_setting.key().clone(), index);
+            }
+        }
+
         let mut seen = HashSet::new();
+        let mut order = Vec::new();
         for (index, setting) in self.settings.iter().enumerate().rev() {
             if let SettingValue::GameSetting(game_setting) = setting
                 && seen.insert(game_setting.key())
             {
-                self.indexed_game_setting_order.push(index);
+                order.push(index);
             }
         }
+
+        *self.indexed_game_setting_last.borrow_mut() = last;
+        *self.indexed_game_setting_order.borrow_mut() = order;
+        self.game_setting_indexes_dirty.set(false);
     }
 
     /// # Errors
@@ -837,9 +859,11 @@ impl OpenMWConfiguration {
     /// # Ok::<(), openmw_config::ConfigError>(())
     /// ```
     pub fn game_settings(&self) -> impl Iterator<Item = &GameSettingType> {
-        self.indexed_game_setting_order
-            .iter()
-            .filter_map(|index| match &self.settings[*index] {
+        self.ensure_game_setting_indexes();
+        let order = self.indexed_game_setting_order.borrow().clone();
+        order
+            .into_iter()
+            .filter_map(move |index| match &self.settings[index] {
                 SettingValue::GameSetting(setting) => Some(setting),
                 _ => None,
             })
@@ -850,7 +874,9 @@ impl OpenMWConfiguration {
     /// Case-sensitive!
     #[must_use]
     pub fn get_game_setting(&self, key: &str) -> Option<&GameSettingType> {
+        self.ensure_game_setting_indexes();
         self.indexed_game_setting_last
+            .borrow()
             .get(key)
             .and_then(|index| match &self.settings[*index] {
                 SettingValue::GameSetting(setting) => Some(setting),
@@ -2201,6 +2227,8 @@ mod tests {
     fn assert_indexes_consistent(config: &OpenMWConfiguration) {
         use std::collections::{HashMap, HashSet};
 
+        config.ensure_game_setting_indexes();
+
         let scanned_content: HashSet<String> = config
             .settings
             .iter()
@@ -2255,8 +2283,8 @@ mod tests {
         assert_eq!(config.indexed_groundcover, scanned_groundcover);
         assert_eq!(config.indexed_archives, scanned_archives);
         assert_eq!(config.indexed_data_dirs, scanned_data_dirs);
-        assert_eq!(config.indexed_game_setting_last, scanned_game_setting_last);
-        assert_eq!(config.indexed_game_setting_order, scanned_game_setting_order);
+        assert_eq!(*config.indexed_game_setting_last.borrow(), scanned_game_setting_last);
+        assert_eq!(*config.indexed_game_setting_order.borrow(), scanned_game_setting_order);
 
         for file in &config.indexed_content {
             assert!(config.has_content_file(file));
@@ -2277,6 +2305,7 @@ mod tests {
             .collect();
         let expected_keys: Vec<String> = config
             .indexed_game_setting_order
+            .borrow()
             .iter()
             .filter_map(|index| match &config.settings[*index] {
                 SettingValue::GameSetting(game_setting) => Some(game_setting.key().clone()),
@@ -2285,7 +2314,7 @@ mod tests {
             .collect();
         assert_eq!(iter_keys, expected_keys);
 
-        for (key, index) in &config.indexed_game_setting_last {
+        for (key, index) in config.indexed_game_setting_last.borrow().iter() {
             let expected_value = match &config.settings[*index] {
                 SettingValue::GameSetting(game_setting) => game_setting.value(),
                 _ => unreachable!("game setting index points to non-game setting"),
