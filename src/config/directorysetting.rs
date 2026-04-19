@@ -292,7 +292,10 @@ mod tests {
         let mut comment = String::from("# a comment\n");
         let setting = DirectorySetting::new("data", config, &mut comment);
         assert_eq!(setting.meta.comment, "# a comment\n");
-        assert!(comment.is_empty(), "comment should be cleared after construction");
+        assert!(
+            comment.is_empty(),
+            "comment should be cleared after construction"
+        );
     }
 
     #[test]

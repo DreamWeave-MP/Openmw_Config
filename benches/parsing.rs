@@ -93,27 +93,36 @@ fn bench_load_small(c: &mut Criterion) {
     let dir = make_temp_dir("small");
     write_cfg_to_dir(&dir, &build_cfg_string(10, 10, 50));
 
-    c.bench_function("OpenMWConfiguration::new small (10 dirs, 10 plugins, 50 fallbacks)", |b| {
-        b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
-    });
+    c.bench_function(
+        "OpenMWConfiguration::new small (10 dirs, 10 plugins, 50 fallbacks)",
+        |b| {
+            b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
+        },
+    );
 }
 
 fn bench_load_medium(c: &mut Criterion) {
     let dir = make_temp_dir("medium");
     write_cfg_to_dir(&dir, &build_cfg_string(50, 100, 500));
 
-    c.bench_function("OpenMWConfiguration::new medium (50 dirs, 100 plugins, 500 fallbacks)", |b| {
-        b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
-    });
+    c.bench_function(
+        "OpenMWConfiguration::new medium (50 dirs, 100 plugins, 500 fallbacks)",
+        |b| {
+            b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
+        },
+    );
 }
 
 fn bench_load_large(c: &mut Criterion) {
     let dir = make_temp_dir("large");
     write_cfg_to_dir(&dir, &build_cfg_string(200, 500, 2000));
 
-    c.bench_function("OpenMWConfiguration::new large (200 dirs, 500 plugins, 2000 fallbacks)", |b| {
-        b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
-    });
+    c.bench_function(
+        "OpenMWConfiguration::new large (200 dirs, 500 plugins, 2000 fallbacks)",
+        |b| {
+            b.iter(|| OpenMWConfiguration::new(Some(dir.clone())).unwrap());
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,9 +181,13 @@ fn bench_game_settings_dedup(c: &mut Criterion) {
         write_cfg_to_dir(&dir, &s);
         let config = OpenMWConfiguration::new(Some(dir)).unwrap();
 
-        group.bench_with_input(BenchmarkId::new("unique_keys", n_unique), &n_unique, |b, _| {
-            b.iter(|| config.game_settings().count());
-        });
+        group.bench_with_input(
+            BenchmarkId::new("unique_keys", n_unique),
+            &n_unique,
+            |b, _| {
+                b.iter(|| config.game_settings().count());
+            },
+        );
     }
     group.finish();
 }

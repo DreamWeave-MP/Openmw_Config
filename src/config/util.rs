@@ -7,7 +7,6 @@ pub fn debug_log(message: &str) {
     }
 }
 
-
 pub fn is_writable(path: &std::path::Path) -> bool {
     if path.exists() {
         match std::fs::OpenOptions::new().write(true).open(path) {

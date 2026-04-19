@@ -97,7 +97,7 @@ impl Display for SettingValue {
             ),
             SettingValue::Generic(generic) => generic.to_string(),
             SettingValue::ContentFile(plugin) => {
-                format!("{}content={}", plugin.meta().comment, plugin.value(),)
+                format!("{}content={}", plugin.meta().comment, plugin.value())
             }
             SettingValue::BethArchive(archive) => {
                 format!(
@@ -234,18 +234,21 @@ impl OpenMWConfiguration {
 
         config.root_config = root_config;
 
-        if let Err(error) = config.load(&config.root_config.clone(), 0) { Err(error) } else {
+        if let Err(error) = config.load(&config.root_config.clone(), 0) {
+            Err(error)
+        } else {
             if let Some(dir) = config.data_local() {
                 let path = dir.parsed();
 
                 let path_meta = metadata(path);
                 if path_meta.is_err()
-                    && let Err(error) = create_dir_all(path) {
-                        util::debug_log(&format!(
-                            "WARNING: Attempted to create a data-local directory at {}, but failed: {error}",
-                            path.display()
-                        ));
-                    }
+                    && let Err(error) = create_dir_all(path)
+                {
+                    util::debug_log(&format!(
+                        "WARNING: Attempted to create a data-local directory at {}, but failed: {error}",
+                        path.display()
+                    ));
+                }
 
                 config
                     .settings
@@ -288,10 +291,13 @@ impl OpenMWConfiguration {
     /// Panics if the root config path has no parent directory (i.e. it is a filesystem root).
     #[must_use]
     pub fn root_config_dir(&self) -> PathBuf {
-        self.root_config.parent().expect("root_config has no parent directory").to_path_buf()
+        self.root_config
+            .parent()
+            .expect("root_config has no parent directory")
+            .to_path_buf()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_user_config(&self) -> bool {
         self.root_config_dir() == self.user_config_path()
     }
@@ -320,7 +326,7 @@ impl OpenMWConfiguration {
     /// See <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources> for examples and further explanation of multiple config sources.
     ///
     /// Path to the highest-level configuration *directory*
-    #[must_use] 
+    #[must_use]
     pub fn user_config_path(&self) -> PathBuf {
         self.sub_configs()
             .map(|setting| setting.parsed().to_path_buf())
@@ -394,9 +400,7 @@ impl OpenMWConfiguration {
     /// so the query does not need to use a specific separator style.
     #[must_use]
     pub fn has_data_dir(&self, file_name: &str) -> bool {
-        let query = PathBuf::from(
-            file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR),
-        );
+        let query = PathBuf::from(file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR));
         self.settings.iter().any(|setting| match setting {
             SettingValue::DataDirectory(data_dir) => data_dir.parsed() == query,
             _ => false,
@@ -570,11 +574,10 @@ impl OpenMWConfiguration {
             let cfg_path = self.user_config_path().join("openmw.cfg");
             let mut empty = String::default();
             for plugin in plugins {
-                self.settings.push(SettingValue::ContentFile(FileSetting::new(
-                    &plugin,
-                    &cfg_path,
-                    &mut empty,
-                )));
+                self.settings
+                    .push(SettingValue::ContentFile(FileSetting::new(
+                        &plugin, &cfg_path, &mut empty,
+                    )));
             }
         }
     }
@@ -589,11 +592,10 @@ impl OpenMWConfiguration {
             let cfg_path = self.user_config_path().join("openmw.cfg");
             let mut empty = String::default();
             for archive in archives {
-                self.settings.push(SettingValue::BethArchive(FileSetting::new(
-                    &archive,
-                    &cfg_path,
-                    &mut empty,
-                )));
+                self.settings
+                    .push(SettingValue::BethArchive(FileSetting::new(
+                        &archive, &cfg_path, &mut empty,
+                    )));
             }
         }
     }
@@ -628,11 +630,12 @@ impl OpenMWConfiguration {
             let mut empty = String::default();
 
             for dir in dirs {
-                self.settings.push(SettingValue::DataDirectory(DirectorySetting::new(
-                    dir.to_string_lossy(),
-                    cfg_path.clone(),
-                    &mut empty,
-                )));
+                self.settings
+                    .push(SettingValue::DataDirectory(DirectorySetting::new(
+                        dir.to_string_lossy(),
+                        cfg_path.clone(),
+                        &mut empty,
+                    )));
             }
         }
     }
@@ -719,9 +722,10 @@ impl OpenMWConfiguration {
 
         for setting in self.settings.iter().rev() {
             if let SettingValue::GameSetting(gs) = setting
-                && seen.insert(gs.key()) {
-                    unique_settings.push(gs);
-                }
+                && seen.insert(gs.key())
+            {
+                unique_settings.push(gs);
+            }
         }
 
         unique_settings.into_iter()
@@ -730,13 +734,14 @@ impl OpenMWConfiguration {
     /// Retrieves a gamesetting according to its name.
     /// This would be whatever text comes after the equals sign `=` and before the first comma `,`
     /// Case-sensitive!
-    #[must_use] 
+    #[must_use]
     pub fn get_game_setting(&self, key: &str) -> Option<&GameSettingType> {
         for setting in self.settings.iter().rev() {
             if let SettingValue::GameSetting(setting) = setting
-                && setting == &key {
-                    return Some(setting);
-                }
+                && setting == &key
+            {
+                return Some(setting);
+            }
         }
         None
     }
@@ -770,7 +775,11 @@ impl OpenMWConfiguration {
             bail_config!(cannot_find, config_dir);
         }
 
-        let cfg_file_path = if config_dir.is_dir() { config_dir.join("openmw.cfg") } else { config_dir.to_path_buf() };
+        let cfg_file_path = if config_dir.is_dir() {
+            config_dir.join("openmw.cfg")
+        } else {
+            config_dir.to_path_buf()
+        };
 
         let lines = read_to_string(&cfg_file_path)?;
 
@@ -783,9 +792,15 @@ impl OpenMWConfiguration {
 
         for setting in &self.settings {
             match setting {
-                SettingValue::ContentFile(f) => { seen_content.insert(f.value().clone()); }
-                SettingValue::Groundcover(f) => { seen_groundcover.insert(f.value().clone()); }
-                SettingValue::BethArchive(f) => { seen_archives.insert(f.value().clone()); }
+                SettingValue::ContentFile(f) => {
+                    seen_content.insert(f.value().clone());
+                }
+                SettingValue::Groundcover(f) => {
+                    seen_groundcover.insert(f.value().clone());
+                }
+                SettingValue::BethArchive(f) => {
+                    seen_archives.insert(f.value().clone());
+                }
                 _ => {}
             }
         }
@@ -896,11 +911,20 @@ impl OpenMWConfiguration {
                     );
                 }
                 "replace" => match value.to_lowercase().as_str() {
-                    "content" => { self.set_content_files(None); seen_content.clear(); }
+                    "content" => {
+                        self.set_content_files(None);
+                        seen_content.clear();
+                    }
                     "data" => self.set_data_directories(None),
                     "fallback" => self.set_game_settings(None)?,
-                    "fallback-archives" => { self.set_fallback_archives(None); seen_archives.clear(); }
-                    "groundcover" => { self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_))); seen_groundcover.clear(); }
+                    "fallback-archives" => {
+                        self.set_fallback_archives(None);
+                        seen_archives.clear();
+                    }
+                    "groundcover" => {
+                        self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_)));
+                        seen_groundcover.clear();
+                    }
                     "data-local" => self.set_data_local(None),
                     "resources" => self.set_resources(None),
                     "user-data" => self.set_userdata(None),
@@ -976,7 +1000,9 @@ impl OpenMWConfiguration {
 
         let mut user_settings_string = String::new();
 
-        for user_setting in self.settings_matching(|setting| setting.meta().source_config == cfg_path) {
+        for user_setting in
+            self.settings_matching(|setting| setting.meta().source_config == cfg_path)
+        {
             user_settings_string.push_str(&user_setting.to_string());
         }
 
@@ -1015,7 +1041,9 @@ impl OpenMWConfiguration {
 
         let mut subconfig_settings_string = String::new();
 
-        for subconfig_setting in self.settings_matching(|setting| setting.meta().source_config == cfg_path) {
+        for subconfig_setting in
+            self.settings_matching(|setting| setting.meta().source_config == cfg_path)
+        {
             subconfig_settings_string.push_str(&subconfig_setting.to_string());
         }
 
@@ -1100,8 +1128,14 @@ mod tests {
     #[test]
     fn test_content_files_parsed_in_order() {
         let config = load("content=Morrowind.esm\ncontent=Tribunal.esm\ncontent=Bloodmoon.esm\n");
-        let files: Vec<&String> = config.content_files_iter().map(FileSetting::value).collect();
-        assert_eq!(files, vec!["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]);
+        let files: Vec<&String> = config
+            .content_files_iter()
+            .map(FileSetting::value)
+            .collect();
+        assert_eq!(
+            files,
+            vec!["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]
+        );
     }
 
     #[test]
@@ -1143,8 +1177,11 @@ mod tests {
         let mut config = OpenMWConfiguration::new(Some(dir)).unwrap();
         config.add_content_file("Mod.esp").unwrap();
         let setting = config.content_files_iter().next().unwrap();
-        assert_eq!(setting.meta().source_config, cfg_path,
-            "source_config should be the openmw.cfg file, not a directory");
+        assert_eq!(
+            setting.meta().source_config,
+            cfg_path,
+            "source_config should be the openmw.cfg file, not a directory"
+        );
     }
 
     #[test]
@@ -1178,7 +1215,10 @@ mod tests {
     #[test]
     fn test_fallback_archives_parsed() {
         let config = load("fallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n");
-        let archives: Vec<&String> = config.fallback_archives_iter().map(FileSetting::value).collect();
+        let archives: Vec<&String> = config
+            .fallback_archives_iter()
+            .map(FileSetting::value)
+            .collect();
         assert_eq!(archives, vec!["Morrowind.bsa", "Tribunal.bsa"]);
     }
 
@@ -1235,7 +1275,11 @@ mod tests {
     #[test]
     fn test_data_directories_absolute_paths_parsed() {
         let config = load("data=/absolute/path/to/data\n");
-        assert!(config.data_directories_iter().any(|d| d.parsed().ends_with("absolute/path/to/data")));
+        assert!(
+            config
+                .data_directories_iter()
+                .any(|d| d.parsed().ends_with("absolute/path/to/data"))
+        );
     }
 
     #[test]
@@ -1285,8 +1329,15 @@ mod tests {
         // When the same fallback key appears more than once, game_settings() must emit only the
         // last-defined value (last-wins), matching the behavior of get_game_setting().
         let config = load("fallback=iKey,1\nfallback=iKey,2\n");
-        let results: Vec<_> = config.game_settings().filter(|s| s.key() == "iKey").collect();
-        assert_eq!(results.len(), 1, "game_settings() should deduplicate by key");
+        let results: Vec<_> = config
+            .game_settings()
+            .filter(|s| s.key() == "iKey")
+            .collect();
+        assert_eq!(
+            results.len(),
+            1,
+            "game_settings() should deduplicate by key"
+        );
         assert_eq!(results[0].value(), "2", "last-defined value should win");
     }
 
@@ -1354,8 +1405,10 @@ mod tests {
     fn test_display_contains_version_comment() {
         let config = load("content=Morrowind.esm\n");
         let output = config.to_string();
-        assert!(output.contains("# OpenMW-Config Serializer Version:"),
-            "Display should include version comment");
+        assert!(
+            output.contains("# OpenMW-Config Serializer Version:"),
+            "Display should include version comment"
+        );
     }
 
     #[test]
@@ -1397,7 +1450,10 @@ mod tests {
         config.save_user().unwrap();
 
         let reloaded = OpenMWConfiguration::new(Some(dir)).unwrap();
-        let files: Vec<&String> = reloaded.content_files_iter().map(FileSetting::value).collect();
+        let files: Vec<&String> = reloaded
+            .content_files_iter()
+            .map(FileSetting::value)
+            .collect();
         assert!(files.contains(&&"Morrowind.esm".to_string()));
         assert!(files.contains(&&"Bloodmoon.esm".to_string()));
     }
@@ -1461,7 +1517,10 @@ mod tests {
 
         let sub_cfg = sub_dir.join("openmw.cfg");
         let saved = std::fs::read_to_string(sub_cfg).unwrap();
-        assert!(saved.contains("content=Plugin.esp"), "sub-config content preserved");
+        assert!(
+            saved.contains("content=Plugin.esp"),
+            "sub-config content preserved"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1502,22 +1561,35 @@ mod tests {
     fn test_error_duplicate_archive_file() {
         // The parser itself rejects duplicate fallback-archive= entries
         let dir = temp_dir();
-        write_cfg(&dir, "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n");
+        write_cfg(
+            &dir,
+            "fallback-archive=Morrowind.bsa\nfallback-archive=Morrowind.bsa\n",
+        );
         let result = OpenMWConfiguration::new(Some(dir));
-        assert!(matches!(result, Err(ConfigError::DuplicateArchiveFile { .. })));
+        assert!(matches!(
+            result,
+            Err(ConfigError::DuplicateArchiveFile { .. })
+        ));
     }
 
     #[test]
     fn test_error_cannot_add_groundcover_file() {
         let mut config = load("groundcover=GrassPlugin.esp\n");
         let result = config.add_groundcover_file("GrassPlugin.esp");
-        assert!(matches!(result, Err(ConfigError::CannotAddGroundcoverFile { .. })));
+        assert!(matches!(
+            result,
+            Err(ConfigError::CannotAddGroundcoverFile { .. })
+        ));
     }
 
     #[test]
     fn test_error_cannot_find() {
-        let result = OpenMWConfiguration::new(Some(PathBuf::from("/nonexistent/totally/fake/path")));
-        assert!(matches!(result, Err(ConfigError::CannotFind(_) | ConfigError::NotFileOrDirectory(_))));
+        let result =
+            OpenMWConfiguration::new(Some(PathBuf::from("/nonexistent/totally/fake/path")));
+        assert!(matches!(
+            result,
+            Err(ConfigError::CannotFind(_) | ConfigError::NotFileOrDirectory(_))
+        ));
     }
 
     #[test]
@@ -1583,7 +1655,10 @@ mod tests {
 
         let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
         assert_eq!(config.sub_configs().count(), 1);
-        assert!(config.has_content_file("Plugin.esp"), "sub-config content visible in root");
+        assert!(
+            config.has_content_file("Plugin.esp"),
+            "sub-config content visible in root"
+        );
     }
 
     // -----------------------------------------------------------------------

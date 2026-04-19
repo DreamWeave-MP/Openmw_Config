@@ -30,7 +30,11 @@ pub struct StringGameSetting {
 
 impl std::fmt::Display for StringGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
+        write!(
+            f,
+            "{}fallback={},{}",
+            self.meta.comment, self.key, self.value
+        )
     }
 }
 
@@ -44,7 +48,11 @@ pub struct FloatGameSetting {
 
 impl std::fmt::Display for FloatGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
+        write!(
+            f,
+            "{}fallback={},{}",
+            self.meta.comment, self.key, self.value
+        )
     }
 }
 
@@ -58,7 +66,11 @@ pub struct IntGameSetting {
 
 impl std::fmt::Display for IntGameSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}fallback={},{}", self.meta.comment, self.key, self.value)
+        write!(
+            f,
+            "{}fallback={},{}",
+            self.meta.comment, self.key, self.value
+        )
     }
 }
 
@@ -154,7 +166,7 @@ impl GameSetting for GameSettingType {
 
 impl PartialEq for GameSettingType {
     fn eq(&self, other: &Self) -> bool {
-        use GameSettingType::{Color, String, Float, Int};
+        use GameSettingType::{Color, Float, Int, String};
 
         match (self, other) {
             (Color(a), Color(b)) => a.key == b.key,
@@ -169,7 +181,7 @@ impl PartialEq for GameSettingType {
 
 impl PartialEq<&str> for GameSettingType {
     fn eq(&self, other: &&str) -> bool {
-        use GameSettingType::{Color, String, Float, Int};
+        use GameSettingType::{Color, Float, Int, String};
 
         match self {
             Color(a) => a.key == *other,
@@ -213,13 +225,14 @@ impl TryFrom<(String, std::path::PathBuf, &mut String)> for GameSettingType {
         }
 
         if value.contains('.')
-            && let Ok(f) = value.parse::<f64>() {
-                return Ok(GameSettingType::Float(FloatGameSetting {
-                    meta,
-                    key,
-                    value: f,
-                }));
-            }
+            && let Ok(f) = value.parse::<f64>()
+        {
+            return Ok(GameSettingType::Float(FloatGameSetting {
+                meta,
+                key,
+                value: f,
+            }));
+        }
 
         if let Ok(i) = value.parse::<i64>() {
             return Ok(GameSettingType::Int(IntGameSetting {
@@ -354,12 +367,18 @@ mod tests {
     #[test]
     fn test_commented_string() {
         let setting = GameSettingType::Color(ColorGameSetting {
-            meta: GameSettingMeta { source_config: PathBuf::from("$HOME/.config/openmw/openmw.cfg"), comment: String::from("#Monochrome UI Settings\n#\n#\n#\n#######\n##\n##\n##\n") },
+            meta: GameSettingMeta {
+                source_config: PathBuf::from("$HOME/.config/openmw/openmw.cfg"),
+                comment: String::from("#Monochrome UI Settings\n#\n#\n#\n#######\n##\n##\n##\n"),
+            },
             key: "iHUDColor".into(),
             value: (128, 64, 255),
         });
 
-        assert_eq!(setting.to_string(), "#Monochrome UI Settings\n#\n#\n#\n#######\n##\n##\n##\nfallback=iHUDColor,128,64,255");
+        assert_eq!(
+            setting.to_string(),
+            "#Monochrome UI Settings\n#\n#\n#\n#######\n##\n##\n##\nfallback=iHUDColor,128,64,255"
+        );
     }
 
     // --- TryFrom parsing ---
@@ -434,11 +453,9 @@ mod tests {
     #[test]
     fn test_parse_comment_consumed() {
         let mut comment = String::from("# some note\n");
-        let setting = GameSettingType::try_from((
-            "iVal,1".to_string(),
-            PathBuf::default(),
-            &mut comment,
-        )).unwrap();
+        let setting =
+            GameSettingType::try_from(("iVal,1".to_string(), PathBuf::default(), &mut comment))
+                .unwrap();
         assert_eq!(setting.meta().comment, "# some note\n");
         assert!(comment.is_empty(), "comment should be consumed");
     }

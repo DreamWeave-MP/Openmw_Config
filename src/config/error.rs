@@ -163,7 +163,11 @@ impl fmt::Display for ConfigError {
                 config_path.display()
             ),
             ConfigError::CannotFind(config_path) => {
-                write!(f, "An openmw.cfg does not exist at: {}", config_path.display())
+                write!(
+                    f,
+                    "An openmw.cfg does not exist at: {}",
+                    config_path.display()
+                )
             }
             ConfigError::DuplicateContentFile { file, config_path } => write!(
                 f,
