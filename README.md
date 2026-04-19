@@ -134,7 +134,7 @@ println!("{config}");
 |---|---|
 | `default_config_path()` / `default_userdata_path()` / `default_data_local_path()` | Platform default paths (panic on unsupported platform path discovery failures) |
 | `try_default_config_path()` / `try_default_userdata_path()` | Fallible variants of platform default path resolution |
-| `create_lua_module(lua)` *(with `lua` or `lua-module` feature)* | Build a Lua module table exposing camelCase userdata/functions |
+| `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua module table exposing camelCase userdata/functions |
 
 | Setting helper methods | Description |
 |---|---|
@@ -174,8 +174,48 @@ for entry in config.config_chain() {
 
 - Public Lua methods/functions are intentionally **camelCase only**.
 - `lua` feature: embeds vendored `LuaJIT` with 5.2 compatibility (`luajit52` + `vendored`).
-- `lua-module` feature: builds a loadable Lua module entrypoint (`mlua/module`), intended for environments with external Lua loading.
-- `lua` and `lua-module` are mutually exclusive by design.
+
+Module exports (`openmwConfig`):
+
+| Lua function | Returns | Notes |
+|---|---|---|
+| `fromEnv()` | `config` userdata | Loads using `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` semantics |
+| `new(pathOrNil)` | `config` userdata | `pathOrNil` may be file path, dir path, or `nil` |
+| `defaultConfigPath()` | `string` | Platform default config dir |
+| `defaultUserDataPath()` | `string` | Platform default userdata dir |
+| `defaultDataLocalPath()` | `string` | Platform default data-local dir |
+| `tryDefaultConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `tryDefaultUserDataPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `version` | `string` field | Crate version string |
+
+`config` userdata methods:
+
+| Lua method | Returns | Notes |
+|---|---|---|
+| `rootConfigFile()` / `rootConfigDir()` | `string` | Resolved root file/path |
+| `isUserConfig()` | `boolean` | Whether root is already highest-priority config |
+| `userConfigPath()` | `string` | Highest-priority config directory |
+| `userConfig()` | `config` userdata | Returns a user-config-focused clone |
+| `toString()` | `string` | Serialized `openmw.cfg` output |
+| `subConfigs()` | `string[]` | Effective loaded `config=` directories |
+| `configChain()` | `table[]` | Rows: `{ path, depth, status }`, status is `loaded` or `skippedMissing` |
+| `contentFiles()` / `groundcoverFiles()` / `fallbackArchives()` | `string[]` | Collection snapshots |
+| `dataDirectories()` | `string[]` | Resolved `data=` directories |
+| `gameSettings()` | `table[]` | Rows: `{ key, value, kind }` |
+| `getGameSetting(key)` | `table|nil` | Single row with `{ key, value, kind }` |
+| `userData()` / `resources()` / `dataLocal()` / `encoding()` | `string|nil` | Singleton getters |
+| `hasContentFile(name)` / `hasGroundcoverFile(name)` / `hasArchiveFile(name)` / `hasDataDir(path)` | `boolean` | Presence checks |
+| `addContentFile(name)` / `addGroundcoverFile(name)` / `addArchiveFile(name)` / `addDataDirectory(path)` | `nil` | Mutating append operations |
+| `removeContentFile(name)` / `removeGroundcoverFile(name)` / `removeArchiveFile(name)` / `removeDataDirectory(path)` | `nil` | Mutating remove operations |
+| `setContentFiles(listOrNil)` / `setFallbackArchives(listOrNil)` / `setDataDirectories(listOrNil)` | `nil` | Replaces full collection, `nil` clears |
+| `setGameSetting(value, sourcePathOrNil, commentOrNil)` / `setGameSettings(listOrNil)` | `nil` | Fallback setters |
+| `setUserData(pathOrNil)` / `setResources(pathOrNil)` / `setDataLocal(pathOrNil)` / `setEncoding(valueOrNil)` | `nil` | Singleton setters, `nil` clears |
+| `saveUser()` / `saveSubconfig(path)` | `nil` | Write to user config or loaded subconfig |
+
+Error behavior:
+
+- Most methods throw Lua runtime errors on invalid operations (`pcall`-friendly).
+- `tryDefault*` helpers return tuple-style `(value, err)` and do not throw.
 
 Example embedding usage:
 

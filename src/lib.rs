@@ -32,7 +32,7 @@
 //! platform default.
 
 mod config;
-#[cfg(any(feature = "lua", feature = "lua-module"))]
+#[cfg(feature = "lua")]
 pub mod lua;
 
 pub use config::{
@@ -47,7 +47,7 @@ pub use config::{
     genericsetting::GenericSetting,
 };
 
-#[cfg(any(feature = "lua", feature = "lua-module"))]
+#[cfg(feature = "lua")]
 pub use lua::create_lua_module;
 
 pub(crate) trait GameSetting: std::fmt::Display {

@@ -7,11 +7,6 @@ use crate::{
 use mlua::{Lua, Table, UserData, UserDataMethods};
 use std::path::{Path, PathBuf};
 
-#[cfg(all(feature = "lua", feature = "lua-module"))]
-compile_error!(
-    "Features 'lua' and 'lua-module' are mutually exclusive. Use 'lua' for vendored LuaJIT embeds or 'lua-module' for loadable Lua modules."
-);
-
 fn lua_err(error: impl std::fmt::Display) -> mlua::Error {
     mlua::Error::RuntimeError(error.to_string())
 }
@@ -384,12 +379,4 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
     exports.set("version", env!("CARGO_PKG_VERSION"))?;
 
     Ok(exports)
-}
-
-#[cfg(feature = "lua-module")]
-#[mlua::lua_module]
-/// # Errors
-/// Returns [`mlua::Error`] if Lua function/table registration fails.
-pub fn openmw_config(lua: &Lua) -> mlua::Result<Table> {
-    create_lua_module(lua)
 }
