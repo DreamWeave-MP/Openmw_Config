@@ -212,7 +212,7 @@ impl OpenMWConfiguration {
     /// ```
     pub fn from_env() -> Result<Self, ConfigError> {
         if let Ok(explicit_path) = std::env::var("OPENMW_CONFIG") {
-            let explicit_path: PathBuf = shellexpand::tilde(&explicit_path).into_owned().into();
+            let explicit_path = util::expand_leading_tilde(&explicit_path);
 
             if explicit_path.as_os_str().is_empty() {
                 return Err(ConfigError::NotFileOrDirectory(explicit_path));
@@ -230,7 +230,7 @@ impl OpenMWConfiguration {
             };
 
             for dir in path_list {
-                let dir: PathBuf = shellexpand::tilde(&dir).into_owned().into();
+                let dir = util::expand_leading_tilde(dir);
 
                 if dir.join("openmw.cfg").exists() {
                     return Self::new(Some(dir));

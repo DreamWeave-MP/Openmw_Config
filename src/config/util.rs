@@ -7,6 +7,23 @@ pub fn debug_log(message: &str) {
     }
 }
 
+#[must_use]
+pub fn expand_leading_tilde(path: &str) -> std::path::PathBuf {
+    if path == "~" {
+        return crate::platform_paths::home_dir().unwrap_or_else(|_| std::path::PathBuf::from(path));
+    }
+
+    if let Some(rest) = path
+        .strip_prefix("~/")
+        .or_else(|| path.strip_prefix("~\\"))
+        && let Ok(home) = crate::platform_paths::home_dir()
+    {
+        return home.join(rest);
+    }
+
+    std::path::PathBuf::from(path)
+}
+
 pub fn is_writable(path: &std::path::Path) -> bool {
     if path.exists() {
         std::fs::OpenOptions::new().write(true).open(path).is_ok()
@@ -74,5 +91,31 @@ pub fn input_config_path(
             }
             Err(crate::ConfigError::Io(err))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_leading_tilde;
+
+    #[test]
+    fn test_expand_tilde_leaves_regular_path_unchanged() {
+        let value = "/tmp/example";
+        assert_eq!(expand_leading_tilde(value), std::path::PathBuf::from(value));
+    }
+
+    #[test]
+    fn test_expand_tilde_does_not_expand_named_user_syntax() {
+        let value = "~alice/mods";
+        assert_eq!(expand_leading_tilde(value), std::path::PathBuf::from(value));
+    }
+
+    #[test]
+    fn test_expand_tilde_home_variants() {
+        let home = crate::platform_paths::home_dir().expect("home directory required for test");
+
+        assert_eq!(expand_leading_tilde("~"), home);
+        assert_eq!(expand_leading_tilde("~/mods"), home.join("mods"));
+        assert_eq!(expand_leading_tilde("~\\mods"), home.join("mods"));
     }
 }
