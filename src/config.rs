@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{ConfigError, GameSetting, bail_config};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 pub mod directorysetting;
 use directorysetting::DirectorySetting;
@@ -234,7 +234,7 @@ impl OpenMWConfiguration {
 
         config.root_config = root_config;
 
-        if let Err(error) = config.load(&config.root_config.clone(), 0) {
+        if let Err(error) = config.load(&config.root_config.clone()) {
             Err(error)
         } else {
             if let Some(dir) = config.data_local() {
@@ -318,8 +318,8 @@ impl OpenMWConfiguration {
     /// If the root and user openmw.cfg are the *same*, then this list will be empty and the root config should be considered the user config.
     /// Otherwise, if one wishes to get the contents of the user configuration specifically, construct a new `OpenMWConfiguration` from the last `sub_config`.
     ///
-    /// Openmw.cfg files are added in order of the sequence in which they are defined by one openmw.cfg, and then each of *those* openmw.cfg files
-    /// is then processed in their entirety, sequentially, after the first one has resolved.
+    /// Openmw.cfg files are added in declaration order, traversing the `config=` chain level-by-level.
+    /// In a branching chain, sibling `config=` entries are processed before grandchildren.
     /// The highest-priority openmw.cfg loaded (the last one!) is considered the user openmw.cfg,
     /// and will be the one which is modifiable by OpenMW-Launcher and `OpenMW` proper.
     ///
@@ -764,205 +764,207 @@ impl OpenMWConfiguration {
     const MAX_CONFIG_DEPTH: usize = 16;
 
     #[allow(clippy::too_many_lines)]
-    fn load(&mut self, config_dir: &Path, depth: usize) -> Result<(), ConfigError> {
-        if depth > Self::MAX_CONFIG_DEPTH {
-            bail_config!(max_depth_exceeded, config_dir);
-        }
+    fn load(&mut self, root_config: &Path) -> Result<(), ConfigError> {
+        let mut pending_configs = VecDeque::new();
+        pending_configs.push_back((root_config.to_path_buf(), 0usize));
 
-        util::debug_log(&format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
-
-        if !config_dir.exists() {
-            bail_config!(cannot_find, config_dir);
-        }
-
-        let cfg_file_path = if config_dir.is_dir() {
-            config_dir.join("openmw.cfg")
-        } else {
-            config_dir.to_path_buf()
-        };
-
-        let lines = read_to_string(&cfg_file_path)?;
-
-        let mut queued_comment = String::new();
-        let mut sub_configs: Vec<(String, String)> = Vec::new();
-
-        let mut seen_content: HashSet<String> = HashSet::new();
-        let mut seen_groundcover: HashSet<String> = HashSet::new();
-        let mut seen_archives: HashSet<String> = HashSet::new();
-
-        for setting in &self.settings {
-            match setting {
-                SettingValue::ContentFile(f) => {
-                    seen_content.insert(f.value().clone());
-                }
-                SettingValue::Groundcover(f) => {
-                    seen_groundcover.insert(f.value().clone());
-                }
-                SettingValue::BethArchive(f) => {
-                    seen_archives.insert(f.value().clone());
-                }
-                _ => {}
-            }
-        }
-
-        for line in lines.lines() {
-            let trimmed = line.trim();
-
-            if trimmed.is_empty() {
-                queued_comment.push('\n');
-                continue;
-            } else if trimmed.starts_with('#') {
-                queued_comment.push_str(line);
-                queued_comment.push('\n');
-                continue;
+        while let Some((config_dir, depth)) = pending_configs.pop_front() {
+            if depth > Self::MAX_CONFIG_DEPTH {
+                bail_config!(max_depth_exceeded, config_dir);
             }
 
-            let tokens: Vec<&str> = trimmed.splitn(2, '=').collect();
-            if tokens.len() < 2 {
-                bail_config!(invalid_line, trimmed.into(), config_dir.to_path_buf());
+            util::debug_log(&format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
+
+            if !config_dir.exists() {
+                bail_config!(cannot_find, config_dir);
             }
 
-            let key = tokens[0].trim();
-            let value = tokens[1].trim().to_string();
+            let cfg_file_path = if config_dir.is_dir() {
+                config_dir.join("openmw.cfg")
+            } else {
+                config_dir
+            };
 
-            match key {
-                "content" => {
-                    if !seen_content.insert(value.clone()) {
-                        bail_config!(duplicate_content_file, value, config_dir);
+            let lines = read_to_string(&cfg_file_path)?;
+
+            let mut queued_comment = String::new();
+            let mut sub_configs: Vec<(String, String)> = Vec::new();
+
+            let mut seen_content: HashSet<String> = HashSet::new();
+            let mut seen_groundcover: HashSet<String> = HashSet::new();
+            let mut seen_archives: HashSet<String> = HashSet::new();
+
+            for setting in &self.settings {
+                match setting {
+                    SettingValue::ContentFile(f) => {
+                        seen_content.insert(f.value().clone());
                     }
-                    self.settings
-                        .push(SettingValue::ContentFile(FileSetting::new(
-                            &value,
-                            config_dir,
-                            &mut queued_comment,
-                        )));
-                }
-                "groundcover" => {
-                    if !seen_groundcover.insert(value.clone()) {
-                        bail_config!(duplicate_groundcover_file, value, config_dir);
+                    SettingValue::Groundcover(f) => {
+                        seen_groundcover.insert(f.value().clone());
                     }
-                    self.settings
-                        .push(SettingValue::Groundcover(FileSetting::new(
-                            &value,
-                            config_dir,
-                            &mut queued_comment,
-                        )));
-                }
-                "fallback-archive" => {
-                    if !seen_archives.insert(value.clone()) {
-                        bail_config!(duplicate_archive_file, value, config_dir);
-                    }
-                    self.settings
-                        .push(SettingValue::BethArchive(FileSetting::new(
-                            &value,
-                            config_dir,
-                            &mut queued_comment,
-                        )));
-                }
-                "fallback" => {
-                    self.set_game_setting(
-                        &value,
-                        Some(config_dir.to_owned()),
-                        &mut queued_comment,
-                    )?;
-                }
-                "encoding" => self.set_encoding(Some(EncodingSetting::try_from((
-                    value,
-                    config_dir,
-                    &mut queued_comment,
-                ))?)),
-                "config" => {
-                    sub_configs.push((value, std::mem::take(&mut queued_comment)));
-                }
-                "data" => {
-                    insert_dir_setting!(
-                        self,
-                        DataDirectory,
-                        &value,
-                        (config_dir).to_path_buf(),
-                        &mut queued_comment
-                    );
-                }
-                "resources" => {
-                    insert_dir_setting!(
-                        self,
-                        Resources,
-                        &value,
-                        (config_dir).to_path_buf(),
-                        &mut queued_comment
-                    );
-                }
-                "user-data" => {
-                    insert_dir_setting!(
-                        self,
-                        UserData,
-                        &value,
-                        (config_dir).to_path_buf(),
-                        &mut queued_comment
-                    );
-                }
-                "data-local" => {
-                    insert_dir_setting!(
-                        self,
-                        DataLocal,
-                        &value,
-                        (config_dir).to_path_buf(),
-                        &mut queued_comment
-                    );
-                }
-                "replace" => match value.to_lowercase().as_str() {
-                    "content" => {
-                        self.set_content_files(None);
-                        seen_content.clear();
-                    }
-                    "data" => self.set_data_directories(None),
-                    "fallback" => self.set_game_settings(None)?,
-                    "fallback-archives" => {
-                        self.set_fallback_archives(None);
-                        seen_archives.clear();
-                    }
-                    "groundcover" => {
-                        self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_)));
-                        seen_groundcover.clear();
-                    }
-                    "data-local" => self.set_data_local(None),
-                    "resources" => self.set_resources(None),
-                    "user-data" => self.set_userdata(None),
-                    "config" => {
-                        self.settings.clear();
-                        seen_content.clear();
-                        seen_groundcover.clear();
-                        seen_archives.clear();
+                    SettingValue::BethArchive(f) => {
+                        seen_archives.insert(f.value().clone());
                     }
                     _ => {}
-                },
-                _ => {
-                    let setting = GenericSetting::new(key, &value, config_dir, &mut queued_comment);
-                    self.settings.push(SettingValue::Generic(setting));
+                }
+            }
+
+            for line in lines.lines() {
+                let trimmed = line.trim();
+
+                if trimmed.is_empty() {
+                    queued_comment.push('\n');
+                    continue;
+                } else if trimmed.starts_with('#') {
+                    queued_comment.push_str(line);
+                    queued_comment.push('\n');
+                    continue;
+                }
+
+                let tokens: Vec<&str> = trimmed.splitn(2, '=').collect();
+                if tokens.len() < 2 {
+                    bail_config!(invalid_line, trimmed.into(), cfg_file_path.clone());
+                }
+
+                let key = tokens[0].trim();
+                let value = tokens[1].trim().to_string();
+
+                match key {
+                    "content" => {
+                        if !seen_content.insert(value.clone()) {
+                            bail_config!(duplicate_content_file, value, cfg_file_path);
+                        }
+                        self.settings
+                            .push(SettingValue::ContentFile(FileSetting::new(
+                                &value,
+                                &cfg_file_path,
+                                &mut queued_comment,
+                            )));
+                    }
+                    "groundcover" => {
+                        if !seen_groundcover.insert(value.clone()) {
+                            bail_config!(duplicate_groundcover_file, value, cfg_file_path);
+                        }
+                        self.settings
+                            .push(SettingValue::Groundcover(FileSetting::new(
+                                &value,
+                                &cfg_file_path,
+                                &mut queued_comment,
+                            )));
+                    }
+                    "fallback-archive" => {
+                        if !seen_archives.insert(value.clone()) {
+                            bail_config!(duplicate_archive_file, value, cfg_file_path);
+                        }
+                        self.settings
+                            .push(SettingValue::BethArchive(FileSetting::new(
+                                &value,
+                                &cfg_file_path,
+                                &mut queued_comment,
+                            )));
+                    }
+                    "fallback" => {
+                        self.set_game_setting(
+                            &value,
+                            Some(cfg_file_path.clone()),
+                            &mut queued_comment,
+                        )?;
+                    }
+                    "encoding" => self.set_encoding(Some(EncodingSetting::try_from((
+                        value,
+                        &cfg_file_path,
+                        &mut queued_comment,
+                    ))?)),
+                    "config" => {
+                        sub_configs.push((value, std::mem::take(&mut queued_comment)));
+                    }
+                    "data" => {
+                        insert_dir_setting!(
+                            self,
+                            DataDirectory,
+                            &value,
+                            cfg_file_path.clone(),
+                            &mut queued_comment
+                        );
+                    }
+                    "resources" => {
+                        insert_dir_setting!(
+                            self,
+                            Resources,
+                            &value,
+                            cfg_file_path.clone(),
+                            &mut queued_comment
+                        );
+                    }
+                    "user-data" => {
+                        insert_dir_setting!(
+                            self,
+                            UserData,
+                            &value,
+                            cfg_file_path.clone(),
+                            &mut queued_comment
+                        );
+                    }
+                    "data-local" => {
+                        insert_dir_setting!(
+                            self,
+                            DataLocal,
+                            &value,
+                            cfg_file_path.clone(),
+                            &mut queued_comment
+                        );
+                    }
+                    "replace" => match value.to_lowercase().as_str() {
+                        "content" => {
+                            self.set_content_files(None);
+                            seen_content.clear();
+                        }
+                        "data" => self.set_data_directories(None),
+                        "fallback" => self.set_game_settings(None)?,
+                        "fallback-archives" => {
+                            self.set_fallback_archives(None);
+                            seen_archives.clear();
+                        }
+                        "groundcover" => {
+                            self.clear_matching(|s| matches!(s, SettingValue::Groundcover(_)));
+                            seen_groundcover.clear();
+                        }
+                        "data-local" => self.set_data_local(None),
+                        "resources" => self.set_resources(None),
+                        "user-data" => self.set_userdata(None),
+                        "config" => {
+                            self.settings.clear();
+                            seen_content.clear();
+                            seen_groundcover.clear();
+                            seen_archives.clear();
+                        }
+                        _ => {}
+                    },
+                    _ => {
+                        let setting =
+                            GenericSetting::new(key, &value, &cfg_file_path, &mut queued_comment);
+                        self.settings.push(SettingValue::Generic(setting));
+                    }
+                }
+            }
+
+            for (subconfig_path, mut subconfig_comment) in sub_configs {
+                let mut comment = std::mem::take(&mut subconfig_comment);
+                let setting =
+                    DirectorySetting::new(subconfig_path, cfg_file_path.clone(), &mut comment);
+                let subconfig_file = setting.parsed().join("openmw.cfg");
+
+                if std::fs::metadata(&subconfig_file).is_ok() {
+                    self.settings.push(SettingValue::SubConfiguration(setting));
+                    pending_configs.push_back((subconfig_file, depth + 1));
+                } else {
+                    util::debug_log(&format!(
+                        "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
+                        setting.parsed().display(),
+                    ));
                 }
             }
         }
-
-        sub_configs.into_iter().try_for_each(
-            |(subconfig_path, mut subconfig_comment): (String, String)| {
-                let mut comment = std::mem::take(&mut subconfig_comment);
-
-                let setting: DirectorySetting = DirectorySetting::new(subconfig_path.clone(), config_dir.to_path_buf(), &mut comment);
-                let subconfig_path = setting.parsed().join("openmw.cfg");
-
-                if std::fs::metadata(&subconfig_path).is_ok() {
-                    self.settings.push(SettingValue::SubConfiguration(setting));
-                    self.load(Path::new(&subconfig_path), depth + 1)
-                } else {
-                    util::debug_log(&format!(
-                        "Skipping parsing of {} As this directory does not actually contain an openmw.cfg!",
-                        config_dir.display(),
-                    ));
-
-                    Ok(())
-                }
-            },
-        )?;
 
         Ok(())
     }
@@ -1718,6 +1720,189 @@ mod tests {
             config.has_content_file("Plugin.esp"),
             "sub-config content visible in root"
         );
+    }
+
+    #[test]
+    fn test_config_chain_priority_order_for_data_lists_matches_openmw_docs_example() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!(
+                "data=root-a\nconfig={}\nconfig={}\n",
+                dir2.display(),
+                dir3.display()
+            ),
+        );
+        write_cfg(
+            &dir2,
+            &format!("data=branch-a\nconfig={}\n", dir4.display()),
+        );
+        write_cfg(&dir3, "data=sibling-a\n");
+        write_cfg(&dir4, "data=leaf-a\n");
+
+        let config = OpenMWConfiguration::new(Some(dir1)).unwrap();
+        let actual: Vec<String> = config
+            .data_directories_iter()
+            .map(|setting| setting.original().clone())
+            .collect();
+
+        assert_eq!(actual, vec!["root-a", "branch-a", "sibling-a", "leaf-a"]);
+    }
+
+    #[test]
+    fn test_replace_data_preserves_docs_priority_order_in_branching_chain() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!(
+                "data=root-a\nconfig={}\nconfig={}\n",
+                dir2.display(),
+                dir3.display()
+            ),
+        );
+        write_cfg(
+            &dir2,
+            &format!("replace=data\ndata=branch-a\nconfig={}\n", dir4.display()),
+        );
+        write_cfg(&dir3, "data=sibling-a\n");
+        write_cfg(&dir4, "data=leaf-a\n");
+
+        let config = OpenMWConfiguration::new(Some(dir1)).unwrap();
+        let actual: Vec<String> = config
+            .data_directories_iter()
+            .map(|setting| setting.original().clone())
+            .collect();
+
+        assert_eq!(actual, vec!["branch-a", "sibling-a", "leaf-a"]);
+    }
+
+    #[test]
+    fn test_config_chain_priority_order_for_content_lists_matches_openmw_docs_example() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!(
+                "content=Root.esm\nconfig={}\nconfig={}\n",
+                dir2.display(),
+                dir3.display()
+            ),
+        );
+        write_cfg(
+            &dir2,
+            &format!("content=Branch.esm\nconfig={}\n", dir4.display()),
+        );
+        write_cfg(&dir3, "content=Sibling.esm\n");
+        write_cfg(&dir4, "content=Leaf.esm\n");
+
+        let config = OpenMWConfiguration::new(Some(dir1)).unwrap();
+        let actual: Vec<String> = config
+            .content_files_iter()
+            .map(|setting| setting.value().clone())
+            .collect();
+
+        assert_eq!(
+            actual,
+            vec!["Root.esm", "Branch.esm", "Sibling.esm", "Leaf.esm"],
+            "content= should follow the same chain priority order as documented for config= traversal"
+        );
+    }
+
+    #[test]
+    fn test_config_chain_priority_order_for_groundcover_lists_matches_openmw_docs_example() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!(
+                "groundcover=Root.esp\nconfig={}\nconfig={}\n",
+                dir2.display(),
+                dir3.display()
+            ),
+        );
+        write_cfg(
+            &dir2,
+            &format!("groundcover=Branch.esp\nconfig={}\n", dir4.display()),
+        );
+        write_cfg(&dir3, "groundcover=Sibling.esp\n");
+        write_cfg(&dir4, "groundcover=Leaf.esp\n");
+
+        let config = OpenMWConfiguration::new(Some(dir1)).unwrap();
+        let actual: Vec<String> = config
+            .groundcover_iter()
+            .map(|setting| setting.value().clone())
+            .collect();
+
+        assert_eq!(
+            actual,
+            vec!["Root.esp", "Branch.esp", "Sibling.esp", "Leaf.esp"],
+            "groundcover= should follow the same chain priority order as documented for config= traversal"
+        );
+    }
+
+    #[test]
+    fn test_config_chain_priority_order_matches_openmw_docs_example() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!("config={}\nconfig={}\n", dir2.display(), dir3.display()),
+        );
+        write_cfg(
+            &dir2,
+            &format!("encoding=win1250\nconfig={}\n", dir4.display()),
+        );
+        write_cfg(&dir3, "encoding=win1251\n");
+        write_cfg(&dir4, "encoding=win1252\n");
+
+        let config = OpenMWConfiguration::new(Some(dir1.clone())).unwrap();
+
+        assert_eq!(
+            config.encoding().unwrap().to_string().trim(),
+            "encoding=win1252"
+        );
+        assert_eq!(config.user_config_path(), dir4);
+    }
+
+    #[test]
+    fn test_config_chain_priority_order_with_user_data_crosscheck() {
+        let dir1 = temp_dir();
+        let dir2 = temp_dir();
+        let dir3 = temp_dir();
+        let dir4 = temp_dir();
+
+        write_cfg(
+            &dir1,
+            &format!("config={}\nconfig={}\n", dir2.display(), dir3.display()),
+        );
+        write_cfg(
+            &dir2,
+            &format!("user-data={}\nconfig={}\n", dir2.display(), dir4.display()),
+        );
+        write_cfg(&dir3, &format!("user-data={}\n", dir3.display()));
+        write_cfg(&dir4, &format!("user-data={}\n", dir4.display()));
+
+        let config = OpenMWConfiguration::new(Some(dir1.clone())).unwrap();
+
+        assert_eq!(config.user_config_path(), dir4);
+        assert_eq!(config.userdata().unwrap().parsed(), dir4.as_path());
     }
 
     // -----------------------------------------------------------------------
