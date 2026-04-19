@@ -73,6 +73,10 @@ impl GameSettingMeta {
 
 const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";
 
+/// Fallible variant of [`default_config_path`].
+///
+/// # Errors
+/// Returns [`ConfigError::PlatformPathUnavailable`] if no platform config directory can be discovered.
 pub fn try_default_config_path() -> Result<std::path::PathBuf, ConfigError> {
     #[cfg(target_os = "android")]
     return Ok(std::path::PathBuf::from("/storage/emulated/0/Alpha3/config"));
@@ -103,6 +107,10 @@ pub fn default_config_path() -> std::path::PathBuf {
     try_default_config_path().expect(NO_CONFIG_DIR)
 }
 
+/// Fallible variant of [`default_userdata_path`].
+///
+/// # Errors
+/// Returns [`ConfigError::PlatformPathUnavailable`] if no platform userdata directory can be discovered.
 pub fn try_default_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
     #[cfg(target_os = "android")]
     return Ok(std::path::PathBuf::from("/storage/emulated/0/Alpha3"));

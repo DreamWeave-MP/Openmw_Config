@@ -352,7 +352,7 @@ impl OpenMWConfiguration {
     /// Openmw.cfg files are added in declaration order, traversing the `config=` chain level-by-level.
     /// In a branching chain, sibling `config=` entries are processed before grandchildren.
     /// If `replace=config` appears in a file, any earlier settings and `config=` entries from that
-    /// same parse scope are discarded before continuing, matching OpenMW's reset semantics.
+    /// same parse scope are discarded before continuing, matching `OpenMW`'s reset semantics.
     /// The highest-priority openmw.cfg loaded (the last one!) is considered the user openmw.cfg,
     /// and will be the one which is modifiable by OpenMW-Launcher and `OpenMW` proper.
     ///

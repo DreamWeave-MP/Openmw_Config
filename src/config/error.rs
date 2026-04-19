@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
-use std::{fmt, path::PathBuf};
+use std::{fmt, path::{Path, PathBuf}};
 
 #[macro_export]
 macro_rules! config_err {
@@ -225,6 +225,18 @@ pub enum ConfigError {
     PlatformPathUnavailable(&'static str),
 }
 
+fn line_suffix(line: Option<usize>) -> String {
+    line.map_or_else(String::new, |line| format!(" at line {line}"))
+}
+
+fn duplicate_message(file: &str, kind: &str, config_path: &Path, line: Option<usize>) -> String {
+    format!(
+        "{file} has appeared in the {kind} list twice. Its second occurence was in: {}{}",
+        config_path.display(),
+        line_suffix(line)
+    )
+}
+
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -232,18 +244,13 @@ impl fmt::Display for ConfigError {
                 value,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "Invalid fallback setting '{}' in config file '{}'{}",
-                    value,
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => write!(
+                f,
+                "Invalid fallback setting '{}' in config file '{}'{}",
+                value,
+                config_path.display(),
+                line_suffix(*line)
+            ),
             ConfigError::Io(e) => write!(f, "IO error: {e}"),
             ConfigError::NotFileOrDirectory(config_path) => write!(
                 f,
@@ -261,17 +268,7 @@ impl fmt::Display for ConfigError {
                 file,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "{file} has appeared in the content files list twice. Its second occurence was in: {}{}",
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => f.write_str(&duplicate_message(file, "content files", config_path, *line)),
             ConfigError::CannotAddContentFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
@@ -281,17 +278,7 @@ impl fmt::Display for ConfigError {
                 file,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "{file} has appeared in the groundcover list twice. Its second occurence was in: {}{}",
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => f.write_str(&duplicate_message(file, "groundcover", config_path, *line)),
             ConfigError::CannotAddGroundcoverFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
@@ -301,17 +288,7 @@ impl fmt::Display for ConfigError {
                 file,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "{file} has appeared in the BSA/Archive list twice. Its second occurence was in: {}{}",
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => f.write_str(&duplicate_message(file, "BSA/Archive", config_path, *line)),
             ConfigError::CannotAddArchiveFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
@@ -321,32 +298,22 @@ impl fmt::Display for ConfigError {
                 value,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "Invalid encoding type: {value} in config file {}{}",
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => write!(
+                f,
+                "Invalid encoding type: {value} in config file {}{}",
+                config_path.display(),
+                line_suffix(*line)
+            ),
             ConfigError::InvalidLine {
                 value,
                 config_path,
                 line,
-            } => {
-                let line_suffix = line
-                    .map(|line| format!(" at line {line}"))
-                    .unwrap_or_default();
-                write!(
-                    f,
-                    "Invalid pair in openmw.cfg {value} was defined by {}{}",
-                    config_path.display(),
-                    line_suffix
-                )
-            }
+            } => write!(
+                f,
+                "Invalid pair in openmw.cfg {value} was defined by {}{}",
+                config_path.display(),
+                line_suffix(*line)
+            ),
             ConfigError::NotWritable(path) => {
                 write!(f, "Target path is not writable: {}", path.display())
             }

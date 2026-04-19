@@ -119,6 +119,7 @@ println!("{config}");
 | `set_game_settings(list)` | Replace all fallback entries; `None` clears them |
 | `save_user()` | Write the user config (`last config= in the chain`) to disk |
 | `save_subconfig(path)` | Write an arbitrary loaded sub-config to disk |
+| `user_config_ref()` | Load the highest-priority user config without consuming `self` |
 | `user_config_path()` | Directory of the highest-priority (user) config |
 | `try_default_config_path()` | Fallible platform default config directory resolver |
 | `try_default_userdata_path()` | Fallible platform default userdata directory resolver |
@@ -132,6 +133,35 @@ println!("{config}");
   from the same parse scope before continuing.
 - **Token expansion** — `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
   platform-correct directories at load time.
+
+`config_chain()` provides parser-order traversal details, including skipped missing subconfigs:
+
+```rust,no_run
+use openmw_config::{ConfigChainStatus, OpenMWConfiguration};
+
+let config = OpenMWConfiguration::new(None)?;
+
+for entry in config.config_chain() {
+    let status = match entry.status() {
+        ConfigChainStatus::Loaded => "loaded",
+        ConfigChainStatus::SkippedMissing => "skipped-missing",
+    };
+    println!("[{status}] depth={} {}", entry.depth(), entry.path().display());
+}
+# Ok::<(), openmw_config::ConfigError>(())
+```
+
+## Compatibility Guarantees
+
+- Public APIs follow semver: breaking changes land only in a new major version.
+- MSRV is declared in `Cargo.toml` and may change only in a semver-compatible release with notes.
+- `openmw.cfg` behavior aims to match OpenMW docs for chain traversal and replace semantics.
+- Unknown keys are preserved during parse/serialize roundtrips.
+
+## Known Limitations
+
+- `settings.cfg` handling is intentionally deferred to a post-1.0 release.
+- This crate models `openmw.cfg` behavior only; it does not implement the entire OpenMW config stack.
 
 ## Reference
 
