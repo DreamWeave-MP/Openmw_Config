@@ -33,6 +33,8 @@
 
 mod config;
 pub use config::{
+    ConfigChainEntry,
+    ConfigChainStatus,
     OpenMWConfiguration,
     directorysetting::DirectorySetting,
     encodingsetting::{EncodingSetting, EncodingType},
@@ -57,7 +59,37 @@ pub struct GameSettingMeta {
     comment: String,
 }
 
+impl GameSettingMeta {
+    #[must_use]
+    pub fn source_config(&self) -> &std::path::Path {
+        &self.source_config
+    }
+
+    #[must_use]
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+}
+
 const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";
+
+pub fn try_default_config_path() -> Result<std::path::PathBuf, ConfigError> {
+    #[cfg(target_os = "android")]
+    return Ok(std::path::PathBuf::from("/storage/emulated/0/Alpha3/config"));
+
+    #[cfg(not(target_os = "android"))]
+    {
+        if cfg!(windows) {
+            dirs::document_dir()
+                .ok_or(ConfigError::PlatformPathUnavailable("config"))
+                .map(|p| p.join("My Games").join("openmw"))
+        } else {
+            dirs::preference_dir()
+                .ok_or(ConfigError::PlatformPathUnavailable("config"))
+                .map(|p| p.join("openmw"))
+        }
+    }
+}
 
 /// Path to input bindings and core configuration
 /// These functions are not expected to fail and should they fail, indicate either:
@@ -68,17 +100,22 @@ const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";
 /// Panics if the platform config directory cannot be determined (unsupported system).
 #[must_use]
 pub fn default_config_path() -> std::path::PathBuf {
+    try_default_config_path().expect(NO_CONFIG_DIR)
+}
+
+pub fn try_default_userdata_path() -> Result<std::path::PathBuf, ConfigError> {
     #[cfg(target_os = "android")]
-    return std::path::PathBuf::from("/storage/emulated/0/Alpha3/config");
+    return Ok(std::path::PathBuf::from("/storage/emulated/0/Alpha3"));
 
     #[cfg(not(target_os = "android"))]
-    if cfg!(windows) {
-        dirs::document_dir()
-            .expect(NO_CONFIG_DIR)
-            .join("My Games")
-            .join("openmw")
-    } else {
-        dirs::preference_dir().expect(NO_CONFIG_DIR).join("openmw")
+    {
+        if cfg!(windows) {
+            try_default_config_path()
+        } else {
+            dirs::data_dir()
+                .ok_or(ConfigError::PlatformPathUnavailable("userdata"))
+                .map(|p| p.join("openmw"))
+        }
     }
 }
 
@@ -91,17 +128,7 @@ pub fn default_config_path() -> std::path::PathBuf {
 /// Panics if the platform data directory cannot be determined (unsupported system).
 #[must_use]
 pub fn default_userdata_path() -> std::path::PathBuf {
-    #[cfg(target_os = "android")]
-    return std::path::PathBuf::from("/storage/emulated/0/Alpha3");
-
-    #[cfg(not(target_os = "android"))]
-    if cfg!(windows) {
-        default_config_path()
-    } else {
-        dirs::data_dir()
-            .expect("FAILURE: COULD NOT READ USERDATA DIRECTORY")
-            .join("openmw")
-    }
+    try_default_userdata_path().expect("FAILURE: COULD NOT READ USERDATA DIRECTORY")
 }
 
 /// Path to the `data-local` directory as defined by the engine's defaults.
@@ -133,5 +160,10 @@ mod tests {
         assert!(cfg_str.contains("my games"));
         assert!(cfg_str.contains("openmw"));
         assert_eq!(default_userdata_path(), cfg);
+    }
+
+    #[test]
+    fn test_try_default_config_path_returns_path_or_error() {
+        let _ = try_default_config_path();
     }
 }

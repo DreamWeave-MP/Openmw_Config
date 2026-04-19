@@ -21,7 +21,7 @@ replacement semantics. For comprehensive VFS coverage, combine with
 
 ```toml
 [dependencies]
-openmw-config = "0.1.93"
+openmw-config = "1"
 ```
 
 ```rust,no_run
@@ -103,6 +103,7 @@ println!("{config}");
 |---|---|
 | `OpenMWConfiguration::from_env()` | Load from `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` env vars, then platform default |
 | `OpenMWConfiguration::new(path)` | Load from a specific path (file or directory), or platform default if `None` |
+| `OpenMWConfiguration::config_chain()` | Iterator over chain traversal events (`Loaded` / `SkippedMissing`) |
 | `content_files_iter()` | Iterator over loaded content files (`content=`) |
 | `groundcover_iter()` | Iterator over groundcover plugins (`groundcover=`) |
 | `fallback_archives_iter()` | Iterator over BSA/BA2 archives (`fallback-archive=`) |
@@ -119,13 +120,16 @@ println!("{config}");
 | `save_user()` | Write the user config (`last config= in the chain`) to disk |
 | `save_subconfig(path)` | Write an arbitrary loaded sub-config to disk |
 | `user_config_path()` | Directory of the highest-priority (user) config |
+| `try_default_config_path()` | Fallible platform default config directory resolver |
+| `try_default_userdata_path()` | Fallible platform default userdata directory resolver |
 
 ## Advanced
 
 - **Config chains** — `sub_configs()` walks the `config=` entries that were loaded. The last entry
   is the user config; everything above it is read-only from OpenMW's perspective.
 - **Replace semantics** — `replace=content`, `replace=data`, etc. are honoured during load, exactly
-  as OpenMW handles them.
+  as OpenMW handles them. `replace=config` resets earlier settings and queued `config=` entries
+  from the same parse scope before continuing.
 - **Token expansion** — `?userdata?` and `?userconfig?` in `data=` paths are expanded to the
   platform-correct directories at load time.
 

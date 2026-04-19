@@ -10,6 +10,15 @@ macro_rules! config_err {
         $crate::ConfigError::InvalidGameSetting {
             value: $value.to_string(),
             config_path: $path.to_path_buf(),
+            line: None,
+        }
+    };
+
+    (invalid_game_setting, $value:expr, $path:expr, $line:expr) => {
+        $crate::ConfigError::InvalidGameSetting {
+            value: $value.to_string(),
+            config_path: $path.to_path_buf(),
+            line: Some($line),
         }
     };
 
@@ -25,6 +34,15 @@ macro_rules! config_err {
         $crate::ConfigError::DuplicateContentFile {
             file: $content_file,
             config_path: $config_path.to_path_buf(),
+            line: None,
+        }
+    };
+
+    (duplicate_content_file, $content_file:expr, $config_path:expr, $line:expr) => {
+        $crate::ConfigError::DuplicateContentFile {
+            file: $content_file,
+            config_path: $config_path.to_path_buf(),
+            line: Some($line),
         }
     };
 
@@ -32,6 +50,15 @@ macro_rules! config_err {
         $crate::ConfigError::DuplicateArchiveFile {
             file: $archive_file,
             config_path: $config_path.to_path_buf(),
+            line: None,
+        }
+    };
+
+    (duplicate_archive_file, $archive_file:expr, $config_path:expr, $line:expr) => {
+        $crate::ConfigError::DuplicateArchiveFile {
+            file: $archive_file,
+            config_path: $config_path.to_path_buf(),
+            line: Some($line),
         }
     };
 
@@ -60,6 +87,15 @@ macro_rules! config_err {
         $crate::ConfigError::DuplicateGroundcoverFile {
             file: $groundcover_file,
             config_path: $config_path.to_path_buf(),
+            line: None,
+        }
+    };
+
+    (duplicate_groundcover_file, $groundcover_file:expr, $config_path:expr, $line:expr) => {
+        $crate::ConfigError::DuplicateGroundcoverFile {
+            file: $groundcover_file,
+            config_path: $config_path.to_path_buf(),
+            line: Some($line),
         }
     };
 
@@ -67,6 +103,15 @@ macro_rules! config_err {
         $crate::ConfigError::BadEncoding {
             value: $encoding,
             config_path: $config_path,
+            line: None,
+        }
+    };
+
+    (bad_encoding, $encoding:expr, $config_path:expr, $line:expr) => {
+        $crate::ConfigError::BadEncoding {
+            value: $encoding,
+            config_path: $config_path,
+            line: Some($line),
         }
     };
 
@@ -74,6 +119,15 @@ macro_rules! config_err {
         $crate::ConfigError::InvalidLine {
             value: $value,
             config_path: $config_path,
+            line: None,
+        }
+    };
+
+    (invalid_line, $value:expr, $config_path:expr, $line:expr) => {
+        $crate::ConfigError::InvalidLine {
+            value: $value,
+            config_path: $config_path,
+            line: Some($line),
         }
     };
 
@@ -109,9 +163,17 @@ macro_rules! bail_config {
 #[non_exhaustive]
 pub enum ConfigError {
     /// A content file (`content=`) appeared twice in the configuration chain.
-    DuplicateContentFile { file: String, config_path: PathBuf },
+    DuplicateContentFile {
+        file: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// A fallback-archive (`fallback-archive=`) appeared twice in the configuration chain.
-    DuplicateArchiveFile { file: String, config_path: PathBuf },
+    DuplicateArchiveFile {
+        file: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// [`OpenMWConfiguration::add_content_file`](crate::OpenMWConfiguration::add_content_file)
     /// was called for a file that is already present.
     CannotAddContentFile { file: String, config_path: PathBuf },
@@ -119,17 +181,33 @@ pub enum ConfigError {
     /// was called for an archive that is already present.
     CannotAddArchiveFile { file: String, config_path: PathBuf },
     /// A groundcover file (`groundcover=`) appeared twice in the configuration chain.
-    DuplicateGroundcoverFile { file: String, config_path: PathBuf },
+    DuplicateGroundcoverFile {
+        file: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// [`OpenMWConfiguration::add_groundcover_file`](crate::OpenMWConfiguration::add_groundcover_file)
     /// was called for a file that is already present.
     CannotAddGroundcoverFile { file: String, config_path: PathBuf },
     /// A `fallback=` entry could not be parsed as a valid `Key,Value` pair.
-    InvalidGameSetting { value: String, config_path: PathBuf },
+    InvalidGameSetting {
+        value: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// An `encoding=` entry contained an unrecognised encoding name.
     /// Only `win1250`, `win1251`, and `win1252` are valid.
-    BadEncoding { value: String, config_path: PathBuf },
+    BadEncoding {
+        value: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// A line in an `openmw.cfg` file did not match any recognised `key=value` format.
-    InvalidLine { value: String, config_path: PathBuf },
+    InvalidLine {
+        value: String,
+        config_path: PathBuf,
+        line: Option<usize>,
+    },
     /// An I/O error occurred while reading or writing a config file.
     Io(std::io::Error),
     /// The supplied path could not be classified as a file or directory.
@@ -143,17 +221,27 @@ pub enum ConfigError {
     SubconfigNotLoaded(PathBuf),
     /// The `config=` chain exceeded the maximum nesting depth, likely due to a circular reference.
     MaxDepthExceeded(PathBuf),
+    /// Could not resolve a platform default path via `dirs`.
+    PlatformPathUnavailable(&'static str),
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConfigError::InvalidGameSetting { value, config_path } => {
+            ConfigError::InvalidGameSetting {
+                value,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
                 write!(
                     f,
-                    "Invalid fallback setting '{}' in config file '{}'",
+                    "Invalid fallback setting '{}' in config file '{}'{}",
                     value,
-                    config_path.display()
+                    config_path.display(),
+                    line_suffix
                 )
             }
             ConfigError::Io(e) => write!(f, "IO error: {e}"),
@@ -169,46 +257,96 @@ impl fmt::Display for ConfigError {
                     config_path.display()
                 )
             }
-            ConfigError::DuplicateContentFile { file, config_path } => write!(
-                f,
-                "{file} has appeared in the content files list twice. Its second occurence was in: {}",
-                config_path.display()
-            ),
+            ConfigError::DuplicateContentFile {
+                file,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
+                write!(
+                    f,
+                    "{file} has appeared in the content files list twice. Its second occurence was in: {}{}",
+                    config_path.display(),
+                    line_suffix
+                )
+            }
             ConfigError::CannotAddContentFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
                 config_path.display()
             ),
-            ConfigError::DuplicateGroundcoverFile { file, config_path } => write!(
-                f,
-                "{file} has appeared in the groundcover list twice. Its second occurence was in: {}",
-                config_path.display()
-            ),
+            ConfigError::DuplicateGroundcoverFile {
+                file,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
+                write!(
+                    f,
+                    "{file} has appeared in the groundcover list twice. Its second occurence was in: {}{}",
+                    config_path.display(),
+                    line_suffix
+                )
+            }
             ConfigError::CannotAddGroundcoverFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
                 config_path.display()
             ),
-            ConfigError::DuplicateArchiveFile { file, config_path } => write!(
-                f,
-                "{file} has appeared in the BSA/Archive list twice. Its second occurence was in: {}",
-                config_path.display()
-            ),
+            ConfigError::DuplicateArchiveFile {
+                file,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
+                write!(
+                    f,
+                    "{file} has appeared in the BSA/Archive list twice. Its second occurence was in: {}{}",
+                    config_path.display(),
+                    line_suffix
+                )
+            }
             ConfigError::CannotAddArchiveFile { file, config_path } => write!(
                 f,
                 "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
                 config_path.display()
             ),
-            ConfigError::BadEncoding { value, config_path } => write!(
-                f,
-                "Invalid encoding type: {value} in config file {}",
-                config_path.display()
-            ),
-            ConfigError::InvalidLine { value, config_path } => write!(
-                f,
-                "Invalid pair in openmw.cfg {value} was defined by {}",
-                config_path.display()
-            ),
+            ConfigError::BadEncoding {
+                value,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
+                write!(
+                    f,
+                    "Invalid encoding type: {value} in config file {}{}",
+                    config_path.display(),
+                    line_suffix
+                )
+            }
+            ConfigError::InvalidLine {
+                value,
+                config_path,
+                line,
+            } => {
+                let line_suffix = line
+                    .map(|line| format!(" at line {line}"))
+                    .unwrap_or_default();
+                write!(
+                    f,
+                    "Invalid pair in openmw.cfg {value} was defined by {}{}",
+                    config_path.display(),
+                    line_suffix
+                )
+            }
             ConfigError::NotWritable(path) => {
                 write!(f, "Target path is not writable: {}", path.display())
             }
@@ -222,6 +360,9 @@ impl fmt::Display for ConfigError {
                 "Maximum config= nesting depth exceeded while loading {}",
                 path.display()
             ),
+            ConfigError::PlatformPathUnavailable(kind) => {
+                write!(f, "Failed to resolve platform default {kind} path")
+            }
         }
     }
 }
@@ -248,6 +389,7 @@ mod tests {
         let duplicate = ConfigError::DuplicateContentFile {
             file: "Morrowind.esm".into(),
             config_path: path.clone(),
+            line: None,
         }
         .to_string();
         assert!(duplicate.contains("Morrowind.esm"));
@@ -255,9 +397,11 @@ mod tests {
         let invalid_line = ConfigError::InvalidLine {
             value: "broken".into(),
             config_path: path,
+            line: Some(42),
         }
         .to_string();
         assert!(invalid_line.contains("broken"));
+        assert!(invalid_line.contains("line 42"));
     }
 
     #[test]

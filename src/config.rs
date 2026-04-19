@@ -3,7 +3,7 @@
 
 use std::{
     fmt::{self, Display},
-    fs::{OpenOptions, create_dir_all, metadata, read_to_string},
+    fs::{create_dir_all, metadata, read_to_string},
     path::{Path, PathBuf},
 };
 
@@ -167,6 +167,37 @@ macro_rules! insert_dir_setting {
 pub struct OpenMWConfiguration {
     root_config: PathBuf,
     settings: Vec<SettingValue>,
+    chain: Vec<ConfigChainEntry>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ConfigChainStatus {
+    Loaded,
+    SkippedMissing,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ConfigChainEntry {
+    path: PathBuf,
+    depth: usize,
+    status: ConfigChainStatus,
+}
+
+impl ConfigChainEntry {
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    #[must_use]
+    pub fn depth(&self) -> usize {
+        self.depth
+    }
+
+    #[must_use]
+    pub fn status(&self) -> &ConfigChainStatus {
+        &self.status
+    }
 }
 
 impl OpenMWConfiguration {
@@ -229,7 +260,7 @@ impl OpenMWConfiguration {
         let mut config = OpenMWConfiguration::default();
         let root_config = match path {
             Some(path) => util::input_config_path(path)?,
-            None => crate::default_config_path().join("openmw.cfg"),
+            None => crate::try_default_config_path()?.join("openmw.cfg"),
         };
 
         config.root_config = root_config;
@@ -320,6 +351,8 @@ impl OpenMWConfiguration {
     ///
     /// Openmw.cfg files are added in declaration order, traversing the `config=` chain level-by-level.
     /// In a branching chain, sibling `config=` entries are processed before grandchildren.
+    /// If `replace=config` appears in a file, any earlier settings and `config=` entries from that
+    /// same parse scope are discarded before continuing, matching OpenMW's reset semantics.
     /// The highest-priority openmw.cfg loaded (the last one!) is considered the user openmw.cfg,
     /// and will be the one which is modifiable by OpenMW-Launcher and `OpenMW` proper.
     ///
@@ -692,12 +725,23 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
-    /// Iterates all `config=` sub-configuration entries in definition order.
+    /// Iterates all `config=` sub-configuration entries in effective definition order.
+    ///
+    /// `replace=config` clears prior `config=` entries in the current parse scope, so this iterator
+    /// only exposes sub-configurations that remain in the effective chain.
     pub fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting> {
         self.settings.iter().filter_map(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => Some(subconfig),
             _ => None,
         })
+    }
+
+    /// Returns the observed configuration-chain traversal in parser order.
+    ///
+    /// Includes successfully loaded config files and `config=` targets that were skipped
+    /// because no `openmw.cfg` exists in that directory.
+    pub fn config_chain(&self) -> impl Iterator<Item = &ConfigChainEntry> {
+        self.chain.iter()
     }
 
     /// Fallback entries are k/v pairs baked into the value side of k/v pairs in `fallback=` entries of openmw.cfg.
@@ -785,6 +829,12 @@ impl OpenMWConfiguration {
                 config_dir
             };
 
+            self.chain.push(ConfigChainEntry {
+                path: cfg_file_path.clone(),
+                depth,
+                status: ConfigChainStatus::Loaded,
+            });
+
             let lines = read_to_string(&cfg_file_path)?;
 
             let mut queued_comment = String::new();
@@ -809,7 +859,8 @@ impl OpenMWConfiguration {
                 }
             }
 
-            for line in lines.lines() {
+            for (index, line) in lines.lines().enumerate() {
+                let line_no = index + 1;
                 let trimmed = line.trim();
 
                 if trimmed.is_empty() {
@@ -823,7 +874,7 @@ impl OpenMWConfiguration {
 
                 let tokens: Vec<&str> = trimmed.splitn(2, '=').collect();
                 if tokens.len() < 2 {
-                    bail_config!(invalid_line, trimmed.into(), cfg_file_path.clone());
+                    bail_config!(invalid_line, trimmed.into(), cfg_file_path.clone(), line_no);
                 }
 
                 let key = tokens[0].trim();
@@ -832,7 +883,7 @@ impl OpenMWConfiguration {
                 match key {
                     "content" => {
                         if !seen_content.insert(value.clone()) {
-                            bail_config!(duplicate_content_file, value, cfg_file_path);
+                            bail_config!(duplicate_content_file, value, cfg_file_path, line_no);
                         }
                         self.settings
                             .push(SettingValue::ContentFile(FileSetting::new(
@@ -843,7 +894,12 @@ impl OpenMWConfiguration {
                     }
                     "groundcover" => {
                         if !seen_groundcover.insert(value.clone()) {
-                            bail_config!(duplicate_groundcover_file, value, cfg_file_path);
+                            bail_config!(
+                                duplicate_groundcover_file,
+                                value,
+                                cfg_file_path,
+                                line_no
+                            );
                         }
                         self.settings
                             .push(SettingValue::Groundcover(FileSetting::new(
@@ -854,7 +910,7 @@ impl OpenMWConfiguration {
                     }
                     "fallback-archive" => {
                         if !seen_archives.insert(value.clone()) {
-                            bail_config!(duplicate_archive_file, value, cfg_file_path);
+                            bail_config!(duplicate_archive_file, value, cfg_file_path, line_no);
                         }
                         self.settings
                             .push(SettingValue::BethArchive(FileSetting::new(
@@ -868,13 +924,40 @@ impl OpenMWConfiguration {
                             &value,
                             Some(cfg_file_path.clone()),
                             &mut queued_comment,
-                        )?;
+                        )
+                        .map_err(|error| match error {
+                            ConfigError::InvalidGameSetting {
+                                value,
+                                config_path,
+                                ..
+                            } => ConfigError::InvalidGameSetting {
+                                value,
+                                config_path,
+                                line: Some(line_no),
+                            },
+                            _ => error,
+                        })?;
                     }
-                    "encoding" => self.set_encoding(Some(EncodingSetting::try_from((
-                        value,
-                        &cfg_file_path,
-                        &mut queued_comment,
-                    ))?)),
+                    "encoding" => {
+                        let encoding = EncodingSetting::try_from((
+                            value,
+                            &cfg_file_path,
+                            &mut queued_comment,
+                        ))
+                        .map_err(|error| match error {
+                            ConfigError::BadEncoding {
+                                value,
+                                config_path,
+                                ..
+                            } => ConfigError::BadEncoding {
+                                value,
+                                config_path,
+                                line: Some(line_no),
+                            },
+                            _ => error,
+                        })?;
+                        self.set_encoding(Some(encoding));
+                    }
                     "config" => {
                         sub_configs.push((value, std::mem::take(&mut queued_comment)));
                     }
@@ -937,6 +1020,8 @@ impl OpenMWConfiguration {
                             seen_content.clear();
                             seen_groundcover.clear();
                             seen_archives.clear();
+                            sub_configs.clear();
+                            pending_configs.clear();
                         }
                         _ => {}
                     },
@@ -958,6 +1043,11 @@ impl OpenMWConfiguration {
                     self.settings.push(SettingValue::SubConfiguration(setting));
                     pending_configs.push_back((subconfig_file, depth + 1));
                 } else {
+                    self.chain.push(ConfigChainEntry {
+                        path: subconfig_file,
+                        depth: depth + 1,
+                        status: ConfigChainStatus::SkippedMissing,
+                    });
                     util::debug_log(&format!(
                         "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
                         setting.parsed().display(),
@@ -971,14 +1061,37 @@ impl OpenMWConfiguration {
 
     fn write_config(config_string: &str, path: &Path) -> Result<(), ConfigError> {
         use std::io::Write;
+        use std::time::{SystemTime, UNIX_EPOCH};
 
-        let mut file = OpenOptions::new()
+        let parent = path
+            .parent()
+            .ok_or_else(|| ConfigError::NotWritable(path.to_path_buf()))?;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let tmp_path = parent.join(format!(
+            ".openmw-config-tmp-{}-{}",
+            std::process::id(),
+            nonce
+        ));
+
+        let mut file = std::fs::OpenOptions::new()
             .write(true)
-            .truncate(true)
-            .create(true)
-            .open(path)?;
+            .create_new(true)
+            .open(&tmp_path)?;
 
         file.write_all(config_string.as_bytes())?;
+        file.sync_all()?;
+
+        #[cfg(windows)]
+        {
+            if path.exists() {
+                std::fs::remove_file(path)?;
+            }
+        }
+
+        std::fs::rename(&tmp_path, path)?;
 
         Ok(())
     }
@@ -1635,7 +1748,10 @@ mod tests {
             write_cfg(&dir, "this_has_no_equals_sign\n");
             dir
         }));
-        assert!(matches!(result, Err(ConfigError::InvalidLine { .. })));
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidLine { line: Some(1), .. })
+        ));
     }
 
     #[test]

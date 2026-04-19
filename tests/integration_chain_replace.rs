@@ -1,7 +1,7 @@
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::{EncodingSetting, OpenMWConfiguration};
+use openmw_config::{ConfigChainStatus, EncodingSetting, OpenMWConfiguration};
 
 fn load(contents: &str) -> OpenMWConfiguration {
     let dir = temp_dir("replace");
@@ -52,6 +52,36 @@ fn test_replace_config_clears_prior_settings() {
     assert!(!config.has_content_file("Old.esm"));
     assert!(!config.has_archive_file("Old.bsa"));
     assert!(config.encoding().is_none());
+}
+
+#[test]
+fn test_replace_config_clears_queued_subconfigs_in_same_file() {
+    let root_dir = temp_dir("replace_config_queue_root");
+    let a_dir = temp_dir("replace_config_queue_a");
+    let b_dir = temp_dir("replace_config_queue_b");
+
+    write_cfg(&a_dir, "content=A.esm\n");
+    write_cfg(&b_dir, "content=B.esm\n");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Root.esm\nconfig={}\nreplace=config\nconfig={}\n",
+            a_dir.display(),
+            b_dir.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+
+    assert!(config.has_content_file("B.esm"));
+    assert!(!config.has_content_file("A.esm"));
+
+    let sub_paths: Vec<_> = config
+        .sub_configs()
+        .map(|setting| setting.parsed().to_path_buf())
+        .collect();
+    assert_eq!(sub_paths, vec![b_dir.clone()]);
+    assert_eq!(config.user_config_path(), b_dir);
 }
 
 #[test]
@@ -169,4 +199,28 @@ fn test_user_config_and_is_user_config_contract() {
     let user_only = chained.user_config().unwrap();
     assert!(user_only.has_content_file("Sub.esm"));
     assert!(!user_only.has_content_file("Root.esm"));
+}
+
+#[test]
+fn test_config_chain_reports_loaded_and_missing_entries() {
+    let root_dir = temp_dir("chain_report_root");
+    let loaded_dir = temp_dir("chain_report_loaded");
+    let missing_dir = temp_dir("chain_report_missing");
+
+    write_cfg(&loaded_dir, "content=Loaded.esm\n");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "config={}\nconfig={}\n",
+            loaded_dir.display(),
+            missing_dir.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    let chain: Vec<_> = config.config_chain().cloned().collect();
+
+    assert_eq!(chain[0].status(), &ConfigChainStatus::Loaded);
+    assert_eq!(chain[1].status(), &ConfigChainStatus::SkippedMissing);
+    assert_eq!(chain[2].status(), &ConfigChainStatus::Loaded);
 }

@@ -9,10 +9,7 @@ pub fn debug_log(message: &str) {
 
 pub fn is_writable(path: &std::path::Path) -> bool {
     if path.exists() {
-        match std::fs::OpenOptions::new().write(true).open(path) {
-            Ok(_) => true,
-            Err(e) => e.kind() != std::io::ErrorKind::PermissionDenied,
-        }
+        std::fs::OpenOptions::new().write(true).open(path).is_ok()
     } else {
         match path.parent() {
             Some(parent) => {
@@ -22,7 +19,7 @@ pub fn is_writable(path: &std::path::Path) -> bool {
                         let _ = std::fs::remove_file(&test_path);
                         true
                     }
-                    Err(e) => e.kind() != std::io::ErrorKind::PermissionDenied,
+                    Err(_) => false,
                 }
             }
             None => false,
