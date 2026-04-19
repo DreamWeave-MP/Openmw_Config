@@ -99,30 +99,41 @@ println!("{config}");
 
 ## API Overview
 
-| Method | Description |
+| `OpenMWConfiguration` methods | Description |
 |---|---|
-| `OpenMWConfiguration::from_env()` | Load from `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` env vars, then platform default |
-| `OpenMWConfiguration::new(path)` | Load from a specific path (file or directory), or platform default if `None` |
-| `OpenMWConfiguration::config_chain()` | Iterator over chain traversal events (`Loaded` / `SkippedMissing`) |
-| `content_files_iter()` | Iterator over loaded content files (`content=`) |
-| `groundcover_iter()` | Iterator over groundcover plugins (`groundcover=`) |
-| `fallback_archives_iter()` | Iterator over BSA/BA2 archives (`fallback-archive=`) |
-| `data_directories_iter()` | Iterator over data directories (`data=`) |
-| `game_settings()` | Iterator over `fallback=` entries, deduplicated by key (last-wins) |
-| `get_game_setting(key)` | Look up a single `fallback=` entry by key |
-| `sub_configs()` | Iterator over chained `config=` entries |
-| `add_content_file(name)` | Append a content file; errors if duplicate |
-| `remove_content_file(name)` | Remove a content file by name |
-| `set_content_files(list)` | Replace all content files; `None` clears them |
-| `set_data_directories(list)` | Replace all data directories; `None` clears them |
-| `set_fallback_archives(list)` | Replace all fallback archives; `None` clears them |
-| `set_game_settings(list)` | Replace all fallback entries; `None` clears them |
-| `save_user()` | Write the user config (`last config= in the chain`) to disk |
-| `save_subconfig(path)` | Write an arbitrary loaded sub-config to disk |
-| `user_config_ref()` | Load the highest-priority user config without consuming `self` |
-| `user_config_path()` | Directory of the highest-priority (user) config |
-| `try_default_config_path()` | Fallible platform default config directory resolver |
-| `try_default_userdata_path()` | Fallible platform default userdata directory resolver |
+| `from_env()` | Load from `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`, then platform default |
+| `new(path)` | Load from a specific file/directory path, or platform default when `None` |
+| `root_config_file()` / `root_config_dir()` | Return the root `openmw.cfg` path or its parent directory |
+| `is_user_config()` | Return `true` when root and user config resolve to the same directory |
+| `user_config(self)` / `user_config_ref(&self)` | Load the highest-priority user config (consuming or non-consuming) |
+| `user_config_path()` | Return the directory of the highest-priority user config |
+| `sub_configs()` | Iterate effective `config=` entries after `replace=config` handling |
+| `config_chain()` | Iterate parser-order chain events (`Loaded` / `SkippedMissing`) |
+| `content_files_iter()` / `groundcover_iter()` / `fallback_archives_iter()` | Iterate loaded `content=`, `groundcover=`, and `fallback-archive=` entries |
+| `data_directories_iter()` | Iterate loaded `data=` directories |
+| `game_settings()` / `get_game_setting(key)` | Iterate deduplicated `fallback=` entries or look up one by key |
+| `add_content_file(name)` / `add_groundcover_file(name)` / `add_archive_file(name)` | Append file entries (error on duplicates) |
+| `add_data_directory(path)` | Append a `data=` directory entry |
+| `remove_content_file(name)` / `remove_groundcover_file(name)` / `remove_archive_file(name)` | Remove matching file entries |
+| `remove_data_directory(path)` | Remove a matching `data=` directory entry |
+| `set_content_files(list)` / `set_fallback_archives(list)` / `set_data_directories(list)` | Replace full collections (`None` clears) |
+| `set_game_setting(value, source, comment)` / `set_game_settings(list)` | Add/replace one or many `fallback=` entries |
+| `userdata()` / `resources()` / `data_local()` / `encoding()` | Read singleton settings |
+| `set_userdata(value)` / `set_resources(value)` / `set_data_local(value)` / `set_encoding(value)` | Replace singleton settings |
+| `has_content_file(name)` / `has_groundcover_file(name)` / `has_archive_file(name)` / `has_data_dir(path)` | Presence checks for loaded entries |
+| `save_user()` / `save_subconfig(path)` | Write user or selected loaded config back to disk |
+
+| Free functions | Description |
+|---|---|
+| `default_config_path()` / `default_userdata_path()` / `default_data_local_path()` | Platform default paths (panic on unsupported platform path discovery failures) |
+| `try_default_config_path()` / `try_default_userdata_path()` | Fallible variants of platform default path resolution |
+
+| Setting helper methods | Description |
+|---|---|
+| `DirectorySetting::original()` / `DirectorySetting::original_str()` / `DirectorySetting::parsed()` | Access raw and parsed directory values |
+| `FileSetting::value()` / `FileSetting::value_str()` | Access file value as `&String` or `&str` |
+| `GameSettingType::key()` / `GameSettingType::key_str()` / `GameSettingType::value()` | Access `fallback=` key/value views |
+| `ConfigChainEntry::path()` / `ConfigChainEntry::depth()` / `ConfigChainEntry::status()` | Inspect per-node chain traversal metadata |
 
 ## Advanced
 
