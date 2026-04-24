@@ -2,7 +2,8 @@
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use crate::{
-    ConfigChainStatus, DirectorySetting, EncodingSetting, GameSettingType, OpenMWConfiguration,
+    ConfigChainStatus, DirectorySetting, EncodingSetting, GameSetting as GameSettingTrait,
+    GameSettingType, OpenMWConfiguration,
 };
 use mlua::{Lua, Table, UserData, UserDataMethods};
 use std::path::{Path, PathBuf};
@@ -36,16 +37,25 @@ fn game_setting_kind(setting: &GameSettingType) -> &'static str {
     }
 }
 
-fn push_game_setting_row(
+fn push_setting_row(
     lua: &Lua,
     table: &Table,
     index: usize,
-    setting: &GameSettingType,
+    setting: &impl GameSettingTrait,
+    key: &str,
+    value: impl AsRef<str>,
+    kind: Option<&str>,
 ) -> mlua::Result<()> {
     let row = lua.create_table()?;
-    row.set("key", setting.key_str())?;
-    row.set("value", setting.value().to_string())?;
-    row.set("kind", game_setting_kind(setting))?;
+    row.set("key", key)?;
+    row.set("value", value.as_ref())?;
+    row.set("source", setting.meta().source_config().display().to_string())?;
+    row.set("comment", setting.meta().comment())?;
+
+    if let Some(kind) = kind {
+        row.set("kind", kind)?;
+    }
+
     table.set(index + 1, row)?;
     Ok(())
 }
@@ -149,7 +159,33 @@ impl UserData for LuaOpenMWConfiguration {
             let settings = lua.create_table()?;
 
             for (index, setting) in this.inner.game_settings().enumerate() {
-                push_game_setting_row(lua, &settings, index, setting)?;
+                push_setting_row(
+                    lua,
+                    &settings,
+                    index,
+                    setting,
+                    setting.key_str(),
+                    setting.value(),
+                    Some(game_setting_kind(setting)),
+                )?;
+            }
+
+            Ok(settings)
+        });
+
+        methods.add_method("genericSettings", |lua, this, ()| {
+            let settings = lua.create_table()?;
+
+            for (index, setting) in this.inner.generic_settings_iter().enumerate() {
+                push_setting_row(
+                    lua,
+                    &settings,
+                    index,
+                    setting,
+                    setting.key(),
+                    setting.value(),
+                    None,
+                )?;
             }
 
             Ok(settings)
@@ -161,6 +197,8 @@ impl UserData for LuaOpenMWConfiguration {
                 row.set("key", setting.key_str())?;
                 row.set("value", setting.value().to_string())?;
                 row.set("kind", game_setting_kind(setting))?;
+                row.set("source", setting.meta().source_config().display().to_string())?;
+                row.set("comment", setting.meta().comment())?;
                 Ok(Some(row))
             } else {
                 Ok(None::<Table>)
@@ -288,6 +326,19 @@ impl UserData for LuaOpenMWConfiguration {
             },
         );
 
+        methods.add_method_mut(
+            "setGenericSettings",
+            |_, this, (key, values): (String, Option<Vec<String>>)| {
+                this.inner.set_generic_settings(&key, values);
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut("addGenericSetting", |_, this, (key, value): (String, String)| {
+            this.inner.add_generic_setting(&key, &value);
+            Ok(())
+        });
+
         methods.add_method_mut("setUserData", |_, this, path: Option<String>| {
             let source = this.inner.user_config_path().join("openmw.cfg");
             let setting = path
@@ -338,6 +389,10 @@ impl UserData for LuaOpenMWConfiguration {
             this.inner
                 .save_subconfig(Path::new(&target_dir))
                 .map_err(lua_err)
+        });
+
+        methods.add_method("saveToPath", |_, this, path: String| {
+            this.inner.save_to_path(Path::new(&path)).map_err(lua_err)
         });
     }
 }

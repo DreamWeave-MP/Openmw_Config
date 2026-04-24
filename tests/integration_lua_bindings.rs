@@ -18,6 +18,84 @@ mod lua_tests {
         base
     }
 
+    const READ_SURFACE_SCRIPT: &str = r##"
+            local cfg = openmwConfig.new(rootPath)
+
+            assert(type(cfg:rootConfigFile()) == "string")
+            assert(type(cfg:rootConfigDir()) == "string")
+            assert(type(cfg:isUserConfig()) == "boolean")
+            assert(type(cfg:userConfigPath()) == "string")
+            assert(type(cfg:userConfig():toString()) == "string")
+
+            assert(cfg:hasContentFile("Root.esm"))
+            assert(cfg:hasContentFile("Sub.esm"))
+            assert(cfg:hasGroundcoverFile("RootGrass.esp"))
+            assert(cfg:hasArchiveFile("Root.bsa"))
+            assert(cfg:hasDataDir(expectedDataDir))
+
+            local subConfigs = cfg:subConfigs()
+            assert(#subConfigs == 1)
+
+            local chain = cfg:configChain()
+            assert(#chain == 3)
+            assert(chain[1].status == "loaded")
+            assert(chain[2].status == "skippedMissing")
+            assert(chain[3].status == "loaded")
+            assert(type(chain[1].depth) == "number")
+            assert(type(chain[1].path) == "string")
+
+            local content = cfg:contentFiles()
+            assert(#content == 2)
+            local ground = cfg:groundcoverFiles()
+            assert(#ground == 1)
+            local archives = cfg:fallbackArchives()
+            assert(#archives == 1)
+            local dirs = cfg:dataDirectories()
+            assert(#dirs >= 1)
+
+            assert(string.find(cfg:userData(), expectedUserData) ~= nil)
+            assert(string.find(cfg:resources(), expectedResources) ~= nil)
+            assert(string.find(cfg:dataLocal(), expectedDataLocal) ~= nil)
+            assert(cfg:encoding() == "win1252")
+
+            local settings = cfg:gameSettings()
+            assert(#settings == 3)
+            assert(type(settings[1].key) == "string")
+            assert(type(settings[1].value) == "string")
+            assert(type(settings[1].kind) == "string")
+            assert(type(settings[1].source) == "string")
+            assert(type(settings[1].comment) == "string")
+
+            local fScale = nil
+            for _, row in ipairs(settings) do
+                if row.key == "fScale" then
+                    fScale = row
+                    break
+                end
+            end
+            assert(fScale ~= nil)
+            assert(fScale.source == expectedRootCfg)
+            assert(fScale.comment == "# game comment\n")
+
+            local game = cfg:getGameSetting("iDifficulty")
+            assert(game ~= nil)
+            assert(game.key == "iDifficulty")
+            assert(game.value == "20")
+            assert(game.kind == "Int")
+            assert(type(game.source) == "string")
+            assert(type(game.comment) == "string")
+            assert(cfg:getGameSetting("does.not.exist") == nil)
+
+            local generic = cfg:genericSettings()
+            assert(#generic == 1)
+            assert(generic[1].key == "no-sound")
+            assert(generic[1].value == "1")
+            assert(generic[1].source == expectedRootCfg)
+            assert(generic[1].comment == "# generic comment\n")
+
+            assert(type(cfg:toString()) == "string")
+    "##;
+
     #[test]
     fn test_lua_module_exports_and_default_helpers() {
         let lua = Lua::new();
@@ -96,7 +174,7 @@ mod lua_tests {
         write_cfg(
             &root,
             &format!(
-                "content=Root.esm\ngroundcover=RootGrass.esp\nfallback-archive=Root.bsa\nencoding=win1252\nuser-data={}\nresources={}\ndata-local={}\ndata={}\nfallback=iDifficulty,20\nfallback=fScale,1.5\nfallback=sName,Hello\nconfig={}\nconfig={}\n",
+                "content=Root.esm\ngroundcover=RootGrass.esp\nfallback-archive=Root.bsa\nencoding=win1252\nuser-data={}\nresources={}\ndata-local={}\ndata={}\nfallback=iDifficulty,20\n# game comment\nfallback=fScale,1.5\nfallback=sName,Hello\n# generic comment\nno-sound=1\nconfig={}\nconfig={}\n",
                 userdata_dir.display(),
                 resources_dir.display(),
                 data_local_dir.display(),
@@ -125,66 +203,11 @@ mod lua_tests {
         lua.globals()
             .set("expectedDataDir", data_dir.display().to_string())
             .unwrap();
+        lua.globals()
+            .set("expectedRootCfg", root.join("openmw.cfg").display().to_string())
+            .unwrap();
 
-        lua.load(
-            r#"
-            local cfg = openmwConfig.new(rootPath)
-
-            assert(type(cfg:rootConfigFile()) == "string")
-            assert(type(cfg:rootConfigDir()) == "string")
-            assert(type(cfg:isUserConfig()) == "boolean")
-            assert(type(cfg:userConfigPath()) == "string")
-            assert(type(cfg:userConfig():toString()) == "string")
-
-            assert(cfg:hasContentFile("Root.esm"))
-            assert(cfg:hasContentFile("Sub.esm"))
-            assert(cfg:hasGroundcoverFile("RootGrass.esp"))
-            assert(cfg:hasArchiveFile("Root.bsa"))
-            assert(cfg:hasDataDir(expectedDataDir))
-
-            local subConfigs = cfg:subConfigs()
-            assert(#subConfigs == 1)
-
-            local chain = cfg:configChain()
-            assert(#chain == 3)
-            assert(chain[1].status == "loaded")
-            assert(chain[2].status == "skippedMissing")
-            assert(chain[3].status == "loaded")
-            assert(type(chain[1].depth) == "number")
-            assert(type(chain[1].path) == "string")
-
-            local content = cfg:contentFiles()
-            assert(#content == 2)
-            local ground = cfg:groundcoverFiles()
-            assert(#ground == 1)
-            local archives = cfg:fallbackArchives()
-            assert(#archives == 1)
-            local dirs = cfg:dataDirectories()
-            assert(#dirs >= 1)
-
-            assert(string.find(cfg:userData(), expectedUserData) ~= nil)
-            assert(string.find(cfg:resources(), expectedResources) ~= nil)
-            assert(string.find(cfg:dataLocal(), expectedDataLocal) ~= nil)
-            assert(cfg:encoding() == "win1252")
-
-            local settings = cfg:gameSettings()
-            assert(#settings == 3)
-            assert(type(settings[1].key) == "string")
-            assert(type(settings[1].value) == "string")
-            assert(type(settings[1].kind) == "string")
-
-            local game = cfg:getGameSetting("iDifficulty")
-            assert(game ~= nil)
-            assert(game.key == "iDifficulty")
-            assert(game.value == "20")
-            assert(game.kind == "Int")
-            assert(cfg:getGameSetting("does.not.exist") == nil)
-
-            assert(type(cfg:toString()) == "string")
-        "#,
-        )
-        .exec()
-        .unwrap();
+        lua.load(READ_SURFACE_SCRIPT).exec().unwrap();
     }
 
     #[test]
@@ -264,6 +287,18 @@ mod lua_tests {
             cfg:setDataLocal(nil)
             cfg:setEncoding(nil)
 
+            cfg:setGenericSettings("no-sound", {"2", "3"})
+            assert(#cfg:genericSettings() == 2)
+            assert(cfg:genericSettings()[1].key == "no-sound")
+            assert(cfg:genericSettings()[1].value == "2")
+
+            cfg:addGenericSetting("no-sound", "4")
+            assert(#cfg:genericSettings() == 3)
+            assert(cfg:genericSettings()[3].value == "4")
+
+            cfg:setGenericSettings("no-sound", nil)
+            assert(#cfg:genericSettings() == 0)
+
             assert(#cfg:contentFiles() == 0)
             assert(#cfg:fallbackArchives() == 0)
             assert(#cfg:dataDirectories() == 0)
@@ -287,6 +322,49 @@ mod lua_tests {
         assert!(saved.contains("content=LuaMod.esp"));
         assert!(saved.contains(&format!("data={}", data_dir.display())));
         assert!(saved.contains("fallback=fJumpHeight,1.0"));
+    }
+
+    #[test]
+    fn test_lua_generic_settings_and_save_to_path() {
+        let root = temp_dir("generic_save_root");
+        write_cfg(&root, "no-sound=1\n");
+
+        let out = temp_dir("generic_save_out").join("imported-openmw.cfg");
+
+        let lua = Lua::new();
+        let module = create_lua_module(&lua).unwrap();
+        lua.globals().set("openmwConfig", module).unwrap();
+        lua.globals()
+            .set("rootPath", root.display().to_string())
+            .unwrap();
+        lua.globals()
+            .set("outPath", out.display().to_string())
+            .unwrap();
+
+        lua.load(
+            r#"
+            local cfg = openmwConfig.new(rootPath)
+
+            cfg:setGenericSettings("no-sound", {"0", "1"})
+            cfg:addGenericSetting("some-flag", "yes")
+
+            local settings = cfg:genericSettings()
+            assert(#settings == 3)
+            assert(settings[1].key == "no-sound")
+            assert(settings[1].value == "0")
+            assert(settings[2].value == "1")
+            assert(settings[3].key == "some-flag")
+
+            cfg:saveToPath(outPath)
+        "#,
+        )
+        .exec()
+        .unwrap();
+
+        let saved = std::fs::read_to_string(&out).unwrap();
+        assert!(saved.contains("no-sound=0"));
+        assert!(saved.contains("no-sound=1"));
+        assert!(saved.contains("some-flag=yes"));
     }
 
     #[test]
