@@ -716,6 +716,51 @@ impl OpenMWConfiguration {
         self.rebuild_indexes();
     }
 
+    /// Iterates all preserved generic `key=value` entries in definition order.
+    pub fn generic_settings_iter(&self) -> impl Iterator<Item = &GenericSetting> {
+        self.settings.iter().filter_map(|setting| match setting {
+            SettingValue::Generic(generic) => Some(generic),
+            _ => None,
+        })
+    }
+
+    /// Replaces all preserved generic `key=value` entries with `values`, or clears them if `None`.
+    ///
+    /// Entries are attributed to the user config path. No duplicate checking is performed.
+    pub fn set_generic_settings(&mut self, key: &str, values: Option<Vec<String>>) {
+        self.clear_matching_internal(|setting| match setting {
+            SettingValue::Generic(generic) => generic.key() == key,
+            _ => false,
+        });
+
+        if let Some(values) = values {
+            let cfg_path = self.user_config_path().join("openmw.cfg");
+            let mut empty = String::default();
+
+            for value in values {
+                self.settings.push(SettingValue::Generic(GenericSetting::new(
+                    key,
+                    &value,
+                    &cfg_path,
+                    &mut empty,
+                )));
+            }
+        }
+
+        self.rebuild_indexes();
+    }
+
+    /// Appends a preserved generic `key=value` entry attributed to the user config.
+    pub fn add_generic_setting(&mut self, key: &str, value: &str) {
+        self.settings.push(SettingValue::Generic(GenericSetting::new(
+            key,
+            value,
+            &self.user_config_path().join("openmw.cfg"),
+            &mut String::default(),
+        )));
+        self.rebuild_indexes();
+    }
+
     /// Iterates all settings for which `predicate` returns `true`.
     pub fn settings_matching<'a, P>(
         &'a self,
@@ -1220,6 +1265,24 @@ impl OpenMWConfiguration {
         std::fs::rename(&tmp_path, path)?;
 
         Ok(())
+    }
+
+    /// Writes the full composite configuration to an arbitrary path.
+    ///
+    /// This is intended for importer-style output where the exact destination is supplied by the
+    /// caller rather than inferred from the loaded config chain.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
+    /// Returns [`ConfigError::Io`] if writing the file fails.
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
+        let path = path.as_ref();
+
+        if !util::is_writable(path) {
+            bail_config!(not_writable, path);
+        }
+
+        Self::write_config(&self.to_string(), path)
     }
 
     /// Saves the currently-defined user openmw.cfg configuration.
@@ -1763,6 +1826,34 @@ mod tests {
         let config = load("some-unknown-key=some-value\n");
         let output = config.to_string();
         assert!(output.contains("some-unknown-key=some-value"));
+    }
+
+    #[test]
+    fn test_generic_settings_can_be_replaced_and_iterated() {
+        let mut config = load("no-sound=1\nno-sound=0\nother=keep\n");
+
+        config.set_generic_settings("no-sound", Some(vec!["2".to_string()]));
+
+        let values: Vec<(&str, &str)> = config
+            .generic_settings_iter()
+            .map(|setting| (setting.key(), setting.value()))
+            .collect();
+
+        assert_eq!(values, vec![("other", "keep"), ("no-sound", "2")]);
+    }
+
+    #[test]
+    fn test_save_to_path_writes_exact_output_path() {
+        let dir = temp_dir();
+        write_cfg(&dir, "no-sound=1\ncontent=Morrowind.esm\n");
+        let config = OpenMWConfiguration::new(Some(dir)).unwrap();
+
+        let out = temp_dir().join("imported-openmw.cfg");
+        config.save_to_path(&out).unwrap();
+
+        let saved = std::fs::read_to_string(&out).unwrap();
+        assert!(saved.contains("no-sound=1"));
+        assert!(saved.contains("content=Morrowind.esm"));
     }
 
     // -----------------------------------------------------------------------

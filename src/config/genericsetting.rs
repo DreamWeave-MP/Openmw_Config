@@ -24,6 +24,16 @@ impl fmt::Display for GenericSetting {
 }
 
 impl GenericSetting {
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    #[must_use]
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
     pub fn new(
         key: &str,
         value: &str,
