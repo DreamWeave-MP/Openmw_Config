@@ -49,7 +49,10 @@ fn push_setting_row(
     let row = lua.create_table()?;
     row.set("key", key)?;
     row.set("value", value.as_ref())?;
-    row.set("source", setting.meta().source_config().display().to_string())?;
+    row.set(
+        "source",
+        setting.meta().source_config().display().to_string(),
+    )?;
     row.set("comment", setting.meta().comment())?;
 
     if let Some(kind) = kind {
@@ -197,7 +200,10 @@ impl UserData for LuaOpenMWConfiguration {
                 row.set("key", setting.key_str())?;
                 row.set("value", setting.value().to_string())?;
                 row.set("kind", game_setting_kind(setting))?;
-                row.set("source", setting.meta().source_config().display().to_string())?;
+                row.set(
+                    "source",
+                    setting.meta().source_config().display().to_string(),
+                )?;
                 row.set("comment", setting.meta().comment())?;
                 Ok(Some(row))
             } else {
@@ -334,10 +340,13 @@ impl UserData for LuaOpenMWConfiguration {
             },
         );
 
-        methods.add_method_mut("addGenericSetting", |_, this, (key, value): (String, String)| {
-            this.inner.add_generic_setting(&key, &value);
-            Ok(())
-        });
+        methods.add_method_mut(
+            "addGenericSetting",
+            |_, this, (key, value): (String, String)| {
+                this.inner.add_generic_setting(&key, &value);
+                Ok(())
+            },
+        );
 
         methods.add_method_mut("setUserData", |_, this, path: Option<String>| {
             let source = this.inner.user_config_path().join("openmw.cfg");

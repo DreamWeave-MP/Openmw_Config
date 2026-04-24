@@ -204,7 +204,10 @@ mod lua_tests {
             .set("expectedDataDir", data_dir.display().to_string())
             .unwrap();
         lua.globals()
-            .set("expectedRootCfg", root.join("openmw.cfg").display().to_string())
+            .set(
+                "expectedRootCfg",
+                root.join("openmw.cfg").display().to_string(),
+            )
             .unwrap();
 
         lua.load(READ_SURFACE_SCRIPT).exec().unwrap();

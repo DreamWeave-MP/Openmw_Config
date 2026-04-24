@@ -738,12 +738,10 @@ impl OpenMWConfiguration {
             let mut empty = String::default();
 
             for value in values {
-                self.settings.push(SettingValue::Generic(GenericSetting::new(
-                    key,
-                    &value,
-                    &cfg_path,
-                    &mut empty,
-                )));
+                self.settings
+                    .push(SettingValue::Generic(GenericSetting::new(
+                        key, &value, &cfg_path, &mut empty,
+                    )));
             }
         }
 
@@ -752,12 +750,13 @@ impl OpenMWConfiguration {
 
     /// Appends a preserved generic `key=value` entry attributed to the user config.
     pub fn add_generic_setting(&mut self, key: &str, value: &str) {
-        self.settings.push(SettingValue::Generic(GenericSetting::new(
-            key,
-            value,
-            &self.user_config_path().join("openmw.cfg"),
-            &mut String::default(),
-        )));
+        self.settings
+            .push(SettingValue::Generic(GenericSetting::new(
+                key,
+                value,
+                &self.user_config_path().join("openmw.cfg"),
+                &mut String::default(),
+            )));
         self.rebuild_indexes();
     }
 
