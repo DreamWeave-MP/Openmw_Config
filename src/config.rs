@@ -1273,13 +1273,17 @@ impl OpenMWConfiguration {
     /// caller rather than inferred from the loaded config chain.
     ///
     /// # Errors
-    /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
+    /// Returns [`ConfigError::NotWritable`] if the destination directory is not writable.
     /// Returns [`ConfigError::Io`] if writing the file fails.
     pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
         let path = path.as_ref();
+        let parent = path
+            .parent()
+            .ok_or_else(|| ConfigError::NotWritable(path.to_path_buf()))?;
+        let writable_probe = parent.join(".openmw-config-write-test");
 
-        if !util::is_writable(path) {
-            bail_config!(not_writable, path);
+        if !util::is_writable(&writable_probe) {
+            bail_config!(not_writable, parent);
         }
 
         Self::write_config(&self.to_string(), path)
@@ -1854,6 +1858,51 @@ mod tests {
         let saved = std::fs::read_to_string(&out).unwrap();
         assert!(saved.contains("no-sound=1"));
         assert!(saved.contains("content=Morrowind.esm"));
+    }
+
+    #[test]
+    fn test_save_to_path_overwrites_read_only_existing_file() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = temp_dir();
+            write_cfg(&dir, "no-sound=1\n");
+            let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+
+            let out = dir.join("export.cfg");
+            std::fs::write(&out, "old=content\n").unwrap();
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+            config.save_to_path(&out).unwrap();
+
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let saved = std::fs::read_to_string(&out).unwrap();
+            assert!(saved.contains("no-sound=1"));
+            assert!(!saved.contains("old=content"));
+        }
+    }
+
+    #[test]
+    fn test_save_to_path_rejects_unwritable_parent_directory() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = temp_dir();
+            write_cfg(&dir, "no-sound=1\n");
+            let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+
+            let parent = temp_dir();
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+            let out = parent.join("export.cfg");
+            let result = config.save_to_path(&out);
+
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+            assert!(matches!(result, Err(ConfigError::NotWritable(_))));
+        }
     }
 
     // -----------------------------------------------------------------------
