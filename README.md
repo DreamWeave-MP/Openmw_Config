@@ -22,8 +22,8 @@ replacement semantics. For comprehensive VFS coverage, combine with
 
 - **OpenMW-accurate semantics** - models `config=` traversal, `replace=*` behavior, and token
   expansion (`?local?`, `?global?`, `?userdata?`, `?userconfig?`) to match real parser behavior.
-- **Safe persistence model** - `save_user()` and `save_subconfig()` use atomic write semantics to
-  avoid partial writes.
+- **Safe persistence model** - `save_user()`, `save_subconfig()`, and `save_to_path()` use atomic
+  write semantics to avoid partial writes.
 - **Integration-friendly API** - ergonomic Rust API plus embedded Lua host bindings via `mlua`,
   with a camelCase-only Lua surface.
 - **Diagnostics and predictability** - line-aware parse errors, explicit chain introspection, and
@@ -69,6 +69,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = config;
     config.add_content_file("Extra.esp")?;
     config.save_user()?;
+
+    // Or write the full composite config to an explicit path
+    config.save_to_path("/tmp/openmw.cfg")?;
 
     Ok(())
 }
@@ -174,8 +177,10 @@ println!("{config}");
 | `sub_configs()` / `config_chain()` | Traverse effective subconfigs and parser-order chain events |
 | `content_files_iter()` / `groundcover_iter()` / `fallback_archives_iter()` | Read loaded file collections |
 | `data_directories_iter()` / `game_settings()` / `get_game_setting(key)` | Read resolved directories and `fallback=` settings |
+| `generic_settings_iter()` | Read preserved generic `key=value` entries |
 | `add_*` / `remove_*` / `set_*` methods | Mutate loaded values |
-| `save_user()` / `save_subconfig(path)` | Persist changes using atomic writes |
+| `add_generic_setting()` / `set_generic_settings()` | Mutate preserved generic entries |
+| `save_user()` / `save_subconfig(path)` / `save_to_path(path)` | Persist changes using atomic writes |
 | `default_*` and `try_default_*` free functions | Resolve default config/user paths (panic or fallible variants) |
 | `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua table for embedded host integration |
 
@@ -187,8 +192,8 @@ Task-oriented map:
 - **Load config state** - `OpenMWConfiguration::from_env()`, `OpenMWConfiguration::new(path)`
 - **Inspect chain resolution** - `sub_configs()`, `config_chain()`, `user_config_path()`
 - **Edit plugin/data lists** - `add_*`, `remove_*`, `set_*` method families
-- **Read/write settings** - `game_settings()`, `get_game_setting(key)`, `set_game_setting(...)`
-- **Persist safely** - `save_user()`, `save_subconfig(path)`
+- **Read/write settings** - `game_settings()`, `get_game_setting(key)`, `generic_settings_iter()`, `set_game_setting(...)`
+- **Persist safely** - `save_user()`, `save_subconfig(path)`, `save_to_path(path)`
 
 ## Advanced Behavior
 
@@ -261,16 +266,18 @@ Module exports (`openmwConfig`):
 | `configChain()` | `table[]` | Rows: `{ path, depth, status }`, status is `loaded` or `skippedMissing` |
 | `contentFiles()` / `groundcoverFiles()` / `fallbackArchives()` | `string[]` | Collection snapshots |
 | `dataDirectories()` | `string[]` | Resolved `data=` directories |
-| `gameSettings()` | `table[]` | Rows: `{ key, value, kind }` |
-| `getGameSetting(key)` | `table|nil` | Single row with `{ key, value, kind }` |
+| `gameSettings()` | `table[]` | Rows: `{ key, value, kind, source, comment }` |
+| `genericSettings()` | `table[]` | Rows: `{ key, value, source, comment }` |
+| `getGameSetting(key)` | `table|nil` | Single row with `{ key, value, kind, source, comment }` |
 | `userData()` / `resources()` / `dataLocal()` / `encoding()` | `string|nil` | Singleton getters |
 | `hasContentFile(name)` / `hasGroundcoverFile(name)` / `hasArchiveFile(name)` / `hasDataDir(path)` | `boolean` | Presence checks |
 | `addContentFile(name)` / `addGroundcoverFile(name)` / `addArchiveFile(name)` / `addDataDirectory(path)` | `nil` | Mutating append operations |
 | `removeContentFile(name)` / `removeGroundcoverFile(name)` / `removeArchiveFile(name)` / `removeDataDirectory(path)` | `nil` | Mutating remove operations |
 | `setContentFiles(listOrNil)` / `setFallbackArchives(listOrNil)` / `setDataDirectories(listOrNil)` | `nil` | Replaces full collection, `nil` clears |
+| `setGenericSettings(key, listOrNil)` / `addGenericSetting(key, value)` | `nil` | Manage preserved generic entries |
 | `setGameSetting(value, sourcePathOrNil, commentOrNil)` / `setGameSettings(listOrNil)` | `nil` | Fallback setters |
 | `setUserData(pathOrNil)` / `setResources(pathOrNil)` / `setDataLocal(pathOrNil)` / `setEncoding(valueOrNil)` | `nil` | Singleton setters, `nil` clears |
-| `saveUser()` / `saveSubconfig(path)` | `nil` | Write to user config or loaded subconfig |
+| `saveUser()` / `saveSubconfig(path)` / `saveToPath(path)` | `nil` | Write to user config, loaded subconfig, or explicit path |
 
 ### Host Integration (Embedded Lua)
 
@@ -302,7 +309,8 @@ cfg:saveUser()
   `cfg:*` read, mutate, and save method families are intended to remain stable.
 - Table shapes are stable:
   - `configChain()` rows: `{ path, depth, status }`
-  - `gameSettings()` / `getGameSetting()` rows: `{ key, value, kind }`
+  - `gameSettings()` / `getGameSetting()` rows: `{ key, value, kind, source, comment }`
+  - `genericSettings()` rows: `{ key, value, source, comment }`
 - `status` is one of `loaded` or `skippedMissing`.
 - `kind` is one of `Color`, `String`, `Float`, or `Int`.
 - `nil` inputs are used to clear optional settings in setter methods.
