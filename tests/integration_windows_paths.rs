@@ -62,3 +62,23 @@ fn test_windows_default_paths_match_known_documents_folder() {
         expected
     );
 }
+
+#[test]
+fn test_windows_save_to_path_overwrites_read_only_file() {
+    let dir = temp_dir("win_save_readonly");
+    write_cfg(&dir, "no-sound=1\n");
+    let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+
+    let out = dir.join("export.cfg");
+    std::fs::write(&out, "old=content\n").unwrap();
+
+    let mut permissions = std::fs::metadata(&out).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&out, permissions).unwrap();
+
+    config.save_to_path(&out).unwrap();
+
+    let saved = std::fs::read_to_string(&out).unwrap();
+    assert!(saved.contains("no-sound=1"));
+    assert!(!saved.contains("old=content"));
+}

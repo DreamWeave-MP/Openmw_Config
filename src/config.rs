@@ -1258,6 +1258,16 @@ impl OpenMWConfiguration {
         #[cfg(windows)]
         {
             if path.exists() {
+                if let Ok(metadata) = std::fs::metadata(path) {
+                    let mut permissions = metadata.permissions();
+                    if permissions.readonly() {
+                        // Windows blocks deletion of read-only files, and the atomic replace path
+                        // needs the destination gone before we rename the temp file into place.
+                        permissions.set_readonly(false);
+                        std::fs::set_permissions(path, permissions)?;
+                    }
+                }
+
                 std::fs::remove_file(path)?;
             }
         }
