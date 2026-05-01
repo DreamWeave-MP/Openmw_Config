@@ -85,6 +85,19 @@ fn test_roundtrip_preserves_fallback_float_lexeme() {
     );
 }
 
+#[test]
+fn test_roundtrip_encoding_does_not_grow_blank_lines() {
+    let cfg = "encoding=win1252\nfallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\nfallback-archive=Bloodmoon.bsa\n";
+
+    let first = load_from_contents("roundtrip_encoding_blank_a", cfg).to_string();
+    let second = load_from_contents("roundtrip_encoding_blank_b", &first).to_string();
+    let third = load_from_contents("roundtrip_encoding_blank_c", &second).to_string();
+
+    assert_eq!(first, second);
+    assert_eq!(second, third);
+    assert!(first.contains("encoding=win1252\nfallback-archive=Morrowind.bsa"));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
 

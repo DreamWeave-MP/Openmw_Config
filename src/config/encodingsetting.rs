@@ -28,7 +28,7 @@ impl std::fmt::Display for EncodingType {
             EncodingType::WIN1252 => "win1252",
         };
 
-        writeln!(f, "{value}")
+        write!(f, "{value}")
     }
 }
 
