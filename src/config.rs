@@ -349,9 +349,17 @@ impl OpenMWConfiguration {
                     ));
                 }
 
+                let mut synthetic_data_dir = dir.clone();
+                // data-local is part of the effective VFS data directory list, but it is not a
+                // persisted `data=` line. Give the injected entry no source config so save paths
+                // do not write it back as a real data directory and slowly grow the file. Bonsai,
+                // but for configuration lies.
+                synthetic_data_dir.meta.source_config = PathBuf::new();
+                synthetic_data_dir.meta.comment.clear();
+
                 config
                     .settings
-                    .push(SettingValue::DataDirectory(dir.clone()));
+                    .push(SettingValue::DataDirectory(synthetic_data_dir));
             }
 
             if let Some(setting) = config.resources() {
@@ -777,6 +785,21 @@ impl OpenMWConfiguration {
         P: Fn(&SettingValue) -> bool,
     {
         self.settings.retain(|s| !predicate(s));
+    }
+
+    fn is_synthetic_data_local_data_directory(&self, setting: &SettingValue) -> bool {
+        let SettingValue::DataDirectory(data_dir) = setting else {
+            return false;
+        };
+
+        if !data_dir.meta().source_config.as_os_str().is_empty() {
+            return false;
+        }
+
+        self.data_local().is_some_and(|data_local| {
+            data_dir.parsed() == data_local.parsed()
+                || data_dir.original_str() == data_local.original_str()
+        })
     }
 
     /// Removes all settings for which `predicate` returns `true`.
@@ -1320,6 +1343,10 @@ impl OpenMWConfiguration {
         for user_setting in
             self.settings_matching(|setting| setting.meta().source_config == cfg_path)
         {
+            if self.is_synthetic_data_local_data_directory(user_setting) {
+                continue;
+            }
+
             user_settings_string.push_str(&user_setting.to_string());
         }
 
@@ -1361,6 +1388,10 @@ impl OpenMWConfiguration {
         for subconfig_setting in
             self.settings_matching(|setting| setting.meta().source_config == cfg_path)
         {
+            if self.is_synthetic_data_local_data_directory(subconfig_setting) {
+                continue;
+            }
+
             subconfig_settings_string.push_str(&subconfig_setting.to_string());
         }
 
@@ -1385,6 +1416,7 @@ impl fmt::Display for OpenMWConfiguration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.settings
             .iter()
+            .filter(|setting| !self.is_synthetic_data_local_data_directory(setting))
             .try_for_each(|setting| write!(f, "{setting}"))?;
 
         writeln!(
@@ -1933,6 +1965,42 @@ mod tests {
             .collect();
         assert!(files.contains(&&"Morrowind.esm".to_string()));
         assert!(files.contains(&&"Bloodmoon.esm".to_string()));
+    }
+
+    #[test]
+    fn test_save_user_does_not_persist_injected_data_local_as_data() {
+        let dir = temp_dir();
+        let data_local = dir.join("data-local");
+        write_cfg(
+            &dir,
+            &format!(
+                "data-local={}\ndata={}\n",
+                data_local.display(),
+                data_local.display()
+            ),
+        );
+
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        assert!(config.has_data_dir(&data_local.to_string_lossy()));
+
+        config.save_user().unwrap();
+
+        let saved = std::fs::read_to_string(dir.join("openmw.cfg")).unwrap();
+        assert_eq!(saved.matches("data-local=").count(), 1);
+        assert_eq!(saved.matches("data=").count(), 1);
+    }
+
+    #[test]
+    fn test_composite_display_does_not_serialize_injected_data_local_as_data() {
+        let dir = temp_dir();
+        let data_local = dir.join("data-local");
+        write_cfg(&dir, &format!("data-local={}\n", data_local.display()));
+
+        let config = OpenMWConfiguration::new(Some(dir)).unwrap();
+        let serialized = config.to_string();
+
+        assert!(serialized.contains("data-local="));
+        assert!(!serialized.contains("data="));
     }
 
     #[test]
