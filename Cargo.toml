@@ -12,7 +12,7 @@ edition = "2024"
 rust-version = "1.88"
 
 [dependencies]
-mlua = { version = "0.10.5", optional = true, default-features = false }
+mlua = { version = "0.11.6", optional = true, default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
