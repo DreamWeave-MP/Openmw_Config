@@ -272,6 +272,16 @@ impl OpenMWConfiguration {
     /// # Errors
     /// Returns [`ConfigError`] if the path from the environment variable is invalid or if config loading fails.
     ///
+    /// Discovery order matches `OpenMW` root config startup semantics:
+    ///
+    /// 1. `OPENMW_CONFIG`, an explicit `openmw.cfg` file path.
+    /// 2. `OPENMW_CONFIG_DIR`, a path list of directories containing `openmw.cfg`.
+    /// 3. Executable-adjacent `openmw.cfg`.
+    /// 4. Platform global config `openmw.cfg`.
+    ///
+    /// This deliberately does not fall back to [`Self::new(None)`]. User config is loaded only if
+    /// the discovered root config references it, usually through `config="?userconfig?"`.
+    ///
     /// # Example
     /// ```no_run
     /// use openmw_config::OpenMWConfiguration;
@@ -299,14 +309,16 @@ impl OpenMWConfiguration {
 
             for dir in path_list {
                 let dir = util::expand_leading_tilde(dir);
+                let config_file = dir.join("openmw.cfg");
 
-                if dir.join("openmw.cfg").exists() {
+                if config_file.is_file() {
                     return Self::new(Some(dir));
                 }
             }
         }
 
-        Self::new(None)
+        let root_config = crate::try_default_root_config_path()?;
+        Self::new(Some(root_config))
     }
 
     /// # Errors
@@ -317,7 +329,7 @@ impl OpenMWConfiguration {
     /// use std::path::PathBuf;
     /// use openmw_config::OpenMWConfiguration;
     ///
-    /// // Platform default
+    /// // Platform/user config default (?userconfig?/openmw.cfg), not OpenMW root discovery.
     /// let config = OpenMWConfiguration::new(None)?;
     ///
     /// // Specific directory or file path — both are accepted
@@ -383,6 +395,11 @@ impl OpenMWConfiguration {
     }
 
     /// Path to the configuration file which is the root of the configuration chain
+    /// For [`Self::from_env`], this is the root discovered by `OpenMW` startup semantics: explicit
+    /// environment override, executable-adjacent `openmw.cfg`, or platform global config. It is not
+    /// necessarily the user config; package installs usually load the user config through a root
+    /// `config="?userconfig?"` entry.
+    ///
     /// Typically, this will be whatever is defined in the `Paths` documentation for the appropriate platform:
     /// <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-files-and-log-files>
     #[must_use]
@@ -1433,10 +1450,7 @@ impl fmt::Display for OpenMWConfiguration {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicU64, Ordering},
-    };
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -1456,16 +1470,24 @@ mod tests {
         // one to overwrite the other's openmw.cfg before it was read.
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let base = std::env::temp_dir().join(format!("openmw_cfg_test_{id}"));
+        let base =
+            std::env::temp_dir().join(format!("openmw_cfg_test_{}_{id}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         base
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::test_env_lock()
+    }
+
+    unsafe fn clear_from_env_overrides() {
+        // SAFETY: callers hold env_lock(). Rust 2024 made this explicit because environment
+        // mutation is process-global. Quite right, annoyingly.
+        unsafe {
+            std::env::remove_var("OPENMW_CONFIG");
+            std::env::remove_var("OPENMW_CONFIG_DIR");
+            std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+        }
     }
 
     fn load(cfg_contents: &str) -> OpenMWConfiguration {
@@ -2080,11 +2102,15 @@ mod tests {
 
         // SAFETY: tests that mutate env must not run concurrently with each other.
         // The test binary is single-threaded by default so this is acceptable.
-        unsafe { std::env::set_var("OPENMW_CONFIG_DIR", &dir) };
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_CONFIG_DIR", &dir);
+        }
         let config = OpenMWConfiguration::from_env().unwrap();
-        unsafe { std::env::remove_var("OPENMW_CONFIG_DIR") };
+        unsafe { clear_from_env_overrides() };
 
         assert!(config.has_content_file("Morrowind.esm"));
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
     }
 
     #[test]
@@ -2093,11 +2119,158 @@ mod tests {
         let dir = temp_dir();
         let cfg = write_cfg(&dir, "content=Tribunal.esm\n");
 
-        unsafe { std::env::set_var("OPENMW_CONFIG", &cfg) };
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_CONFIG", &cfg);
+        }
         let config = OpenMWConfiguration::from_env().unwrap();
-        unsafe { std::env::remove_var("OPENMW_CONFIG") };
+        unsafe { clear_from_env_overrides() };
 
         assert!(config.has_content_file("Tribunal.esm"));
+        assert_eq!(config.root_config_file(), cfg);
+    }
+
+    #[test]
+    fn test_from_env_prefers_openmw_config_file_over_dir() {
+        let _guard = env_lock();
+        let file_dir = temp_dir();
+        let dir_dir = temp_dir();
+        let cfg = write_cfg(&file_dir, "content=FileWins.esm\n");
+        write_cfg(&dir_dir, "content=DirLoses.esm\n");
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_CONFIG", &cfg);
+            std::env::set_var("OPENMW_CONFIG_DIR", &dir_dir);
+        }
+
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { clear_from_env_overrides() };
+
+        assert_eq!(config.root_config_file(), cfg);
+        assert!(config.has_content_file("FileWins.esm"));
+        assert!(!config.has_content_file("DirLoses.esm"));
+    }
+
+    #[test]
+    fn test_from_env_prefers_first_openmw_config_dir_entry() {
+        let _guard = env_lock();
+        let missing_dir = temp_dir().join("missing");
+        let first_valid = temp_dir();
+        let second_valid = temp_dir();
+        write_cfg(&first_valid, "content=FirstValid.esm\n");
+        write_cfg(&second_valid, "content=SecondValid.esm\n");
+
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let path_list = format!(
+            "{}{}{}{}{}",
+            missing_dir.display(),
+            separator,
+            first_valid.display(),
+            separator,
+            second_valid.display()
+        );
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_CONFIG_DIR", path_list);
+        }
+
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { clear_from_env_overrides() };
+
+        assert_eq!(config.root_config_file(), first_valid.join("openmw.cfg"));
+        assert!(config.has_content_file("FirstValid.esm"));
+        assert!(!config.has_content_file("SecondValid.esm"));
+    }
+
+    #[test]
+    fn test_from_env_config_dir_skips_non_file_openmw_cfg_entry() {
+        let _guard = env_lock();
+        let invalid_dir = temp_dir();
+        let valid_dir = temp_dir();
+        std::fs::create_dir_all(invalid_dir.join("openmw.cfg")).unwrap();
+        write_cfg(&valid_dir, "content=ActualFile.esm\n");
+
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let path_list = format!(
+            "{}{}{}",
+            invalid_dir.display(),
+            separator,
+            valid_dir.display()
+        );
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_CONFIG_DIR", path_list);
+        }
+
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { clear_from_env_overrides() };
+
+        assert_eq!(config.root_config_file(), valid_dir.join("openmw.cfg"));
+        assert!(config.has_content_file("ActualFile.esm"));
+    }
+
+    #[test]
+    fn test_from_env_uses_global_config_when_no_explicit_env() {
+        let _guard = env_lock();
+        let global_dir = temp_dir();
+        let cfg = write_cfg(&global_dir, "content=GlobalRoot.esm\n");
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &global_dir);
+        }
+
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { clear_from_env_overrides() };
+
+        assert_eq!(config.root_config_file(), cfg);
+        assert!(config.has_content_file("GlobalRoot.esm"));
+    }
+
+    #[test]
+    fn test_from_env_errors_without_local_or_global_root_config() {
+        let _guard = env_lock();
+        let empty_global_dir = temp_dir();
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
+        }
+
+        let result = OpenMWConfiguration::from_env();
+        unsafe { clear_from_env_overrides() };
+
+        assert!(
+            matches!(result, Err(ConfigError::CannotFindRootConfig { .. })),
+            "expected CannotFindRootConfig, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_global_root_config_loads_config_chain() {
+        let _guard = env_lock();
+        let global_dir = temp_dir();
+        let user_dir = temp_dir();
+        write_cfg(&user_dir, "content=UserConfig.esm\n");
+        let root = write_cfg(
+            &global_dir,
+            &format!("content=GlobalRoot.esm\nconfig={}\n", user_dir.display()),
+        );
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &global_dir);
+        }
+
+        let config = OpenMWConfiguration::from_env().unwrap();
+        unsafe { clear_from_env_overrides() };
+
+        assert_eq!(config.root_config_file(), root);
+        assert!(config.has_content_file("GlobalRoot.esm"));
+        assert!(config.has_content_file("UserConfig.esm"));
     }
 
     // -----------------------------------------------------------------------

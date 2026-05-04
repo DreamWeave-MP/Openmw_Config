@@ -217,6 +217,8 @@ pub enum ConfigError {
     NotFileOrDirectory(PathBuf),
     /// No `openmw.cfg` was found at the given path.
     CannotFind(PathBuf),
+    /// Root config discovery tried both local and global config candidates and found neither.
+    CannotFindRootConfig { local: PathBuf, global: PathBuf },
     /// The target path for a save operation is not writable.
     NotWritable(PathBuf),
     /// [`OpenMWConfiguration::save_subconfig`](crate::OpenMWConfiguration::save_subconfig)
@@ -240,6 +242,14 @@ fn duplicate_message(file: &str, kind: &str, config_path: &Path, line: Option<us
     )
 }
 
+fn cannot_find_root_message(local: &Path, global: &Path) -> String {
+    format!(
+        "OpenMW root config discovery found no openmw.cfg at local path {} or global config path {}",
+        local.display(),
+        global.display()
+    )
+}
+
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -260,12 +270,13 @@ impl fmt::Display for ConfigError {
                 "Unable to determine whether {} was a file or directory, refusing to read.",
                 config_path.display()
             ),
-            ConfigError::CannotFind(config_path) => {
-                write!(
-                    f,
-                    "An openmw.cfg does not exist at: {}",
-                    config_path.display()
-                )
+            ConfigError::CannotFind(config_path) => write!(
+                f,
+                "An openmw.cfg does not exist at: {}",
+                config_path.display()
+            ),
+            ConfigError::CannotFindRootConfig { local, global } => {
+                write!(f, "{}", cannot_find_root_message(local, global))
             }
             ConfigError::DuplicateContentFile {
                 file,
@@ -360,6 +371,14 @@ mod tests {
 
         let cannot_find = ConfigError::CannotFind(path.clone()).to_string();
         assert!(cannot_find.contains("openmw.cfg"));
+
+        let cannot_find_root = ConfigError::CannotFindRootConfig {
+            local: PathBuf::from("/tmp/local/openmw.cfg"),
+            global: PathBuf::from("/tmp/global/openmw.cfg"),
+        }
+        .to_string();
+        assert!(cannot_find_root.contains("/tmp/local/openmw.cfg"));
+        assert!(cannot_find_root.contains("/tmp/global/openmw.cfg"));
 
         let duplicate = ConfigError::DuplicateContentFile {
             file: "Morrowind.esm".into(),

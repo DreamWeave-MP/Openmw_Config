@@ -54,7 +54,7 @@ openmw-config = "1"
 use openmw_config::OpenMWConfiguration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load the default config chain for the current platform
+    // Load the active config chain using OpenMW-style root config discovery
     let config = OpenMWConfiguration::from_env()?;
 
     for plugin in config.content_files_iter() {
@@ -126,8 +126,27 @@ let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/ope
 
 // From a file path
 let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw/openmw.cfg")))?;
+
+// With None, load the platform/user config default (?userconfig?/openmw.cfg).
+// This is intentionally different from from_env().
+let user_config = OpenMWConfiguration::new(None)?;
 # Ok::<(), openmw_config::ConfigError>(())
 ```
+
+`OpenMWConfiguration::from_env()` is the API for tools that want to behave like OpenMW startup:
+
+1. `OPENMW_CONFIG` points directly to an `openmw.cfg` file and wins.
+2. `OPENMW_CONFIG_DIR` is searched as a path list for the first directory containing `openmw.cfg`.
+3. Without explicit environment overrides, discovery tries an `openmw.cfg` adjacent to the running
+   executable. For external tools, that means the tool executable, not some guessed OpenMW binary.
+4. If no local root config exists, discovery tries the platform global OpenMW config
+   (`/etc/openmw/openmw.cfg` on normal Linux package installs).
+5. If neither root exists, loading fails. There is no silent user-config fallback.
+
+Packaged OpenMW installs usually load user overrides because the global root config contains a chain
+entry such as `config="?userconfig?"`. Starting directly from the user config skips the package
+baseline. That is not equivalent, even if it looks fine on the machine that wrote the bug. Ask how
+we know.
 
 ### Modifying and saving
 
@@ -171,7 +190,7 @@ println!("{config}");
 
 | Core Rust API | Description |
 |---|---|
-| `OpenMWConfiguration::from_env()` / `OpenMWConfiguration::new(path)` | Load from env/defaults or explicit file/directory path |
+| `OpenMWConfiguration::from_env()` / `OpenMWConfiguration::new(path)` | Load via OpenMW-style env/root discovery or explicit file/directory path |
 | `root_config_file()` / `root_config_dir()` | Root config file and parent directory |
 | `user_config_ref()` / `user_config_path()` | Resolve highest-priority user config |
 | `sub_configs()` / `config_chain()` | Traverse effective subconfigs and parser-order chain events |
@@ -181,7 +200,7 @@ println!("{config}");
 | `add_*` / `remove_*` / `set_*` methods | Mutate loaded values |
 | `add_generic_setting()` / `set_generic_settings()` | Mutate preserved generic entries |
 | `save_user()` / `save_subconfig(path)` / `save_to_path(path)` | Persist changes using atomic writes |
-| `default_*` and `try_default_*` free functions | Resolve default config/user paths (panic or fallible variants) |
+| `default_*` and `try_default_*` free functions | Resolve default user, root, local, global config, data-token paths (panic or fallible variants) |
 | `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua table for embedded host integration |
 
 For the complete API surface (including helper structs and all methods), see
@@ -204,6 +223,14 @@ Task-oriented map:
   from the same parse scope before continuing.
 - **Token expansion** - `?local?`, `?global?`, `?userdata?`, and `?userconfig?` in `data=` paths
   are expanded to platform-correct directories at load time.
+- **Root discovery vs user config** - `from_env()` follows OpenMW startup semantics: explicit env
+  overrides, then local root config, then global root config. `OpenMWConfiguration::new(None)` loads
+  the platform/user config default (`?userconfig?/openmw.cfg`) for callers that explicitly want the
+  user-owned config.
+- **Path names are not synonyms** - `try_default_config_path()` resolves `?userconfig?`,
+  `try_default_global_config_path()` resolves the global config directory such as `/etc/openmw`, and
+  `try_default_global_path()` resolves the `?global?` data-token path such as `/usr/share/games`.
+  Conflating those is how distro installs become archaeology projects.
 
 Flatpak and token-resolution controls:
 
@@ -211,6 +238,8 @@ Flatpak and token-resolution controls:
 - Auto-detection also enables Flatpak mode when `FLATPAK_ID` is set or `/.flatpak-info` exists.
 - `OPENMW_FLATPAK_ID` - optional app-id override (falls back to `FLATPAK_ID`, then `org.openmw.OpenMW`).
 - `OPENMW_GLOBAL_PATH` - optional override for the `?global?` token target.
+- `OPENMW_GLOBAL_CONFIG_PATH` - crate/tool override for the global config directory used by root
+  discovery. This is not claimed to be an OpenMW engine environment variable.
 - In Flatpak mode, `?userconfig?` and `?userdata?` resolve to `~/.var/app/<app-id>/config/openmw`
   and `~/.var/app/<app-id>/data/openmw` respectively.
 

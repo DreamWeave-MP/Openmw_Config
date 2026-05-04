@@ -14,7 +14,8 @@
 //! ```no_run
 //! use openmw_config::OpenMWConfiguration;
 //!
-//! // Load from the platform-default location (or OPENMW_CONFIG / OPENMW_CONFIG_DIR env vars)
+//! // Load using OpenMW-style root config discovery.
+//! // OPENMW_CONFIG and OPENMW_CONFIG_DIR override discovery.
 //! let config = OpenMWConfiguration::from_env()?;
 //!
 //! // Iterate content files in load order
@@ -28,8 +29,14 @@
 //!
 //! See the [OpenMW path documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html)
 //! for platform-specific default locations.  The environment variables `OPENMW_CONFIG` (path to
-//! an `openmw.cfg` file) and `OPENMW_CONFIG_DIR` (directory containing `openmw.cfg`) override the
-//! platform default.
+//! an `openmw.cfg` file) and `OPENMW_CONFIG_DIR` (directory containing `openmw.cfg`) override root
+//! config discovery. Without those, [`OpenMWConfiguration::from_env`] tries an `openmw.cfg` adjacent
+//! to the running executable, then the platform global `OpenMW` config. User config is loaded only
+//! when referenced by the root config, usually through `config="?userconfig?"`.
+//!
+//! Path helpers intentionally distinguish the user config path (`?userconfig?`,
+//! [`try_default_config_path`]), the global config path ([`try_default_global_config_path`]), and
+//! the global data-token path (`?global?`, [`try_default_global_path`]). Those are not synonyms.
 
 mod config;
 #[cfg(feature = "lua")]
@@ -79,6 +86,7 @@ impl GameSettingMeta {
 const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";
 const NO_LOCAL_DIR: &str = "FAILURE: COULD NOT READ LOCAL DIRECTORY";
 const NO_GLOBAL_DIR: &str = "FAILURE: COULD NOT READ GLOBAL DIRECTORY";
+const NO_GLOBAL_CONFIG_DIR: &str = "FAILURE: COULD NOT READ GLOBAL CONFIG DIRECTORY";
 const DEFAULT_FLATPAK_APP_ID: &str = "org.openmw.OpenMW";
 
 fn has_flatpak_info_file() -> bool {
@@ -258,6 +266,99 @@ pub fn default_local_path() -> std::path::PathBuf {
     try_default_local_path().expect(NO_LOCAL_DIR)
 }
 
+/// Find the default root `openmw.cfg` using `OpenMW`'s root config discovery order.
+///
+/// This is not the same as [`try_default_config_path`]. The latter resolves the `?userconfig?`
+/// token. Root discovery starts from `OpenMW`'s baseline config: first an executable-adjacent
+/// `openmw.cfg`, then the platform global config. The user config is loaded only if that root
+/// config references it, normally via `config="?userconfig?"`.
+///
+/// # Errors
+/// Returns [`ConfigError`] if platform paths cannot be resolved or no root `openmw.cfg` exists.
+pub fn try_default_root_config_path() -> Result<std::path::PathBuf, ConfigError> {
+    let local_dir = try_default_local_path()?;
+    let local = local_dir.join("openmw.cfg");
+    if local.is_file() {
+        return Ok(local);
+    }
+
+    let global_config_dir = try_default_global_config_path()?;
+    let global = global_config_dir.join("openmw.cfg");
+    if global.is_file() {
+        return Ok(global);
+    }
+
+    Err(ConfigError::CannotFindRootConfig { local, global })
+}
+
+/// Path to the default root `openmw.cfg` discovered with `OpenMW` startup semantics.
+///
+/// # Panics
+/// Panics if no root config can be found.
+#[must_use]
+pub fn default_root_config_path() -> std::path::PathBuf {
+    try_default_root_config_path().expect("FAILURE: COULD NOT FIND ROOT CONFIG")
+}
+
+#[cfg(test)]
+pub(crate) fn discover_root_config_path(
+    local_dir: &std::path::Path,
+    global_config_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, ConfigError> {
+    let local = local_dir.join("openmw.cfg");
+    if local.is_file() {
+        return Ok(local);
+    }
+
+    let global = global_config_dir.join("openmw.cfg");
+    if global.is_file() {
+        return Ok(global);
+    }
+
+    Err(ConfigError::CannotFindRootConfig { local, global })
+}
+
+/// Fallible variant of [`default_global_config_path`].
+///
+/// Resolves `OpenMW`'s global **config** directory, not the `?global?` data-token target. On normal
+/// Linux package installs this is `/etc/openmw`; in Flatpak mode it is `/app/etc/openmw`.
+///
+/// `OPENMW_GLOBAL_CONFIG_PATH`, when set to a non-empty value, overrides the detected directory.
+/// This mirrors the explicit override style used by the other path helpers and keeps packager tests
+/// from needing to write to `/etc`, which is a generally poor hobby.
+///
+/// # Errors
+/// Returns [`ConfigError::PlatformPathUnavailable`] on platforms where `OpenMW` has no global config
+/// directory concept.
+pub fn try_default_global_config_path() -> Result<std::path::PathBuf, ConfigError> {
+    if let Ok(value) = std::env::var("OPENMW_GLOBAL_CONFIG_PATH")
+        && !value.trim().is_empty()
+    {
+        return Ok(std::path::PathBuf::from(value));
+    }
+
+    if cfg!(windows) || cfg!(target_os = "macos") {
+        return Err(ConfigError::PlatformPathUnavailable("global_config"));
+    }
+
+    if flatpak_mode_enabled() {
+        return Ok(std::path::PathBuf::from("/app/etc/openmw"));
+    }
+
+    Ok(std::path::PathBuf::from("/etc/openmw"))
+}
+
+/// Path to `OpenMW`'s global **config** directory.
+///
+/// This is distinct from [`default_global_path`], which backs the `?global?` data token.
+///
+/// # Panics
+/// Panics if the global config directory cannot be determined.
+#[must_use]
+pub fn default_global_config_path() -> std::path::PathBuf {
+    try_default_global_config_path().expect(NO_GLOBAL_CONFIG_DIR)
+}
+
 /// Fallible variant of [`default_global_path`].
 ///
 /// Resolves the `?global?` token target.
@@ -307,12 +408,17 @@ pub fn default_global_path() -> std::path::PathBuf {
 }
 
 #[cfg(test)]
+pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::OsString;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn snapshot_env(keys: &[&str]) -> Vec<(String, Option<OsString>)> {
         keys.iter()
@@ -333,9 +439,20 @@ mod tests {
         }
     }
 
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "openmw_config_{name}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
     #[test]
     fn test_default_data_local_path_is_userdata_data_child() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let snapshot = snapshot_env(&[
             "OPENMW_CONFIG_USING_FLATPAK",
             "OPENMW_FLATPAK_ID",
@@ -371,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_try_default_config_path_returns_path_or_error() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let snapshot = snapshot_env(&[
             "OPENMW_CONFIG_USING_FLATPAK",
             "OPENMW_FLATPAK_ID",
@@ -383,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_try_default_local_path_returns_path_or_error() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let snapshot = snapshot_env(&[
             "OPENMW_CONFIG_USING_FLATPAK",
             "OPENMW_FLATPAK_ID",
@@ -396,7 +513,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_flatpak_env_flag_forces_flatpak_paths() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let Ok(home) = platform_paths::home_dir() else {
             return;
         };
@@ -437,7 +554,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_flatpak_app_id_override_precedence() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let Ok(home) = platform_paths::home_dir() else {
             return;
         };
@@ -470,7 +587,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_flatpak_auto_detect_via_flatpak_id() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let Ok(home) = platform_paths::home_dir() else {
             return;
         };
@@ -500,7 +617,7 @@ mod tests {
 
     #[test]
     fn test_global_path_env_override_has_precedence() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
         let expected = std::path::PathBuf::from("/opt/openmw/global");
 
         // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
@@ -520,9 +637,110 @@ mod tests {
     }
 
     #[test]
+    fn test_root_config_discovery_uses_local_before_global_config() {
+        let local_dir = unique_temp_dir("root_local");
+        let global_dir = unique_temp_dir("root_global");
+        std::fs::create_dir_all(&local_dir).unwrap();
+        std::fs::create_dir_all(&global_dir).unwrap();
+        let local_cfg = local_dir.join("openmw.cfg");
+        let global_cfg = global_dir.join("openmw.cfg");
+        std::fs::write(&local_cfg, "content=Local.esm\n").unwrap();
+        std::fs::write(&global_cfg, "content=Global.esm\n").unwrap();
+
+        assert_eq!(
+            discover_root_config_path(&local_dir, &global_dir).unwrap(),
+            local_cfg
+        );
+
+        let _ = std::fs::remove_file(global_cfg);
+        let _ = std::fs::remove_file(local_cfg);
+        let _ = std::fs::remove_dir_all(global_dir);
+        let _ = std::fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn test_root_config_discovery_uses_global_config_when_local_missing() {
+        let local_dir = unique_temp_dir("root_local_missing");
+        let global_dir = unique_temp_dir("root_global_present");
+        std::fs::create_dir_all(&local_dir).unwrap();
+        std::fs::create_dir_all(&global_dir).unwrap();
+        let global_cfg = global_dir.join("openmw.cfg");
+        std::fs::write(&global_cfg, "content=Global.esm\n").unwrap();
+
+        assert_eq!(
+            discover_root_config_path(&local_dir, &global_dir).unwrap(),
+            global_cfg
+        );
+
+        let _ = std::fs::remove_file(global_dir.join("openmw.cfg"));
+        let _ = std::fs::remove_dir_all(global_dir);
+        let _ = std::fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn test_root_config_discovery_errors_without_user_fallback() {
+        let local_dir = unique_temp_dir("root_none_local");
+        let global_dir = unique_temp_dir("root_none_global");
+        std::fs::create_dir_all(&local_dir).unwrap();
+        std::fs::create_dir_all(&global_dir).unwrap();
+
+        assert!(matches!(
+            discover_root_config_path(&local_dir, &global_dir),
+            Err(ConfigError::CannotFindRootConfig { .. })
+        ));
+
+        let _ = std::fs::remove_dir_all(global_dir);
+        let _ = std::fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_global_config_path_is_not_global_data_token_path() {
+        let _guard = crate::test_env_lock();
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::remove_var("OPENMW_GLOBAL_PATH");
+            std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("FLATPAK_ID");
+        }
+
+        assert_eq!(
+            try_default_global_path().unwrap(),
+            std::path::PathBuf::from("/usr/share/games")
+        );
+        assert_eq!(
+            try_default_global_config_path().unwrap(),
+            std::path::PathBuf::from("/etc/openmw")
+        );
+    }
+
+    #[test]
+    fn test_global_config_path_env_override_has_precedence() {
+        let _guard = crate::test_env_lock();
+        let expected = std::path::PathBuf::from("/opt/openmw/etc/openmw");
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", expected.as_os_str());
+        }
+
+        assert_eq!(
+            try_default_global_config_path().expect("global config override should be used"),
+            expected
+        );
+
+        // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
+        unsafe {
+            std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+        }
+    }
+
+    #[test]
     #[cfg(not(windows))]
     fn test_global_path_default_is_platform_or_flatpak_value() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
 
         // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
         unsafe {
@@ -552,7 +770,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn test_global_path_is_unavailable_on_windows_without_override() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
 
         // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
         unsafe {
@@ -570,7 +788,7 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn test_flatpak_mode_is_ignored_off_linux() {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        let _guard = crate::test_env_lock();
 
         // SAFETY: guarded by a process-wide mutex in tests to prevent concurrent env mutation.
         unsafe {
