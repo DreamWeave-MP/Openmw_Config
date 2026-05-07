@@ -168,7 +168,7 @@ impl SettingValue {
                 data_directory.parsed().display()
             )),
             SettingValue::SubConfiguration(_) => None,
-            SettingValue::Generic(generic) if generic.key() == "replace" => None,
+            SettingValue::Generic(generic) if generic.key().eq_ignore_ascii_case("replace") => None,
             _ => Some(self.to_string()),
         }
     }
@@ -433,7 +433,7 @@ impl OpenMWConfiguration {
     /// an `openmw.cfg` file path. This keeps the directory-level API honest for future config-family
     /// files such as `settings.cfg` and `shaders.yaml`.
     pub fn new_empty(user_config_dir: impl Into<PathBuf>) -> Result<Self, ConfigError> {
-        let user_config_dir = user_config_dir.into();
+        let mut user_config_dir = user_config_dir.into();
 
         if user_config_dir.as_os_str().is_empty()
             || user_config_dir
@@ -441,6 +441,10 @@ impl OpenMWConfiguration {
                 .is_some_and(|file_name| file_name == "openmw.cfg")
         {
             return Err(ConfigError::NotFileOrDirectory(user_config_dir));
+        }
+
+        if user_config_dir.is_relative() {
+            user_config_dir = std::env::current_dir()?.join(user_config_dir);
         }
 
         Ok(Self {
@@ -464,6 +468,10 @@ impl OpenMWConfiguration {
 
         if path.as_os_str().is_empty() {
             return Err(ConfigError::NotFileOrDirectory(path));
+        }
+
+        if path.is_dir() && !path.join("openmw.cfg").exists() {
+            return Self::new_empty(path);
         }
 
         if path.exists() {
@@ -1541,6 +1549,8 @@ impl OpenMWConfiguration {
         let target_dir = self.user_config_path();
         let cfg_path = target_dir.join("openmw.cfg");
 
+        std::fs::create_dir_all(&target_dir)?;
+
         if !util::is_writable(&cfg_path) {
             bail_config!(not_writable, &cfg_path);
         }
@@ -2412,6 +2422,18 @@ mod tests {
     }
 
     #[test]
+    fn test_save_user_creates_missing_new_empty_config_directory() {
+        let dir = temp_dir().join("missing-user-config-dir");
+
+        let mut config = OpenMWConfiguration::new_empty(&dir).unwrap();
+        config.add_content_file("Generated.esp").unwrap();
+        config.save_user().unwrap();
+
+        let saved = std::fs::read_to_string(dir.join("openmw.cfg")).unwrap();
+        assert!(saved.contains("content=Generated.esp"));
+    }
+
+    #[test]
     fn test_load_optional_existing_cfg_matches_new() {
         let dir = temp_dir();
         let cfg = write_cfg(&dir, "content=Existing.esm\ndata=Data Files\n");
@@ -2443,6 +2465,21 @@ mod tests {
     }
 
     #[test]
+    fn test_load_optional_existing_empty_dir_uses_dir_context() {
+        let dir = temp_dir();
+
+        let mut config = OpenMWConfiguration::load_optional(&dir).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
+        assert_eq!(config.root_config_dir(), dir);
+        assert_eq!(
+            config.data_directories_iter().next().unwrap().parsed(),
+            &config.root_config_dir().join("Data Files")
+        );
+    }
+
+    #[test]
     fn test_load_optional_missing_dir_uses_dir_context() {
         let dir = temp_dir().join("missing-dir");
 
@@ -2450,6 +2487,44 @@ mod tests {
 
         assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
         assert_eq!(config.root_config_dir(), dir);
+    }
+
+    #[test]
+    fn test_new_empty_relative_dir_anchors_to_current_dir_for_resolved_export() {
+        let relative_dir = PathBuf::from(format!(
+            "openmw-config-relative-empty-{}",
+            std::process::id()
+        ));
+        let expected_dir = std::env::current_dir().unwrap().join(&relative_dir);
+
+        let mut config = OpenMWConfiguration::new_empty(&relative_dir).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_dir(), expected_dir);
+        assert!(config.to_resolved_string().contains(&format!(
+            "data={}",
+            expected_dir.join("Data Files").display()
+        )));
+    }
+
+    #[test]
+    fn test_load_optional_relative_missing_cfg_anchors_to_current_dir() {
+        let relative_cfg = PathBuf::from(format!(
+            "openmw-config-relative-missing-{}/openmw.cfg",
+            std::process::id()
+        ));
+        let expected_dir = std::env::current_dir()
+            .unwrap()
+            .join(relative_cfg.parent().unwrap());
+
+        let mut config = OpenMWConfiguration::load_optional(&relative_cfg).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_dir(), expected_dir);
+        assert!(config.to_resolved_string().contains(&format!(
+            "data={}",
+            expected_dir.join("Data Files").display()
+        )));
     }
 
     #[test]

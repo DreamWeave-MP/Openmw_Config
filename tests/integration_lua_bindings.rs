@@ -377,6 +377,7 @@ mod lua_tests {
     #[test]
     fn test_lua_empty_optional_and_resolved_export_surface() {
         let missing_dir = temp_dir("empty_optional_missing_root").join("future-config");
+        let existing_empty_dir = temp_dir("empty_optional_existing_empty_root");
         let existing_root = temp_dir("empty_optional_existing_root");
         let out = temp_dir("resolved_save_out").join("openmw.cfg");
         write_cfg(
@@ -389,6 +390,9 @@ mod lua_tests {
         lua.globals().set("openmwConfig", module).unwrap();
         lua.globals()
             .set("missingDir", missing_dir.display().to_string())
+            .unwrap();
+        lua.globals()
+            .set("existingEmptyDir", existing_empty_dir.display().to_string())
             .unwrap();
         lua.globals()
             .set("existingRoot", existing_root.display().to_string())
@@ -405,6 +409,9 @@ mod lua_tests {
             empty:setResources("resources")
             empty:setDataLocal("local-data")
             assert(string.find(empty:toString(), "user-data=user-data", 1, true) ~= nil)
+
+            local emptyExisting = openmwConfig.loadOptional(existingEmptyDir)
+            assert(string.find(emptyExisting:rootConfigFile(), existingEmptyDir, 1, true) ~= nil)
 
             local cfg = openmwConfig.loadOptional(existingRoot)
             local resolved = cfg:toResolvedString()
