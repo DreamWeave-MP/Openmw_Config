@@ -37,6 +37,12 @@
 //! Path helpers intentionally distinguish the user config path (`?userconfig?`,
 //! [`try_default_config_path`]), the global config path ([`try_default_global_config_path`]), and
 //! the global data-token path (`?global?`, [`try_default_global_path`]). Those are not synonyms.
+//!
+//! Serialization has two contracts. [`OpenMWConfiguration`]'s [`std::fmt::Display`] implementation
+//! and preservation save APIs keep directory settings in their original spelling for round-trips.
+//! [`OpenMWConfiguration::to_resolved_string`] and
+//! [`OpenMWConfiguration::save_resolved_to_path`] emit flattened relocation-safe output, resolving
+//! directory values and omitting chain-control entries such as `config=` and `replace=`.
 
 mod config;
 #[cfg(feature = "lua")]

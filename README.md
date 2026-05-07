@@ -22,8 +22,8 @@ replacement semantics. For comprehensive VFS coverage, combine with
 
 - **OpenMW-accurate semantics** - models `config=` traversal, `replace=*` behavior, and token
   expansion (`?local?`, `?global?`, `?userdata?`, `?userconfig?`) to match real parser behavior.
-- **Safe persistence model** - `save_user()`, `save_subconfig()`, and `save_to_path()` use atomic
-  write semantics to avoid partial writes.
+- **Safe persistence model** - `save_user()`, `save_subconfig()`, `save_to_path()`, and
+  `save_resolved_to_path()` use atomic write semantics to avoid partial writes.
 - **Integration-friendly API** - ergonomic Rust API plus embedded Lua host bindings via `mlua`,
   with a camelCase-only Lua surface.
 - **Diagnostics and predictability** - line-aware parse errors, explicit chain introspection, and
@@ -35,8 +35,8 @@ replacement semantics. For comprehensive VFS coverage, combine with
   tokens like `?local?`, `?global?`, `?userdata?`, and `?userconfig?`.
 - **Multi-file chains** - multiple `openmw.cfg` files are merged according to OpenMW's rules;
   last-defined wins.
-- **Round-trip serialization** - `Display` on `OpenMWConfiguration` emits a valid `openmw.cfg`,
-  preserving comments.
+- **Explicit serialization contracts** - `Display` preserves user-authored path spelling for
+  round-trips; `to_resolved_string()` emits relocation-safe flattened output for importers.
 - **Dependency-light core** - Unix/macOS path resolution and env expansion are implemented with
   `std`; Windows default paths use Known Folder APIs via `windows-sys` (Windows-only target dep).
   Lua support is optional via the `lua` feature.
@@ -70,8 +70,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.add_content_file("Extra.esp")?;
     config.save_user()?;
 
-    // Or write the full composite config to an explicit path
-    config.save_to_path("/tmp/openmw.cfg")?;
+    // Or write a relocation-safe flattened export to an explicit path
+    config.save_resolved_to_path("/tmp/openmw.cfg")?;
 
     Ok(())
 }
@@ -133,6 +133,21 @@ let user_config = OpenMWConfiguration::new(None)?;
 # Ok::<(), openmw_config::ConfigError>(())
 ```
 
+Importer-style tools can start from an empty config directory or treat a missing input as empty
+without fabricating an `openmw.cfg` model locally:
+
+```rust,no_run
+use std::path::PathBuf;
+use openmw_config::OpenMWConfiguration;
+
+// Does not read from disk and does not require the directory to exist.
+let empty = OpenMWConfiguration::new_empty(PathBuf::from("/home/user/.config/openmw"))?;
+
+// Existing inputs load normally; missing `openmw.cfg` starts empty from its parent directory.
+let optional = OpenMWConfiguration::load_optional(PathBuf::from("/tmp/import/openmw.cfg"))?;
+# Ok::<(), openmw_config::ConfigError>(())
+```
+
 `OpenMWConfiguration::from_env()` is the API for tools that want to behave like OpenMW startup:
 
 1. `OPENMW_CONFIG` points directly to an `openmw.cfg` file and wins.
@@ -175,8 +190,9 @@ config.save_user()?;
 
 ### Serialization
 
-`OpenMWConfiguration` implements `Display`, which produces a valid `openmw.cfg` string with
-comments preserved:
+`OpenMWConfiguration` has two deliberately separate serialization contracts. `Display` / `toString`
+are preservation-oriented: directory-valued settings keep their original spelling, including
+relative paths and tokens, so user-authored config text can round-trip:
 
 ```rust,no_run
 use openmw_config::OpenMWConfiguration;
@@ -186,11 +202,25 @@ println!("{config}");
 # Ok::<(), openmw_config::ConfigError>(())
 ```
 
+For importer/export output that may be written somewhere else, use resolved serialization instead.
+It emits directory-valued settings from resolved paths and excludes `config=` / `replace=` chain
+control entries because the output is already flattened:
+
+```rust,no_run
+use openmw_config::OpenMWConfiguration;
+
+let config = OpenMWConfiguration::load_optional("/tmp/import/openmw.cfg")?;
+println!("{}", config.to_resolved_string());
+config.save_resolved_to_path("/tmp/export/openmw.cfg")?;
+# Ok::<(), openmw_config::ConfigError>(())
+```
+
 ## API Overview
 
 | Core Rust API | Description |
 |---|---|
 | `OpenMWConfiguration::from_env()` / `OpenMWConfiguration::new(path)` | Load via OpenMW-style env/root discovery or explicit file/directory path |
+| `OpenMWConfiguration::new_empty(dir)` / `OpenMWConfiguration::load_optional(path)` | Start from an empty user config directory or load if present |
 | `root_config_file()` / `root_config_dir()` | Root config file and parent directory |
 | `user_config_ref()` / `user_config_path()` | Resolve highest-priority user config |
 | `sub_configs()` / `config_chain()` | Traverse effective subconfigs and parser-order chain events |
@@ -199,7 +229,8 @@ println!("{config}");
 | `generic_settings_iter()` | Read preserved generic `key=value` entries |
 | `add_*` / `remove_*` / `set_*` methods | Mutate loaded values |
 | `add_generic_setting()` / `set_generic_settings()` | Mutate preserved generic entries |
-| `save_user()` / `save_subconfig(path)` / `save_to_path(path)` | Persist changes using atomic writes |
+| `save_user()` / `save_subconfig(path)` / `save_to_path(path)` | Persist preservation-oriented output using atomic writes |
+| `to_resolved_string()` / `save_resolved_to_path(path)` | Flattened relocation-safe importer/export serialization |
 | `default_*` and `try_default_*` free functions | Resolve default user, root, local, global config, data-token paths (panic or fallible variants) |
 | `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua table for embedded host integration |
 
@@ -208,11 +239,13 @@ For the complete API surface (including helper structs and all methods), see
 
 Task-oriented map:
 
-- **Load config state** - `OpenMWConfiguration::from_env()`, `OpenMWConfiguration::new(path)`
+- **Load config state** - `OpenMWConfiguration::from_env()`, `OpenMWConfiguration::new(path)`,
+  `OpenMWConfiguration::new_empty(dir)`, `OpenMWConfiguration::load_optional(path)`
 - **Inspect chain resolution** - `sub_configs()`, `config_chain()`, `user_config_path()`
 - **Edit plugin/data lists** - `add_*`, `remove_*`, `set_*` method families
 - **Read/write settings** - `game_settings()`, `get_game_setting(key)`, `generic_settings_iter()`, `set_game_setting(...)`
-- **Persist safely** - `save_user()`, `save_subconfig(path)`, `save_to_path(path)`
+- **Persist safely** - `save_user()`, `save_subconfig(path)`, `save_to_path(path)`,
+  `save_resolved_to_path(path)`
 
 ## Advanced Behavior
 
@@ -271,6 +304,8 @@ Module exports (`openmwConfig`):
 |---|---|---|
 | `fromEnv()` | `config` userdata | Loads using `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` semantics |
 | `new(pathOrNil)` | `config` userdata | `pathOrNil` may be file path, dir path, or `nil` |
+| `newEmpty(userConfigDir)` | `config` userdata | Starts empty from a config directory without reading disk |
+| `loadOptional(path)` | `config` userdata | Loads if present; missing paths start empty with matching config context |
 | `defaultConfigPath()` | `string` | Platform default config dir |
 | `defaultUserDataPath()` | `string` | Platform default userdata dir |
 | `defaultDataLocalPath()` | `string` | Platform default data-local dir |
@@ -290,7 +325,8 @@ Module exports (`openmwConfig`):
 | `isUserConfig()` | `boolean` | Whether root is already highest-priority config |
 | `userConfigPath()` | `string` | Highest-priority config directory |
 | `userConfig()` | `config` userdata | Returns a user-config-focused clone |
-| `toString()` | `string` | Serialized `openmw.cfg` output |
+| `toString()` | `string` | Preservation-oriented serialized `openmw.cfg` output |
+| `toResolvedString()` | `string` | Flattened relocation-safe output; omits `config=` / `replace=` |
 | `subConfigs()` | `string[]` | Effective loaded `config=` directories |
 | `configChain()` | `table[]` | Rows: `{ path, depth, status }`, status is `loaded` or `skippedMissing` |
 | `contentFiles()` / `groundcoverFiles()` / `fallbackArchives()` | `string[]` | Collection snapshots |
@@ -306,7 +342,8 @@ Module exports (`openmwConfig`):
 | `setGenericSettings(key, listOrNil)` / `addGenericSetting(key, value)` | `nil` | Manage preserved generic entries |
 | `setGameSetting(value, sourcePathOrNil, commentOrNil)` / `setGameSettings(listOrNil)` | `nil` | Fallback setters |
 | `setUserData(pathOrNil)` / `setResources(pathOrNil)` / `setDataLocal(pathOrNil)` / `setEncoding(valueOrNil)` | `nil` | Singleton setters, `nil` clears |
-| `saveUser()` / `saveSubconfig(path)` / `saveToPath(path)` | `nil` | Write to user config, loaded subconfig, or explicit path |
+| `saveUser()` / `saveSubconfig(path)` / `saveToPath(path)` | `nil` | Write preservation-oriented output |
+| `saveResolvedToPath(path)` | `nil` | Write flattened relocation-safe output |
 
 ### Host Integration (Embedded Lua)
 
