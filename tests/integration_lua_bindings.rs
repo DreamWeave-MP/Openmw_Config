@@ -94,6 +94,7 @@ mod lua_tests {
             assert(generic[1].comment == "# generic comment\n")
 
             assert(type(cfg:toString()) == "string")
+            assert(type(cfg:toResolvedString()) == "string")
     "##;
 
     #[test]
@@ -124,6 +125,9 @@ mod lua_tests {
 
             local localPath, localErr = openmwConfig.tryDefaultLocalPath()
             assert((localPath ~= nil and localErr == nil) or (localPath == nil and localErr ~= nil))
+
+            assert(type(openmwConfig.newEmpty) == "function")
+            assert(type(openmwConfig.loadOptional) == "function")
         "#,
         )
         .exec()
@@ -368,6 +372,55 @@ mod lua_tests {
         assert!(saved.contains("no-sound=0"));
         assert!(saved.contains("no-sound=1"));
         assert!(saved.contains("some-flag=yes"));
+    }
+
+    #[test]
+    fn test_lua_empty_optional_and_resolved_export_surface() {
+        let missing_dir = temp_dir("empty_optional_missing_root").join("future-config");
+        let existing_root = temp_dir("empty_optional_existing_root");
+        let out = temp_dir("resolved_save_out").join("openmw.cfg");
+        write_cfg(
+            &existing_root,
+            "data=Data Files\nconfig=unused\ncontent=Existing.esm\n",
+        );
+
+        let lua = Lua::new();
+        let module = create_lua_module(&lua).unwrap();
+        lua.globals().set("openmwConfig", module).unwrap();
+        lua.globals()
+            .set("missingDir", missing_dir.display().to_string())
+            .unwrap();
+        lua.globals()
+            .set("existingRoot", existing_root.display().to_string())
+            .unwrap();
+        lua.globals()
+            .set("outPath", out.display().to_string())
+            .unwrap();
+
+        lua.load(
+            r#"
+            local empty = openmwConfig.newEmpty(missingDir)
+            assert(string.find(empty:rootConfigFile(), "openmw.cfg") ~= nil)
+            empty:setUserData("user-data")
+            empty:setResources("resources")
+            empty:setDataLocal("local-data")
+            assert(string.find(empty:toString(), "user-data=user-data", 1, true) ~= nil)
+
+            local cfg = openmwConfig.loadOptional(existingRoot)
+            local resolved = cfg:toResolvedString()
+            assert(string.find(resolved, "data=Data Files", 1, true) == nil)
+            assert(string.find(resolved, "config=", 1, true) == nil)
+            assert(string.find(resolved, "content=Existing.esm", 1, true) ~= nil)
+            cfg:saveResolvedToPath(outPath)
+        "#,
+        )
+        .exec()
+        .unwrap();
+
+        let saved = std::fs::read_to_string(out).unwrap();
+        assert!(!saved.contains("data=Data Files"));
+        assert!(!saved.contains("config="));
+        assert!(saved.contains("content=Existing.esm"));
     }
 
     #[test]
