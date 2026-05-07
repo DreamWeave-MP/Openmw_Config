@@ -95,6 +95,7 @@ const NO_GLOBAL_DIR: &str = "FAILURE: COULD NOT READ GLOBAL DIRECTORY";
 const NO_GLOBAL_CONFIG_DIR: &str = "FAILURE: COULD NOT READ GLOBAL CONFIG DIRECTORY";
 const DEFAULT_FLATPAK_APP_ID: &str = "org.openmw.OpenMW";
 
+#[cfg(target_os = "linux")]
 fn has_flatpak_info_file() -> bool {
     use std::sync::OnceLock;
 
