@@ -2,22 +2,14 @@
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
 use crate::{
-    ConfigChainStatus, DirectorySetting, EncodingSetting, GameSetting as GameSettingTrait,
-    GameSettingType, OpenMWConfiguration,
+    ConfigChainStatus, EncodingSetting, GameSetting as GameSettingTrait, GameSettingType,
+    OpenMWConfiguration,
 };
 use mlua::{Lua, Table, UserData, UserDataMethods};
 use std::path::{Path, PathBuf};
 
 fn lua_err(error: impl std::fmt::Display) -> mlua::Error {
     mlua::Error::RuntimeError(error.to_string())
-}
-
-fn dir_setting_from_value(path: &str, source_config: &Path) -> DirectorySetting {
-    DirectorySetting::new(
-        path.to_owned(),
-        source_config.to_path_buf(),
-        &mut String::new(),
-    )
 }
 
 fn collect_strings<I>(iter: I) -> Vec<String>
@@ -98,6 +90,10 @@ impl UserData for LuaOpenMWConfiguration {
         });
 
         methods.add_method("toString", |_, this, ()| Ok(this.inner.to_string()));
+
+        methods.add_method("toResolvedString", |_, this, ()| {
+            Ok(this.inner.to_resolved_string())
+        });
 
         methods.add_method("subConfigs", |_, this, ()| {
             Ok(collect_strings(
@@ -349,29 +345,29 @@ impl UserData for LuaOpenMWConfiguration {
         );
 
         methods.add_method_mut("setUserData", |_, this, path: Option<String>| {
-            let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path
-                .as_deref()
-                .map(|value| dir_setting_from_value(value, &source));
-            this.inner.set_userdata(setting);
+            if let Some(path) = path {
+                this.inner.set_user_data_path(path);
+            } else {
+                this.inner.clear_user_data();
+            }
             Ok(())
         });
 
         methods.add_method_mut("setResources", |_, this, path: Option<String>| {
-            let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path
-                .as_deref()
-                .map(|value| dir_setting_from_value(value, &source));
-            this.inner.set_resources(setting);
+            if let Some(path) = path {
+                this.inner.set_resources_path(path);
+            } else {
+                this.inner.clear_resources();
+            }
             Ok(())
         });
 
         methods.add_method_mut("setDataLocal", |_, this, path: Option<String>| {
-            let source = this.inner.user_config_path().join("openmw.cfg");
-            let setting = path
-                .as_deref()
-                .map(|value| dir_setting_from_value(value, &source));
-            this.inner.set_data_local(setting);
+            if let Some(path) = path {
+                this.inner.set_data_local_path(path);
+            } else {
+                this.inner.clear_data_local();
+            }
             Ok(())
         });
 
@@ -403,6 +399,12 @@ impl UserData for LuaOpenMWConfiguration {
         methods.add_method("saveToPath", |_, this, path: String| {
             this.inner.save_to_path(Path::new(&path)).map_err(lua_err)
         });
+
+        methods.add_method("saveResolvedToPath", |_, this, path: String| {
+            this.inner
+                .save_resolved_to_path(Path::new(&path))
+                .map_err(lua_err)
+        });
     }
 }
 
@@ -428,6 +430,24 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
         "new",
         lua.create_function(|_, path: Option<String>| {
             OpenMWConfiguration::new(path.map(PathBuf::from))
+                .map(LuaOpenMWConfiguration::new)
+                .map_err(lua_err)
+        })?,
+    )?;
+
+    exports.set(
+        "newEmpty",
+        lua.create_function(|_, user_config_dir: String| {
+            OpenMWConfiguration::new_empty(user_config_dir)
+                .map(LuaOpenMWConfiguration::new)
+                .map_err(lua_err)
+        })?,
+    )?;
+
+    exports.set(
+        "loadOptional",
+        lua.create_function(|_, path: String| {
+            OpenMWConfiguration::load_optional(path)
                 .map(LuaOpenMWConfiguration::new)
                 .map_err(lua_err)
         })?,

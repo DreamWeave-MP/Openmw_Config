@@ -144,6 +144,34 @@ impl SettingValue {
             SettingValue::Generic(setting) => setting.meta(),
         }
     }
+
+    fn to_resolved_string(&self) -> Option<String> {
+        match self {
+            SettingValue::UserData(userdata_setting) => Some(format!(
+                "{}user-data={}\n",
+                userdata_setting.meta().comment,
+                userdata_setting.parsed().display()
+            )),
+            SettingValue::DataLocal(data_local_setting) => Some(format!(
+                "{}data-local={}\n",
+                data_local_setting.meta().comment,
+                data_local_setting.parsed().display()
+            )),
+            SettingValue::Resources(resources_setting) => Some(format!(
+                "{}resources={}\n",
+                resources_setting.meta().comment,
+                resources_setting.parsed().display()
+            )),
+            SettingValue::DataDirectory(data_directory) => Some(format!(
+                "{}data={}\n",
+                data_directory.meta().comment,
+                data_directory.parsed().display()
+            )),
+            SettingValue::SubConfiguration(_) => None,
+            SettingValue::Generic(generic) if generic.key().eq_ignore_ascii_case("replace") => None,
+            _ => Some(self.to_string()),
+        }
+    }
 }
 
 macro_rules! insert_dir_setting {
@@ -279,7 +307,7 @@ impl OpenMWConfiguration {
     /// 3. Executable-adjacent `openmw.cfg`.
     /// 4. Platform global config `openmw.cfg`.
     ///
-    /// This deliberately does not fall back to [`Self::new(None)`]. User config is loaded only if
+    /// This deliberately does not fall back to `Self::new(None)`. User config is loaded only if
     /// the discovered root config references it, usually through `config="?userconfig?"`.
     ///
     /// # Example
@@ -394,6 +422,76 @@ impl OpenMWConfiguration {
         }
     }
 
+    /// Creates an empty configuration rooted at `user_config_dir` without reading from disk.
+    ///
+    /// The argument is a configuration directory, not an `openmw.cfg` file path. New settings are
+    /// attributed to `user_config_dir/openmw.cfg`, and save/export APIs treat that file as the user
+    /// config. The directory and file do not need to exist yet.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::NotFileOrDirectory`] if `user_config_dir` is empty or is shaped like
+    /// an `openmw.cfg` file path. This keeps the directory-level API honest for future config-family
+    /// files such as `settings.cfg` and `shaders.yaml`.
+    pub fn new_empty(user_config_dir: impl Into<PathBuf>) -> Result<Self, ConfigError> {
+        let mut user_config_dir = user_config_dir.into();
+
+        if user_config_dir.as_os_str().is_empty()
+            || user_config_dir
+                .file_name()
+                .is_some_and(|file_name| file_name == "openmw.cfg")
+        {
+            return Err(ConfigError::NotFileOrDirectory(user_config_dir));
+        }
+
+        if user_config_dir.is_relative() {
+            user_config_dir = std::env::current_dir()?.join(user_config_dir);
+        }
+
+        Ok(Self {
+            root_config: user_config_dir.join("openmw.cfg"),
+            ..Self::default()
+        })
+    }
+
+    /// Loads a configuration if it exists, otherwise creates an empty configuration at the same
+    /// config context.
+    ///
+    /// Existing paths behave exactly like [`Self::new`]. A missing `openmw.cfg` file path starts an
+    /// empty config from its parent directory; a missing directory path starts an empty config from
+    /// that directory. No input file is created unless a later save call writes one.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] for empty paths, invalid existing inputs, or load failures from
+    /// existing configs.
+    pub fn load_optional(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
+        let path = path.into();
+
+        if path.as_os_str().is_empty() {
+            return Err(ConfigError::NotFileOrDirectory(path));
+        }
+
+        if path.is_dir() && !path.join("openmw.cfg").exists() {
+            return Self::new_empty(path);
+        }
+
+        if path.exists() {
+            return Self::new(Some(path));
+        }
+
+        if path
+            .file_name()
+            .is_some_and(|file_name| file_name == "openmw.cfg")
+        {
+            let parent = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            return Self::new_empty(parent);
+        }
+
+        Self::new_empty(path)
+    }
+
     /// Path to the configuration file which is the root of the configuration chain
     /// For [`Self::from_env`], this is the root discovered by `OpenMW` startup semantics: explicit
     /// environment override, executable-adjacent `openmw.cfg`, or platform global config. It is not
@@ -492,6 +590,55 @@ impl OpenMWConfiguration {
             set: set_encoding,
             in_type: EncodingSetting
         }
+    }
+
+    fn directory_setting_for_user_config(&self, path: impl AsRef<Path>) -> DirectorySetting {
+        DirectorySetting::new(
+            path.as_ref().to_string_lossy(),
+            self.user_config_path().join("openmw.cfg"),
+            &mut String::default(),
+        )
+    }
+
+    /// Replaces the singleton `data-local=` directory with a path attributed to the user config.
+    ///
+    /// The value is parsed through [`DirectorySetting`] so quote, token, and relative-path handling
+    /// remains centralized.
+    pub fn set_data_local_path(&mut self, path: impl AsRef<Path>) {
+        let setting = self.directory_setting_for_user_config(path);
+        self.set_data_local(Some(setting));
+    }
+
+    /// Replaces the singleton `resources=` directory with a path attributed to the user config.
+    ///
+    /// The value is parsed through [`DirectorySetting`] so quote, token, and relative-path handling
+    /// remains centralized.
+    pub fn set_resources_path(&mut self, path: impl AsRef<Path>) {
+        let setting = self.directory_setting_for_user_config(path);
+        self.set_resources(Some(setting));
+    }
+
+    /// Replaces the singleton `user-data=` directory with a path attributed to the user config.
+    ///
+    /// The cfg key is `user-data`; `?userdata?` is only a token. There is no `userdata=` key here.
+    pub fn set_user_data_path(&mut self, path: impl AsRef<Path>) {
+        let setting = self.directory_setting_for_user_config(path);
+        self.set_userdata(Some(setting));
+    }
+
+    /// Clears the singleton `data-local=` directory setting.
+    pub fn clear_data_local(&mut self) {
+        self.set_data_local(None);
+    }
+
+    /// Clears the singleton `resources=` directory setting.
+    pub fn clear_resources(&mut self) {
+        self.set_resources(None);
+    }
+
+    /// Clears the singleton `user-data=` directory setting.
+    pub fn clear_user_data(&mut self) {
+        self.set_userdata(None);
     }
 
     /// Content files are the actual *mods* or plugins which are created by either `OpenCS` or Bethesda's construction set
@@ -1316,16 +1463,7 @@ impl OpenMWConfiguration {
         Ok(())
     }
 
-    /// Writes the full composite configuration to an arbitrary path.
-    ///
-    /// This is intended for importer-style output where the exact destination is supplied by the
-    /// caller rather than inferred from the loaded config chain.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::NotWritable`] if the destination directory is not writable.
-    /// Returns [`ConfigError::Io`] if writing the file fails.
-    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
-        let path = path.as_ref();
+    fn save_string_to_path(config_string: &str, path: &Path) -> Result<(), ConfigError> {
         let parent = path
             .parent()
             .ok_or_else(|| ConfigError::NotWritable(path.to_path_buf()))?;
@@ -1335,7 +1473,67 @@ impl OpenMWConfiguration {
             bail_config!(not_writable, parent);
         }
 
-        Self::write_config(&self.to_string(), path)
+        Self::write_config(config_string, path)
+    }
+
+    /// Serializes the fully-composed configuration as a relocated, flattened `openmw.cfg`.
+    ///
+    /// Directory-valued settings (`data=`, `data-local=`, `resources=`, and `user-data=`) are
+    /// emitted from their resolved paths, not their original token or relative spelling. Chain
+    /// control entries such as `config=` and `replace=` are excluded because this output is already
+    /// the composed result; reloading the chain from the flattened file would be doing the work
+    /// twice, and probably differently. Synthetic `data-local`-as-`data` entries are also omitted.
+    ///
+    /// Use the [`Display`] implementation for preservation-oriented serialization instead.
+    #[must_use]
+    pub fn to_resolved_string(&self) -> String {
+        use std::fmt::Write as _;
+
+        let mut config_string = String::new();
+
+        for setting in &self.settings {
+            if self.is_synthetic_data_local_data_directory(setting) {
+                continue;
+            }
+
+            if let Some(setting_string) = setting.to_resolved_string() {
+                config_string.push_str(&setting_string);
+            }
+        }
+
+        writeln!(
+            config_string,
+            "# OpenMW-Config Serializer Version: {}",
+            env!("CARGO_PKG_VERSION")
+        )
+        .expect("writing to a String cannot fail");
+
+        config_string
+    }
+
+    /// Writes the full composite configuration to an arbitrary path.
+    ///
+    /// This is intended for importer-style output where the exact destination is supplied by the
+    /// caller rather than inferred from the loaded config chain.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::NotWritable`] if the destination directory is not writable.
+    /// Returns [`ConfigError::Io`] if writing the file fails.
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
+        Self::save_string_to_path(&self.to_string(), path.as_ref())
+    }
+
+    /// Writes [`Self::to_resolved_string`] to an arbitrary path using atomic replace semantics.
+    ///
+    /// This is the relocation-safe export API for importers and preview/output tools. It omits
+    /// `config=` and `replace=` chain-control entries and writes directory-valued settings using
+    /// resolved paths so moving the output file does not change what those paths mean.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::NotWritable`] if the destination directory is not writable.
+    /// Returns [`ConfigError::Io`] if writing the file fails.
+    pub fn save_resolved_to_path(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
+        Self::save_string_to_path(&self.to_resolved_string(), path.as_ref())
     }
 
     /// Saves the currently-defined user openmw.cfg configuration.
@@ -1350,6 +1548,8 @@ impl OpenMWConfiguration {
     pub fn save_user(&self) -> Result<(), ConfigError> {
         let target_dir = self.user_config_path();
         let cfg_path = target_dir.join("openmw.cfg");
+
+        std::fs::create_dir_all(&target_dir)?;
 
         if !util::is_writable(&cfg_path) {
             bail_config!(not_writable, &cfg_path);
@@ -1418,17 +1618,16 @@ impl OpenMWConfiguration {
     }
 }
 
-/// Keep in mind this is *not* meant to be used as a mechanism to write the openmw.cfg contents.
-/// Since the openmw.cfg is a merged entity, it is impossible to distinguish the origin of one particular data directory
-/// Or content file once it has been applied - this is doubly true for entries which may only exist once in openmw.cfg.
-/// Thus, what this method provides is the composite configuration.
+/// Preservation-oriented `openmw.cfg` serialization for the composed configuration.
 ///
-/// It may be safely used to write an openmw.cfg as all directories will be absolutized upon loading the config.
+/// Directory-valued settings use their original text so user-authored relative paths, tokens, and
+/// quoting survive round-trips. That makes this suitable for preservation-style output and for the
+/// internals of [`OpenMWConfiguration::save_user`] / [`OpenMWConfiguration::save_subconfig`]. It is
+/// not relocation-safe flattened export: writing this string to a different directory can change the
+/// meaning of relative paths. Use [`OpenMWConfiguration::to_resolved_string`] or
+/// [`OpenMWConfiguration::save_resolved_to_path`] for importer/export output.
 ///
-/// Token information is also lost when a config file is processed.
-/// It is not necessarily recommended to write a configuration file which loads other ones or uses tokens for this reason.
-///
-/// Comments are also preserved.
+/// Synthetic `data-local`-as-`data` entries are omitted. Comments are preserved.
 impl fmt::Display for OpenMWConfiguration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.settings
@@ -2026,6 +2225,88 @@ mod tests {
     }
 
     #[test]
+    fn test_display_preserves_directory_originals_for_round_trip_boundary() {
+        let dir = temp_dir();
+        write_cfg(
+            &dir,
+            "data=Data Files\ndata-local=\"Local Data\"\nresources=?local?/resources\nuser-data=?userdata?\n",
+        );
+
+        let config = OpenMWConfiguration::new(Some(dir)).unwrap();
+        let serialized = config.to_string();
+
+        assert!(serialized.contains("data=Data Files"));
+        assert!(serialized.contains("data-local=\"Local Data\""));
+        assert!(serialized.contains("resources=?local?/resources"));
+        assert!(serialized.contains("user-data=?userdata?"));
+    }
+
+    #[test]
+    fn test_to_resolved_string_emits_resolved_directory_paths() {
+        let dir = temp_dir();
+        write_cfg(
+            &dir,
+            "data=Data Files\ndata-local=\"Local Data\"\nresources=?local?/resources\nuser-data=?userdata?\ncontent=Base.esm\nfallback-archive=Morrowind.bsa\n",
+        );
+
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        let serialized = config.to_resolved_string();
+
+        assert!(!serialized.contains("data=Data Files"));
+        assert!(!serialized.contains("data-local=\"Local Data\""));
+        assert!(!serialized.contains("resources=?local?/resources"));
+        assert!(!serialized.contains("userdata="));
+        assert!(serialized.contains(&format!("data={}", dir.join("Data Files").display())));
+        assert!(serialized.contains(&format!("data-local={}", dir.join("Local Data").display())));
+        assert!(serialized.contains("user-data="));
+        assert!(serialized.contains("content=Base.esm"));
+        assert!(serialized.contains("fallback-archive=Morrowind.bsa"));
+    }
+
+    #[test]
+    fn test_to_resolved_string_excludes_config_replace_and_synthetic_data_local() {
+        let root = temp_dir();
+        let sub = temp_dir();
+        let data_local = root.join("local-data");
+        write_cfg(
+            &root,
+            &format!(
+                "data-local={}\nconfig={}\ncontent=Root.esm\n",
+                data_local.display(),
+                sub.display()
+            ),
+        );
+        write_cfg(&sub, "content=Sub.esm\n");
+
+        let mut config = OpenMWConfiguration::new(Some(root)).unwrap();
+        config.add_generic_setting("replace", "data");
+
+        let serialized = config.to_resolved_string();
+
+        assert!(!serialized.contains("config="));
+        assert!(!serialized.contains("replace="));
+        assert_eq!(serialized.matches("data-local=").count(), 1);
+        assert_eq!(serialized.matches("data=").count(), 0);
+        assert!(serialized.contains("content=Root.esm"));
+        assert!(serialized.contains("content=Sub.esm"));
+    }
+
+    #[test]
+    fn test_save_resolved_to_path_writes_relocated_safe_output() {
+        let dir = temp_dir();
+        let out = temp_dir().join("openmw.cfg");
+        write_cfg(&dir, "data=Data Files\ncontent=Base.esm\n");
+
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        config.save_resolved_to_path(&out).unwrap();
+
+        let saved = std::fs::read_to_string(out).unwrap();
+        assert!(saved.contains(&format!("data={}", dir.join("Data Files").display())));
+        assert!(!saved.contains("data=Data Files"));
+        assert!(saved.contains("content=Base.esm"));
+    }
+
+    #[test]
     fn test_save_user_not_writable_returns_error() {
         // Only meaningful on Unix — skip on other platforms
         #[cfg(unix)]
@@ -2088,6 +2369,242 @@ mod tests {
             saved.contains("content=Plugin.esp"),
             "sub-config content preserved"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Empty and optional construction
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_new_empty_uses_directory_as_user_config_context() {
+        let dir = temp_dir().join("not-created-yet");
+
+        let mut config = OpenMWConfiguration::new_empty(&dir).unwrap();
+        config.add_content_file("EmptyStart.esp").unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+        config
+            .set_game_setting("fScale,1.0", None, &mut String::new())
+            .unwrap();
+
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
+        assert_eq!(config.root_config_dir(), dir);
+        assert_eq!(config.user_config_path(), config.root_config_dir());
+
+        let content = config.content_files_iter().next().unwrap();
+        assert_eq!(content.meta().source_config, config.root_config_file());
+
+        let data = config.data_directories_iter().next().unwrap();
+        assert_eq!(data.meta().source_config, config.root_config_file());
+        assert_eq!(data.parsed(), &config.root_config_dir().join("Data Files"));
+
+        let game_setting = config.get_game_setting("fScale").unwrap();
+        assert_eq!(game_setting.meta().source_config, config.root_config_file());
+    }
+
+    #[test]
+    fn test_new_empty_rejects_openmw_cfg_file_shaped_path() {
+        let result = OpenMWConfiguration::new_empty(temp_dir().join("openmw.cfg"));
+        assert!(matches!(result, Err(ConfigError::NotFileOrDirectory(_))));
+    }
+
+    #[test]
+    fn test_save_to_path_works_from_new_empty_config() {
+        let dir = temp_dir().join("missing-config-dir");
+        let out_dir = temp_dir();
+        let out = out_dir.join("openmw.cfg");
+
+        let mut config = OpenMWConfiguration::new_empty(&dir).unwrap();
+        config.add_content_file("Generated.esp").unwrap();
+        config.save_to_path(&out).unwrap();
+
+        let saved = std::fs::read_to_string(out).unwrap();
+        assert!(saved.contains("content=Generated.esp"));
+    }
+
+    #[test]
+    fn test_save_user_creates_missing_new_empty_config_directory() {
+        let dir = temp_dir().join("missing-user-config-dir");
+
+        let mut config = OpenMWConfiguration::new_empty(&dir).unwrap();
+        config.add_content_file("Generated.esp").unwrap();
+        config.save_user().unwrap();
+
+        let saved = std::fs::read_to_string(dir.join("openmw.cfg")).unwrap();
+        assert!(saved.contains("content=Generated.esp"));
+    }
+
+    #[test]
+    fn test_load_optional_existing_cfg_matches_new() {
+        let dir = temp_dir();
+        let cfg = write_cfg(&dir, "content=Existing.esm\ndata=Data Files\n");
+
+        let from_new = OpenMWConfiguration::new(Some(cfg.clone())).unwrap();
+        let from_optional = OpenMWConfiguration::load_optional(&cfg).unwrap();
+
+        assert_eq!(
+            from_optional.root_config_file(),
+            from_new.root_config_file()
+        );
+        assert_eq!(from_optional.to_string(), from_new.to_string());
+    }
+
+    #[test]
+    fn test_load_optional_missing_cfg_uses_parent_context() {
+        let dir = temp_dir().join("cfg-parent");
+        let cfg = dir.join("openmw.cfg");
+
+        let mut config = OpenMWConfiguration::load_optional(&cfg).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_file(), cfg);
+        assert_eq!(config.root_config_dir(), dir);
+        assert_eq!(
+            config.data_directories_iter().next().unwrap().parsed(),
+            &config.root_config_dir().join("Data Files")
+        );
+    }
+
+    #[test]
+    fn test_load_optional_existing_empty_dir_uses_dir_context() {
+        let dir = temp_dir();
+
+        let mut config = OpenMWConfiguration::load_optional(&dir).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
+        assert_eq!(config.root_config_dir(), dir);
+        assert_eq!(
+            config.data_directories_iter().next().unwrap().parsed(),
+            &config.root_config_dir().join("Data Files")
+        );
+    }
+
+    #[test]
+    fn test_load_optional_missing_dir_uses_dir_context() {
+        let dir = temp_dir().join("missing-dir");
+
+        let config = OpenMWConfiguration::load_optional(&dir).unwrap();
+
+        assert_eq!(config.root_config_file(), dir.join("openmw.cfg"));
+        assert_eq!(config.root_config_dir(), dir);
+    }
+
+    #[test]
+    fn test_new_empty_relative_dir_anchors_to_current_dir_for_resolved_export() {
+        let relative_dir = PathBuf::from(format!(
+            "openmw-config-relative-empty-{}",
+            std::process::id()
+        ));
+        let expected_dir = std::env::current_dir().unwrap().join(&relative_dir);
+
+        let mut config = OpenMWConfiguration::new_empty(&relative_dir).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_dir(), expected_dir);
+        assert!(config.to_resolved_string().contains(&format!(
+            "data={}",
+            expected_dir.join("Data Files").display()
+        )));
+    }
+
+    #[test]
+    fn test_load_optional_relative_missing_cfg_anchors_to_current_dir() {
+        let relative_cfg = PathBuf::from(format!(
+            "openmw-config-relative-missing-{}/openmw.cfg",
+            std::process::id()
+        ));
+        let expected_dir = std::env::current_dir()
+            .unwrap()
+            .join(relative_cfg.parent().unwrap());
+
+        let mut config = OpenMWConfiguration::load_optional(&relative_cfg).unwrap();
+        config.add_data_directory(Path::new("Data Files"));
+
+        assert_eq!(config.root_config_dir(), expected_dir);
+        assert!(config.to_resolved_string().contains(&format!(
+            "data={}",
+            expected_dir.join("Data Files").display()
+        )));
+    }
+
+    #[test]
+    fn test_path_level_directory_singleton_setters_use_user_config_context() {
+        let dir = temp_dir();
+        let mut config = OpenMWConfiguration::new_empty(&dir).unwrap();
+
+        config.set_data_local_path("local-data");
+        config.set_resources_path("resources-dir");
+        config.set_user_data_path("user-data-dir");
+
+        assert_eq!(
+            config.data_local().unwrap().meta().source_config,
+            config.root_config_file()
+        );
+        assert_eq!(
+            config.resources().unwrap().meta().source_config,
+            config.root_config_file()
+        );
+        assert_eq!(
+            config.userdata().unwrap().meta().source_config,
+            config.root_config_file()
+        );
+        assert_eq!(
+            config.data_local().unwrap().parsed(),
+            &dir.join("local-data")
+        );
+        assert_eq!(
+            config.resources().unwrap().parsed(),
+            &dir.join("resources-dir")
+        );
+        assert_eq!(
+            config.userdata().unwrap().parsed(),
+            &dir.join("user-data-dir")
+        );
+
+        let serialized = config.to_string();
+        assert!(serialized.contains("data-local=local-data"));
+        assert!(serialized.contains("resources=resources-dir"));
+        assert!(serialized.contains("user-data=user-data-dir"));
+        assert!(!serialized.contains("userdata="));
+    }
+
+    #[test]
+    fn test_repeated_path_level_singleton_setters_replace() {
+        let dir = temp_dir();
+        let mut config = OpenMWConfiguration::new_empty(dir).unwrap();
+
+        config.set_data_local_path("first-local");
+        config.set_data_local_path("second-local");
+        config.set_resources_path("first-resources");
+        config.set_resources_path("second-resources");
+        config.set_user_data_path("first-user-data");
+        config.set_user_data_path("second-user-data");
+
+        let serialized = config.to_string();
+        assert_eq!(serialized.matches("data-local=").count(), 1);
+        assert_eq!(serialized.matches("resources=").count(), 1);
+        assert_eq!(serialized.matches("user-data=").count(), 1);
+        assert!(serialized.contains("data-local=second-local"));
+        assert!(serialized.contains("resources=second-resources"));
+        assert!(serialized.contains("user-data=second-user-data"));
+    }
+
+    #[test]
+    fn test_path_level_directory_singleton_clearers_remove_values() {
+        let dir = temp_dir();
+        let mut config = OpenMWConfiguration::new_empty(dir).unwrap();
+
+        config.set_data_local_path("local-data");
+        config.set_resources_path("resources-dir");
+        config.set_user_data_path("user-data-dir");
+
+        config.clear_data_local();
+        config.clear_resources();
+        config.clear_user_data();
+
+        assert!(config.data_local().is_none());
+        assert!(config.resources().is_none());
+        assert!(config.userdata().is_none());
     }
 
     // -----------------------------------------------------------------------
