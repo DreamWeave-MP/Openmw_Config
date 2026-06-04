@@ -1,7 +1,7 @@
 #[cfg(feature = "lua")]
 mod lua_tests {
     use mlua::Lua;
-    use openmw_config::create_lua_module;
+    use openmw_config::{create_lua_module, try_default_config_path};
     use std::{path::Path, sync::Mutex};
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -27,6 +27,17 @@ mod lua_tests {
             std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
             std::env::remove_var("OPENMW_FLATPAK_ID");
             std::env::remove_var("FLATPAK_ID");
+        }
+    }
+
+    fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
+        // SAFETY: callers hold ENV_LOCK, so process-global environment mutation is serialized.
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
         }
     }
 
@@ -191,17 +202,22 @@ mod lua_tests {
     fn test_lua_from_env_or_user_config_fallback() {
         let _guard = ENV_LOCK.lock().unwrap();
         let empty_global = temp_dir("lua_empty_global");
-        let xdg_config_home = temp_dir("lua_xdg_config_home");
-        let user_config_dir = xdg_config_home.join("openmw");
-        write_cfg(&user_config_dir, "content=LuaUserOnly.esm\n");
-        let expected_cfg = user_config_dir.join("openmw.cfg");
+        let test_home = temp_dir("lua_home");
+        let test_xdg_config_home = temp_dir("lua_xdg_config_home");
+        let old_home = std::env::var_os("HOME");
+        let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
         // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
         unsafe {
             clear_config_env();
             std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global);
-            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+            std::env::set_var("HOME", &test_home);
+            std::env::set_var("XDG_CONFIG_HOME", &test_xdg_config_home);
         }
+
+        let user_config_dir = try_default_config_path().unwrap();
+        write_cfg(&user_config_dir, "content=LuaUserOnly.esm\n");
+        let expected_cfg = user_config_dir.join("openmw.cfg");
 
         let lua = Lua::new();
         let module = create_lua_module(&lua).unwrap();
@@ -210,21 +226,24 @@ mod lua_tests {
             .set("expectedCfg", expected_cfg.display().to_string())
             .unwrap();
 
-        lua.load(
-            r#"
+        let lua_result = lua
+            .load(
+                r#"
             local cfg = openmwConfig.fromEnvOrUserConfig()
             assert(cfg:rootConfigFile() == expectedCfg)
             assert(cfg:hasContentFile("LuaUserOnly.esm"))
         "#,
-        )
-        .exec()
-        .unwrap();
+            )
+            .exec();
 
         // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
         unsafe {
             clear_config_env();
-            std::env::remove_var("XDG_CONFIG_HOME");
         }
+        restore_env_var("HOME", old_home);
+        restore_env_var("XDG_CONFIG_HOME", old_xdg_config_home);
+
+        lua_result.unwrap();
     }
 
     #[test]

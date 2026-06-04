@@ -1726,6 +1726,17 @@ mod tests {
         }
     }
 
+    fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
+        // SAFETY: callers hold env_lock(). Environment mutation is process-global.
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
     fn load(cfg_contents: &str) -> OpenMWConfiguration {
         let dir = temp_dir();
         write_cfg(&dir, cfg_contents);
@@ -2834,23 +2845,30 @@ mod tests {
     fn test_from_env_or_user_config_falls_back_to_user_config() {
         let _guard = env_lock();
         let empty_global_dir = temp_dir();
-        let xdg_config_home = temp_dir();
-        let user_config_dir = xdg_config_home.join("openmw");
-        std::fs::create_dir_all(&user_config_dir).unwrap();
-        let user_cfg = write_cfg(&user_config_dir, "content=UserOnly.esm\n");
+        let test_home = temp_dir();
+        let test_xdg_config_home = temp_dir();
+        let old_home = std::env::var_os("HOME");
+        let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
         unsafe {
             clear_from_env_overrides();
             std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
-            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+            std::env::set_var("HOME", &test_home);
+            std::env::set_var("XDG_CONFIG_HOME", &test_xdg_config_home);
         }
 
-        let config = OpenMWConfiguration::from_env_or_user_config().unwrap();
+        let user_config_dir = crate::try_default_config_path().unwrap();
+        std::fs::create_dir_all(&user_config_dir).unwrap();
+        let user_cfg = write_cfg(&user_config_dir, "content=UserOnly.esm\n");
+
+        let result = OpenMWConfiguration::from_env_or_user_config();
         unsafe {
             clear_from_env_overrides();
-            std::env::remove_var("XDG_CONFIG_HOME");
         }
+        restore_env_var("HOME", old_home);
+        restore_env_var("XDG_CONFIG_HOME", old_xdg_config_home);
 
+        let config = result.unwrap();
         assert_eq!(config.root_config_file(), user_cfg);
         assert!(config.has_content_file("UserOnly.esm"));
     }
@@ -2860,19 +2878,24 @@ mod tests {
     fn test_from_env_or_user_config_errors_when_no_candidates_exist() {
         let _guard = env_lock();
         let empty_global_dir = temp_dir();
-        let xdg_config_home = temp_dir();
+        let test_home = temp_dir();
+        let test_xdg_config_home = temp_dir();
+        let old_home = std::env::var_os("HOME");
+        let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
         unsafe {
             clear_from_env_overrides();
             std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
-            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+            std::env::set_var("HOME", &test_home);
+            std::env::set_var("XDG_CONFIG_HOME", &test_xdg_config_home);
         }
 
         let result = OpenMWConfiguration::from_env_or_user_config();
         unsafe {
             clear_from_env_overrides();
-            std::env::remove_var("XDG_CONFIG_HOME");
         }
+        restore_env_var("HOME", old_home);
+        restore_env_var("XDG_CONFIG_HOME", old_xdg_config_home);
 
         assert!(
             matches!(result, Err(ConfigError::CannotFindAnyConfig { .. })),
