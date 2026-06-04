@@ -32,11 +32,14 @@
 //! an `openmw.cfg` file) and `OPENMW_CONFIG_DIR` (directory containing `openmw.cfg`) override root
 //! config discovery. Without those, [`OpenMWConfiguration::from_env`] tries an `openmw.cfg` adjacent
 //! to the running executable, then the platform global `OpenMW` config. User config is loaded only
-//! when referenced by the root config, usually through `config="?userconfig?"`.
+//! when referenced by the root config, usually through `config="?userconfig?"`. External tools that
+//! want this order plus a user-config fallback should use
+//! [`OpenMWConfiguration::from_env_or_user_config`].
 //!
 //! Path helpers intentionally distinguish the user config path (`?userconfig?`,
-//! [`try_default_config_path`]), the global config path ([`try_default_global_config_path`]), and
-//! the global data-token path (`?global?`, [`try_default_global_path`]). Those are not synonyms.
+//! [`try_default_config_path`]), the user config file ([`try_default_user_config_file`]), the global
+//! config path ([`try_default_global_config_path`]), and the global data-token path (`?global?`,
+//! [`try_default_global_path`]). Those are not synonyms.
 //!
 //! Serialization has two contracts. [`OpenMWConfiguration`]'s [`std::fmt::Display`] implementation
 //! and preservation save APIs keep directory settings in their original spelling for round-trips.
@@ -190,6 +193,27 @@ pub fn default_config_path() -> std::path::PathBuf {
     try_default_config_path().expect(NO_CONFIG_DIR)
 }
 
+/// Fallible variant of [`default_user_config_file`].
+///
+/// Resolves the default user `openmw.cfg` file, i.e. [`try_default_config_path`] plus
+/// `openmw.cfg`. This is the file behind the `?userconfig?` token, not `OpenMW`'s root startup
+/// config.
+///
+/// # Errors
+/// Returns [`ConfigError::PlatformPathUnavailable`] if no platform config directory can be discovered.
+pub fn try_default_user_config_file() -> Result<std::path::PathBuf, ConfigError> {
+    try_default_config_path().map(|path| path.join("openmw.cfg"))
+}
+
+/// Path to the default user `openmw.cfg` file.
+///
+/// # Panics
+/// Panics if the platform config directory cannot be determined (unsupported system).
+#[must_use]
+pub fn default_user_config_file() -> std::path::PathBuf {
+    try_default_user_config_file().expect(NO_CONFIG_DIR)
+}
+
 /// Fallible variant of [`default_userdata_path`].
 ///
 /// Resolution precedence:
@@ -296,6 +320,43 @@ pub fn try_default_root_config_path() -> Result<std::path::PathBuf, ConfigError>
     }
 
     Err(ConfigError::CannotFindRootConfig { local, global })
+}
+
+/// Find the default root `openmw.cfg`, falling back to the default user `openmw.cfg`.
+///
+/// This is intended for external tools that should honor package/global root configs when present,
+/// but should still work on installs that only have a user config. It does not change
+/// [`try_default_root_config_path`], which remains strict `OpenMW` startup/root discovery.
+///
+/// # Errors
+/// Returns [`ConfigError`] if platform paths cannot be resolved or no root/user `openmw.cfg` exists.
+pub fn try_default_root_or_user_config_path() -> Result<std::path::PathBuf, ConfigError> {
+    match try_default_root_config_path() {
+        Ok(path) => Ok(path),
+        Err(ConfigError::CannotFindRootConfig { local, global }) => {
+            let user = try_default_user_config_file()?;
+
+            if user.is_file() {
+                Ok(user)
+            } else {
+                Err(ConfigError::CannotFindAnyConfig {
+                    local,
+                    global,
+                    user,
+                })
+            }
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Path to the default root-or-user `openmw.cfg` discovered for external tools.
+///
+/// # Panics
+/// Panics if no root or user config can be found.
+#[must_use]
+pub fn default_root_or_user_config_path() -> std::path::PathBuf {
+    try_default_root_or_user_config_path().expect("FAILURE: COULD NOT FIND ROOT OR USER CONFIG")
 }
 
 /// Path to the default root `openmw.cfg` discovered with `OpenMW` startup semantics.

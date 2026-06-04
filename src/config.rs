@@ -349,6 +349,40 @@ impl OpenMWConfiguration {
         Self::new(Some(root_config))
     }
 
+    /// Loads an `OpenMW` configuration using environment/root discovery with a user-config fallback.
+    ///
+    /// This is the discovery mode external tools normally want:
+    ///
+    /// 1. Honor [`Self::from_env`] semantics, including `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`,
+    ///    executable-adjacent root config, and platform global root config.
+    /// 2. If strict root discovery finds no root config, fall back to the default user
+    ///    `openmw.cfg` (`?userconfig?/openmw.cfg`).
+    ///
+    /// Explicit environment errors are still errors. This method only adds a fallback for the
+    /// "no local/global root config exists" case.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] if config loading fails or if no root/user config exists.
+    pub fn from_env_or_user_config() -> Result<Self, ConfigError> {
+        match Self::from_env() {
+            Ok(config) => Ok(config),
+            Err(ConfigError::CannotFindRootConfig { local, global }) => {
+                let user = crate::try_default_user_config_file()?;
+
+                if user.is_file() {
+                    Self::new(Some(user))
+                } else {
+                    Err(ConfigError::CannotFindAnyConfig {
+                        local,
+                        global,
+                        user,
+                    })
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// # Errors
     /// Returns [`ConfigError`] if the path does not exist, is not a valid config, or if loading the config chain fails.
     ///
@@ -1686,6 +1720,9 @@ mod tests {
             std::env::remove_var("OPENMW_CONFIG");
             std::env::remove_var("OPENMW_CONFIG_DIR");
             std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("OPENMW_FLATPAK_ID");
+            std::env::remove_var("FLATPAK_ID");
         }
     }
 
@@ -2789,6 +2826,57 @@ mod tests {
         assert!(
             matches!(result, Err(ConfigError::CannotFindRootConfig { .. })),
             "expected CannotFindRootConfig, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_from_env_or_user_config_falls_back_to_user_config() {
+        let _guard = env_lock();
+        let empty_global_dir = temp_dir();
+        let xdg_config_home = temp_dir();
+        let user_config_dir = xdg_config_home.join("openmw");
+        std::fs::create_dir_all(&user_config_dir).unwrap();
+        let user_cfg = write_cfg(&user_config_dir, "content=UserOnly.esm\n");
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
+            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+        }
+
+        let config = OpenMWConfiguration::from_env_or_user_config().unwrap();
+        unsafe {
+            clear_from_env_overrides();
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+
+        assert_eq!(config.root_config_file(), user_cfg);
+        assert!(config.has_content_file("UserOnly.esm"));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_from_env_or_user_config_errors_when_no_candidates_exist() {
+        let _guard = env_lock();
+        let empty_global_dir = temp_dir();
+        let xdg_config_home = temp_dir();
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
+            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+        }
+
+        let result = OpenMWConfiguration::from_env_or_user_config();
+        unsafe {
+            clear_from_env_overrides();
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+
+        assert!(
+            matches!(result, Err(ConfigError::CannotFindAnyConfig { .. })),
+            "expected CannotFindAnyConfig, got {result:?}"
         );
     }
 

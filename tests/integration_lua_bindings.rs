@@ -18,6 +18,18 @@ mod lua_tests {
         base
     }
 
+    unsafe fn clear_config_env() {
+        // SAFETY: callers hold ENV_LOCK, so process-global environment mutation is serialized.
+        unsafe {
+            std::env::remove_var("OPENMW_CONFIG");
+            std::env::remove_var("OPENMW_CONFIG_DIR");
+            std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("OPENMW_FLATPAK_ID");
+            std::env::remove_var("FLATPAK_ID");
+        }
+    }
+
     const READ_SURFACE_SCRIPT: &str = r##"
             local cfg = openmwConfig.new(rootPath)
 
@@ -108,9 +120,11 @@ mod lua_tests {
             assert(type(openmwConfig.version) == "string")
 
             assert(type(openmwConfig.defaultConfigPath()) == "string")
+            assert(type(openmwConfig.defaultUserConfigFile()) == "string")
             assert(type(openmwConfig.defaultUserDataPath()) == "string")
             assert(type(openmwConfig.defaultDataLocalPath()) == "string")
             assert(type(openmwConfig.defaultLocalPath()) == "string")
+            assert(type(openmwConfig.fromEnvOrUserConfig) == "function")
 
             if openmwConfig.tryDefaultGlobalPath then
               local globalPath, globalErr = openmwConfig.tryDefaultGlobalPath()
@@ -119,6 +133,12 @@ mod lua_tests {
 
             local cfgPath, cfgErr = openmwConfig.tryDefaultConfigPath()
             assert((cfgPath ~= nil and cfgErr == nil) or (cfgPath == nil and cfgErr ~= nil))
+
+            local userCfg, userCfgErr = openmwConfig.tryDefaultUserConfigFile()
+            assert((userCfg ~= nil and userCfgErr == nil) or (userCfg == nil and userCfgErr ~= nil))
+
+            local rootOrUser, rootOrUserErr = openmwConfig.tryDefaultRootOrUserConfigPath()
+            assert((rootOrUser ~= nil and rootOrUserErr == nil) or (rootOrUser == nil and rootOrUserErr ~= nil))
 
             local dataPath, dataErr = openmwConfig.tryDefaultUserDataPath()
             assert((dataPath ~= nil and dataErr == nil) or (dataPath == nil and dataErr ~= nil))
@@ -143,6 +163,7 @@ mod lua_tests {
 
         // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
         unsafe {
+            clear_config_env();
             std::env::set_var("OPENMW_CONFIG", &root_cfg);
         }
 
@@ -161,7 +182,48 @@ mod lua_tests {
 
         // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
         unsafe {
-            std::env::remove_var("OPENMW_CONFIG");
+            clear_config_env();
+        }
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_lua_from_env_or_user_config_fallback() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let empty_global = temp_dir("lua_empty_global");
+        let xdg_config_home = temp_dir("lua_xdg_config_home");
+        let user_config_dir = xdg_config_home.join("openmw");
+        write_cfg(&user_config_dir, "content=LuaUserOnly.esm\n");
+        let expected_cfg = user_config_dir.join("openmw.cfg");
+
+        // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
+        unsafe {
+            clear_config_env();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global);
+            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
+        }
+
+        let lua = Lua::new();
+        let module = create_lua_module(&lua).unwrap();
+        lua.globals().set("openmwConfig", module).unwrap();
+        lua.globals()
+            .set("expectedCfg", expected_cfg.display().to_string())
+            .unwrap();
+
+        lua.load(
+            r#"
+            local cfg = openmwConfig.fromEnvOrUserConfig()
+            assert(cfg:rootConfigFile() == expectedCfg)
+            assert(cfg:hasContentFile("LuaUserOnly.esm"))
+        "#,
+        )
+        .exec()
+        .unwrap();
+
+        // SAFETY: guarded by a global mutex so no concurrent env mutation occurs in tests.
+        unsafe {
+            clear_config_env();
+            std::env::remove_var("XDG_CONFIG_HOME");
         }
     }
 
