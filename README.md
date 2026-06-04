@@ -328,8 +328,8 @@ Module exports (`openmwConfig`):
 | `defaultLocalPath()` | `string` | Path backing the `?local?` token |
 | `defaultGlobalPath()` | `string` | Path backing the `?global?` token (throws on unsupported platforms) |
 | `tryDefaultConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `tryDefaultUserConfigFile()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `tryDefaultRootOrUserConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `tryDefaultUserConfigFile()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
+| `tryDefaultRootOrUserConfigPath()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
 | `tryDefaultUserDataPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `tryDefaultLocalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `tryDefaultGlobalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
