@@ -325,7 +325,7 @@ impl OpenMWConfiguration {
             } else if explicit_path.is_absolute() {
                 return Self::new(Some(explicit_path));
             } else if explicit_path.is_relative() {
-                return Self::new(Some(std::fs::canonicalize(explicit_path)?));
+                return Self::new(Some(util::display_preserving_absolute(&explicit_path)?));
             }
             return Err(ConfigError::NotFileOrDirectory(explicit_path));
         } else if let Ok(path_list) = std::env::var("OPENMW_CONFIG_DIR") {
@@ -347,6 +347,40 @@ impl OpenMWConfiguration {
 
         let root_config = crate::try_default_root_config_path()?;
         Self::new(Some(root_config))
+    }
+
+    /// Loads an `OpenMW` configuration using environment/root discovery with a user-config fallback.
+    ///
+    /// This is the discovery mode external tools normally want:
+    ///
+    /// 1. Honor [`Self::from_env`] semantics, including `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`,
+    ///    executable-adjacent root config, and platform global root config.
+    /// 2. If strict root discovery finds no root config, fall back to the default user
+    ///    `openmw.cfg` (`?userconfig?/openmw.cfg`).
+    ///
+    /// Explicit environment errors are still errors. This method only adds a fallback for the
+    /// "no local/global root config exists" case.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] if config loading fails or if no root/user config exists.
+    pub fn from_env_or_user_config() -> Result<Self, ConfigError> {
+        match Self::from_env() {
+            Ok(config) => Ok(config),
+            Err(ConfigError::CannotFindRootConfig { local, global }) => {
+                let user = crate::try_default_user_config_file()?;
+
+                if user.is_file() {
+                    Self::new(Some(user))
+                } else {
+                    Err(ConfigError::CannotFindAnyConfig {
+                        local,
+                        global,
+                        user,
+                    })
+                }
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// # Errors
@@ -444,7 +478,7 @@ impl OpenMWConfiguration {
         }
 
         if user_config_dir.is_relative() {
-            user_config_dir = std::env::current_dir()?.join(user_config_dir);
+            user_config_dir = util::display_preserving_absolute(&user_config_dir)?;
         }
 
         Ok(Self {
@@ -521,14 +555,14 @@ impl OpenMWConfiguration {
 
     #[must_use]
     pub fn is_user_config(&self) -> bool {
-        self.root_config_dir() == self.user_config_path()
+        util::paths_equivalent(&self.root_config_dir(), &self.user_config_path())
     }
 
     /// # Errors
     /// Returns [`ConfigError`] if the user config path cannot be loaded.
     pub fn user_config(self) -> Result<Self, ConfigError> {
         let user_path = self.user_config_path();
-        if self.root_config_dir() == user_path {
+        if util::paths_equivalent(&self.root_config_dir(), &user_path) {
             Ok(self)
         } else {
             Self::new(Some(user_path))
@@ -539,7 +573,7 @@ impl OpenMWConfiguration {
     /// Returns [`ConfigError`] if the user config path cannot be loaded.
     pub fn user_config_ref(&self) -> Result<Self, ConfigError> {
         let user_path = self.user_config_path();
-        if self.root_config_dir() == user_path {
+        if util::paths_equivalent(&self.root_config_dir(), &user_path) {
             Ok(self.clone())
         } else {
             Self::new(Some(user_path))
@@ -1557,9 +1591,9 @@ impl OpenMWConfiguration {
 
         let mut user_settings_string = String::new();
 
-        for user_setting in
-            self.settings_matching(|setting| setting.meta().source_config == cfg_path)
-        {
+        for user_setting in self.settings_matching(|setting| {
+            util::paths_equivalent(&setting.meta().source_config, &cfg_path)
+        }) {
             if self.is_synthetic_data_local_data_directory(user_setting) {
                 continue;
             }
@@ -1584,7 +1618,7 @@ impl OpenMWConfiguration {
     pub fn save_subconfig(&self, target_dir: &Path) -> Result<(), ConfigError> {
         let subconfig_is_loaded = self.settings.iter().any(|setting| match setting {
             SettingValue::SubConfiguration(subconfig) => {
-                subconfig.parsed() == target_dir
+                util::paths_equivalent(subconfig.parsed(), target_dir)
                     || subconfig.original() == target_dir.to_string_lossy().as_ref()
             }
             _ => false,
@@ -1602,9 +1636,9 @@ impl OpenMWConfiguration {
 
         let mut subconfig_settings_string = String::new();
 
-        for subconfig_setting in
-            self.settings_matching(|setting| setting.meta().source_config == cfg_path)
-        {
+        for subconfig_setting in self.settings_matching(|setting| {
+            util::paths_equivalent(&setting.meta().source_config, &cfg_path)
+        }) {
             if self.is_synthetic_data_local_data_directory(subconfig_setting) {
                 continue;
             }
@@ -1686,6 +1720,20 @@ mod tests {
             std::env::remove_var("OPENMW_CONFIG");
             std::env::remove_var("OPENMW_CONFIG_DIR");
             std::env::remove_var("OPENMW_GLOBAL_CONFIG_PATH");
+            std::env::remove_var("OPENMW_CONFIG_USING_FLATPAK");
+            std::env::remove_var("OPENMW_FLATPAK_ID");
+            std::env::remove_var("FLATPAK_ID");
+        }
+    }
+
+    fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
+        // SAFETY: callers hold env_lock(). Environment mutation is process-global.
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
         }
     }
 
@@ -2371,6 +2419,33 @@ mod tests {
         );
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn test_save_subconfig_accepts_equivalent_symlink_path() {
+        let root_dir = temp_dir();
+        let real_sub_dir = temp_dir();
+        let linked_sub_dir = temp_dir().join("linked_subconfig");
+
+        std::os::unix::fs::symlink(&real_sub_dir, &linked_sub_dir).unwrap();
+        write_cfg(&real_sub_dir, "content=Plugin.esp\n");
+        write_cfg(
+            &root_dir,
+            &format!(
+                "content=Morrowind.esm\nconfig={}\n",
+                linked_sub_dir.display()
+            ),
+        );
+
+        let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+        config.save_subconfig(&real_sub_dir).unwrap();
+
+        let saved = std::fs::read_to_string(real_sub_dir.join("openmw.cfg")).unwrap();
+        assert!(
+            saved.contains("content=Plugin.esp"),
+            "sub-config settings should match by filesystem identity, not symlink spelling"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Empty and optional construction
     // -----------------------------------------------------------------------
@@ -2495,7 +2570,7 @@ mod tests {
             "openmw-config-relative-empty-{}",
             std::process::id()
         ));
-        let expected_dir = std::env::current_dir().unwrap().join(&relative_dir);
+        let expected_dir = util::display_preserving_absolute(&relative_dir).unwrap();
 
         let mut config = OpenMWConfiguration::new_empty(&relative_dir).unwrap();
         config.add_data_directory(Path::new("Data Files"));
@@ -2513,9 +2588,8 @@ mod tests {
             "openmw-config-relative-missing-{}/openmw.cfg",
             std::process::id()
         ));
-        let expected_dir = std::env::current_dir()
-            .unwrap()
-            .join(relative_cfg.parent().unwrap());
+        let expected_dir =
+            util::display_preserving_absolute(relative_cfg.parent().unwrap()).unwrap();
 
         let mut config = OpenMWConfiguration::load_optional(&relative_cfg).unwrap();
         config.add_data_directory(Path::new("Data Files"));
@@ -2763,6 +2837,69 @@ mod tests {
         assert!(
             matches!(result, Err(ConfigError::CannotFindRootConfig { .. })),
             "expected CannotFindRootConfig, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_from_env_or_user_config_falls_back_to_user_config() {
+        let _guard = env_lock();
+        let empty_global_dir = temp_dir();
+        let test_home = temp_dir();
+        let test_xdg_config_home = temp_dir();
+        let old_home = std::env::var_os("HOME");
+        let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
+            std::env::set_var("HOME", &test_home);
+            std::env::set_var("XDG_CONFIG_HOME", &test_xdg_config_home);
+        }
+
+        let user_config_dir = crate::try_default_config_path().unwrap();
+        std::fs::create_dir_all(&user_config_dir).unwrap();
+        let user_cfg = write_cfg(&user_config_dir, "content=UserOnly.esm\n");
+
+        let result = OpenMWConfiguration::from_env_or_user_config();
+        unsafe {
+            clear_from_env_overrides();
+        }
+        restore_env_var("HOME", old_home);
+        restore_env_var("XDG_CONFIG_HOME", old_xdg_config_home);
+
+        let config = result.unwrap();
+        assert_eq!(config.root_config_file(), user_cfg);
+        assert!(config.has_content_file("UserOnly.esm"));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_from_env_or_user_config_errors_when_no_candidates_exist() {
+        let _guard = env_lock();
+        let empty_global_dir = temp_dir();
+        let test_home = temp_dir();
+        let test_xdg_config_home = temp_dir();
+        let old_home = std::env::var_os("HOME");
+        let old_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+
+        unsafe {
+            clear_from_env_overrides();
+            std::env::set_var("OPENMW_GLOBAL_CONFIG_PATH", &empty_global_dir);
+            std::env::set_var("HOME", &test_home);
+            std::env::set_var("XDG_CONFIG_HOME", &test_xdg_config_home);
+        }
+
+        let result = OpenMWConfiguration::from_env_or_user_config();
+        unsafe {
+            clear_from_env_overrides();
+        }
+        restore_env_var("HOME", old_home);
+        restore_env_var("XDG_CONFIG_HOME", old_xdg_config_home);
+
+        assert!(
+            matches!(result, Err(ConfigError::CannotFindAnyConfig { .. })),
+            "expected CannotFindAnyConfig, got {result:?}"
         );
     }
 

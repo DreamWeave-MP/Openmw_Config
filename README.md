@@ -163,6 +163,20 @@ entry such as `config="?userconfig?"`. Starting directly from the user config sk
 baseline. That is not equivalent, even if it looks fine on the machine that wrote the bug. Ask how
 we know.
 
+External tools that should prefer OpenMW startup semantics but still work on installs with only a
+user config should use `OpenMWConfiguration::from_env_or_user_config()`:
+
+```rust,no_run
+use openmw_config::OpenMWConfiguration;
+
+let config = OpenMWConfiguration::from_env_or_user_config()?;
+# Ok::<(), openmw_config::ConfigError>(())
+```
+
+This first honors `from_env()` behavior. If no executable-adjacent or global root `openmw.cfg` is
+found, it falls back to the default user config (`?userconfig?/openmw.cfg`). Explicit bad paths are
+still errors; the fallback is not a shovel for burying mistakes.
+
 ### Modifying and saving
 
 ```rust,no_run
@@ -303,15 +317,19 @@ Module exports (`openmwConfig`):
 | Lua function | Returns | Notes |
 |---|---|---|
 | `fromEnv()` | `config` userdata | Loads using `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` semantics |
+| `fromEnvOrUserConfig()` | `config` userdata | `fromEnv()` plus default user-config fallback when no root config exists |
 | `new(pathOrNil)` | `config` userdata | `pathOrNil` may be file path, dir path, or `nil` |
 | `newEmpty(userConfigDir)` | `config` userdata | Starts empty from a config directory without reading disk |
 | `loadOptional(path)` | `config` userdata | Loads if present; missing paths start empty with matching config context |
 | `defaultConfigPath()` | `string` | Platform default config dir |
+| `defaultUserConfigFile()` | `string` | Platform default user `openmw.cfg` file |
 | `defaultUserDataPath()` | `string` | Platform default userdata dir |
 | `defaultDataLocalPath()` | `string` | Platform default data-local dir |
 | `defaultLocalPath()` | `string` | Path backing the `?local?` token |
 | `defaultGlobalPath()` | `string` | Path backing the `?global?` token (throws on unsupported platforms) |
 | `tryDefaultConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
+| `tryDefaultUserConfigFile()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
+| `tryDefaultRootOrUserConfigPath()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
 | `tryDefaultUserDataPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `tryDefaultLocalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
 | `tryDefaultGlobalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |

@@ -417,10 +417,29 @@ impl UserData for LuaOpenMWConfiguration {
 pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
     let exports = lua.create_table()?;
 
+    register_config_loaders(lua, &exports)?;
+    register_default_path_helpers(lua, &exports)?;
+    register_try_path_helpers(lua, &exports)?;
+
+    exports.set("version", env!("CARGO_PKG_VERSION"))?;
+
+    Ok(exports)
+}
+
+fn register_config_loaders(lua: &Lua, exports: &Table) -> mlua::Result<()> {
     exports.set(
         "fromEnv",
         lua.create_function(|_, ()| {
             OpenMWConfiguration::from_env()
+                .map(LuaOpenMWConfiguration::new)
+                .map_err(lua_err)
+        })?,
+    )?;
+
+    exports.set(
+        "fromEnvOrUserConfig",
+        lua.create_function(|_, ()| {
+            OpenMWConfiguration::from_env_or_user_config()
                 .map(LuaOpenMWConfiguration::new)
                 .map_err(lua_err)
         })?,
@@ -453,9 +472,18 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
         })?,
     )?;
 
+    Ok(())
+}
+
+fn register_default_path_helpers(lua: &Lua, exports: &Table) -> mlua::Result<()> {
     exports.set(
         "defaultConfigPath",
         lua.create_function(|_, ()| Ok(crate::default_config_path().display().to_string()))?,
+    )?;
+
+    exports.set(
+        "defaultUserConfigFile",
+        lua.create_function(|_, ()| Ok(crate::default_user_config_file().display().to_string()))?,
     )?;
 
     exports.set(
@@ -478,12 +506,34 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
         lua.create_function(|_, ()| Ok(crate::default_global_path().display().to_string()))?,
     )?;
 
+    Ok(())
+}
+
+fn register_try_path_helpers(lua: &Lua, exports: &Table) -> mlua::Result<()> {
     exports.set(
         "tryDefaultConfigPath",
         lua.create_function(|_, ()| match crate::try_default_config_path() {
             Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
             Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
         })?,
+    )?;
+
+    exports.set(
+        "tryDefaultUserConfigFile",
+        lua.create_function(|_, ()| match crate::try_default_user_config_file() {
+            Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
+            Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
+        })?,
+    )?;
+
+    exports.set(
+        "tryDefaultRootOrUserConfigPath",
+        lua.create_function(
+            |_, ()| match crate::try_default_root_or_user_config_path() {
+                Ok(path) => Ok((Some(path.display().to_string()), Option::<String>::None)),
+                Err(error) => Ok((Option::<String>::None, Some(error.to_string()))),
+            },
+        )?,
     )?;
 
     exports.set(
@@ -510,7 +560,5 @@ pub fn create_lua_module(lua: &Lua) -> mlua::Result<Table> {
         })?,
     )?;
 
-    exports.set("version", env!("CARGO_PKG_VERSION"))?;
-
-    Ok(exports)
+    Ok(())
 }

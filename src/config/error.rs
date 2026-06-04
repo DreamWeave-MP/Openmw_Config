@@ -219,6 +219,12 @@ pub enum ConfigError {
     CannotFind(PathBuf),
     /// Root config discovery tried both local and global config candidates and found neither.
     CannotFindRootConfig { local: PathBuf, global: PathBuf },
+    /// External-tool config discovery found neither root nor user config candidates.
+    CannotFindAnyConfig {
+        local: PathBuf,
+        global: PathBuf,
+        user: PathBuf,
+    },
     /// The target path for a save operation is not writable.
     NotWritable(PathBuf),
     /// [`OpenMWConfiguration::save_subconfig`](crate::OpenMWConfiguration::save_subconfig)
@@ -250,8 +256,65 @@ fn cannot_find_root_message(local: &Path, global: &Path) -> String {
     )
 }
 
+fn cannot_find_any_message(local: &Path, global: &Path, user: &Path) -> String {
+    format!(
+        "OpenMW config discovery found no openmw.cfg at local path {}, global config path {}, or user config path {}",
+        local.display(),
+        global.display(),
+        user.display()
+    )
+}
+
+fn fmt_duplicate_or_add_error(
+    error: &ConfigError,
+    f: &mut fmt::Formatter<'_>,
+) -> Option<fmt::Result> {
+    match error {
+        ConfigError::DuplicateContentFile {
+            file,
+            config_path,
+            line,
+        } => Some(f.write_str(&duplicate_message(
+            file,
+            "content files",
+            config_path,
+            *line,
+        ))),
+        ConfigError::CannotAddContentFile { file, config_path } => Some(write!(
+            f,
+            "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
+            config_path.display()
+        )),
+        ConfigError::DuplicateGroundcoverFile {
+            file,
+            config_path,
+            line,
+        } => Some(f.write_str(&duplicate_message(file, "groundcover", config_path, *line))),
+        ConfigError::CannotAddGroundcoverFile { file, config_path } => Some(write!(
+            f,
+            "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
+            config_path.display()
+        )),
+        ConfigError::DuplicateArchiveFile {
+            file,
+            config_path,
+            line,
+        } => Some(f.write_str(&duplicate_message(file, "BSA/Archive", config_path, *line))),
+        ConfigError::CannotAddArchiveFile { file, config_path } => Some(write!(
+            f,
+            "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
+            config_path.display()
+        )),
+        _ => None,
+    }
+}
+
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(result) = fmt_duplicate_or_add_error(self, f) {
+            return result;
+        }
+
         match self {
             ConfigError::InvalidGameSetting {
                 value,
@@ -278,41 +341,19 @@ impl fmt::Display for ConfigError {
             ConfigError::CannotFindRootConfig { local, global } => {
                 write!(f, "{}", cannot_find_root_message(local, global))
             }
-            ConfigError::DuplicateContentFile {
-                file,
-                config_path,
-                line,
-            } => f.write_str(&duplicate_message(
-                file,
-                "content files",
-                config_path,
-                *line,
-            )),
-            ConfigError::CannotAddContentFile { file, config_path } => write!(
-                f,
-                "{file} cannot be added to the configuration map as a content file because it was already defined by: {}",
-                config_path.display()
-            ),
-            ConfigError::DuplicateGroundcoverFile {
-                file,
-                config_path,
-                line,
-            } => f.write_str(&duplicate_message(file, "groundcover", config_path, *line)),
-            ConfigError::CannotAddGroundcoverFile { file, config_path } => write!(
-                f,
-                "{file} cannot be added to the configuration map as a groundcover plugin because it was already defined by: {}",
-                config_path.display()
-            ),
-            ConfigError::DuplicateArchiveFile {
-                file,
-                config_path,
-                line,
-            } => f.write_str(&duplicate_message(file, "BSA/Archive", config_path, *line)),
-            ConfigError::CannotAddArchiveFile { file, config_path } => write!(
-                f,
-                "{file} cannot be added to the configuration map as a fallback-archive because it was already defined by: {}",
-                config_path.display()
-            ),
+            ConfigError::CannotFindAnyConfig {
+                local,
+                global,
+                user,
+            } => write!(f, "{}", cannot_find_any_message(local, global, user)),
+            ConfigError::DuplicateContentFile { .. }
+            | ConfigError::CannotAddContentFile { .. }
+            | ConfigError::DuplicateGroundcoverFile { .. }
+            | ConfigError::CannotAddGroundcoverFile { .. }
+            | ConfigError::DuplicateArchiveFile { .. }
+            | ConfigError::CannotAddArchiveFile { .. } => {
+                unreachable!("duplicate/add errors are handled before the main display match")
+            }
             ConfigError::BadEncoding {
                 value,
                 config_path,
@@ -379,6 +420,16 @@ mod tests {
         .to_string();
         assert!(cannot_find_root.contains("/tmp/local/openmw.cfg"));
         assert!(cannot_find_root.contains("/tmp/global/openmw.cfg"));
+
+        let cannot_find_any = ConfigError::CannotFindAnyConfig {
+            local: PathBuf::from("/tmp/local/openmw.cfg"),
+            global: PathBuf::from("/tmp/global/openmw.cfg"),
+            user: PathBuf::from("/tmp/user/openmw.cfg"),
+        }
+        .to_string();
+        assert!(cannot_find_any.contains("/tmp/local/openmw.cfg"));
+        assert!(cannot_find_any.contains("/tmp/global/openmw.cfg"));
+        assert!(cannot_find_any.contains("/tmp/user/openmw.cfg"));
 
         let duplicate = ConfigError::DuplicateContentFile {
             file: "Morrowind.esm".into(),
