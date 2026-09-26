@@ -81,12 +81,13 @@ See [Rust Usage](#rust-usage) and [API Overview](#api-overview) for more pattern
 
 ## Lua Quick Start
 
-Embed `openmwConfig` into a host-created Lua state:
+Embed `openmwConfig` into a host-created Luau state. The `lua` feature doesn't pick a Lua
+runtime; the host application selects one through its own `mlua` dependency:
 
 ```toml
 [dependencies]
-openmw-config = { version = "1", features = ["lua"] }
-mlua = { version = "0.10", default-features = false, features = ["luajit52", "vendored"] }
+openmw-config = { version = "2", features = ["lua"] }
+mlua = { version = "0.12", default-features = false, features = ["luau"] }
 ```
 
 ```rust,ignore
@@ -108,7 +109,8 @@ fn main() -> Result<(), mlua::Error> {
 }
 ```
 
-This is embedded-host integration, not a standalone `require("openmw_config")` Lua module.
+This is embedded-host integration, not a standalone Lua module. To make `require("@openmwConfig")`
+work, register the table with `lua.register_module("@openmwConfig", openmw)?`.
 See [Lua Bindings (`mlua`)](#lua-bindings-mlua) for the full Lua API surface.
 
 ## Rust Usage
@@ -310,7 +312,11 @@ for entry in config.config_chain() {
 ## Lua Bindings (`mlua`)
 
 - Public Lua methods/functions are intentionally **camelCase only**.
-- `lua` feature: embeds vendored `LuaJIT` with 5.2 compatibility (`luajit52` + `vendored`).
+- `lua` feature: builds the bindings against `mlua` 0.12 without choosing a runtime; the embedding
+  application selects one. `DreamWeave` hosts run [Luau](https://luau.org), and the bindings are
+  tested against it.
+- `standalone-lua` feature: `lua` plus `mlua`'s Luau backend, for this crate's tests and docs.
+- Version 2.0.0 moved the bindings from vendored `LuaJIT` to Luau; the Lua API itself is unchanged.
 
 Module exports (`openmwConfig`):
 

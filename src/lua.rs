@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
+//! Luau bindings for embedding `openmwConfig` in a host-created Lua state. The `lua` feature
+//! doesn't select an `mlua` runtime; `standalone-lua` selects Luau for tests and docs.
+
 use crate::{
     ConfigChainStatus, EncodingSetting, GameSetting as GameSettingTrait, GameSettingType,
     OpenMWConfiguration,

@@ -12,18 +12,22 @@ edition = "2024"
 rust-version = "1.88"
 
 [dependencies]
-mlua = { version = "0.11.6", optional = true, default-features = false }
+mlua = { version = "0.12.1", optional = true, default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
 
 [features]
 default = []
-lua = ["dep:mlua", "mlua/luajit52", "mlua/vendored"]
+lua = ["dep:mlua"]
+standalone-lua = ["lua", "mlua/luau"]
+
+[package.metadata.docs.rs]
+features = ["standalone-lua"]
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-proptest = "1.6.0"
+proptest = "1.11.0"
 
 [[bench]]
 name = "parsing"
