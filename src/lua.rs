@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
 //! Luau bindings for embedding `openmwConfig` in a host-created Lua state. The `lua` feature

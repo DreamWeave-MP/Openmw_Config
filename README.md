@@ -471,12 +471,9 @@ Thank you for using `openmw-config`.
 
 ## License
 
-Licensed under the GNU General Public License, version 3 or later:
-
-- [LICENSE](LICENSE)
-- <https://www.gnu.org/licenses/gpl-3.0.txt>
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project is licensed as `GPL-3.0-or-later`.
+for inclusion in this project is dual licensed as `MIT OR Apache-2.0`, without any additional terms or conditions.
