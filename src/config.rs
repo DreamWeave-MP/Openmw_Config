@@ -58,6 +58,9 @@ pub enum SettingValue {
     SubConfiguration(DirectorySetting),
     /// Any unrecognised `key=value` line, preserved verbatim.
     Generic(GenericSetting),
+    /// A `replace=` entry. Loading applies it; serialization keeps it, so a saved file still
+    /// discards what its parents defined when it is loaded again.
+    Replace(GenericSetting),
     /// A `content=` entry naming an ESP/ESM plugin file.
     ContentFile(FileSetting),
     /// A `fallback-archive=` entry naming a BSA archive file.
@@ -96,7 +99,7 @@ impl Display for SettingValue {
                 sub_config.meta().comment,
                 sub_config.original()
             ),
-            SettingValue::Generic(generic) => generic.to_string(),
+            SettingValue::Generic(generic) | SettingValue::Replace(generic) => generic.to_string(),
             SettingValue::ContentFile(plugin) => {
                 format!("{}content={}", plugin.meta().comment, plugin.value())
             }
@@ -141,7 +144,7 @@ impl SettingValue {
             | SettingValue::SubConfiguration(setting) => setting.meta(),
             SettingValue::GameSetting(setting) => setting.meta(),
             SettingValue::Encoding(setting) => setting.meta(),
-            SettingValue::Generic(setting) => setting.meta(),
+            SettingValue::Generic(setting) | SettingValue::Replace(setting) => setting.meta(),
         }
     }
 
@@ -167,7 +170,7 @@ impl SettingValue {
                 data_directory.meta().comment,
                 data_directory.parsed().display()
             )),
-            SettingValue::SubConfiguration(_) => None,
+            SettingValue::SubConfiguration(_) | SettingValue::Replace(_) => None,
             SettingValue::Generic(generic) if generic.key().eq_ignore_ascii_case("replace") => None,
             _ => Some(self.to_string()),
         }
@@ -1370,48 +1373,58 @@ impl OpenMWConfiguration {
                             &mut queued_comment
                         );
                     }
-                    "replace" => match value.to_ascii_lowercase().as_str() {
-                        "content" => {
-                            self.clear_matching_internal(|s| {
-                                matches!(s, SettingValue::ContentFile(_))
-                            });
-                            seen_content.clear();
+                    "replace" => {
+                        match value.to_ascii_lowercase().as_str() {
+                            "content" => {
+                                self.clear_matching_internal(|s| {
+                                    matches!(s, SettingValue::ContentFile(_))
+                                });
+                                seen_content.clear();
+                            }
+                            "data" => {
+                                self.clear_matching_internal(|s| {
+                                    matches!(s, SettingValue::DataDirectory(_))
+                                });
+                            }
+                            "fallback" => {
+                                self.clear_matching_internal(|s| {
+                                    matches!(s, SettingValue::GameSetting(_))
+                                });
+                            }
+                            "fallback-archives" => {
+                                self.clear_matching_internal(|s| {
+                                    matches!(s, SettingValue::BethArchive(_))
+                                });
+                                seen_archives.clear();
+                            }
+                            "groundcover" => {
+                                self.clear_matching_internal(|s| {
+                                    matches!(s, SettingValue::Groundcover(_))
+                                });
+                                seen_groundcover.clear();
+                            }
+                            "data-local" => self.set_data_local(None),
+                            "resources" => self.set_resources(None),
+                            "user-data" => self.set_userdata(None),
+                            "config" => {
+                                self.settings.clear();
+                                seen_content.clear();
+                                seen_groundcover.clear();
+                                seen_archives.clear();
+                                sub_configs.clear();
+                                pending_configs.clear();
+                            }
+                            _ => {}
                         }
-                        "data" => {
-                            self.clear_matching_internal(|s| {
-                                matches!(s, SettingValue::DataDirectory(_))
-                            });
-                        }
-                        "fallback" => {
-                            self.clear_matching_internal(|s| {
-                                matches!(s, SettingValue::GameSetting(_))
-                            });
-                        }
-                        "fallback-archives" => {
-                            self.clear_matching_internal(|s| {
-                                matches!(s, SettingValue::BethArchive(_))
-                            });
-                            seen_archives.clear();
-                        }
-                        "groundcover" => {
-                            self.clear_matching_internal(|s| {
-                                matches!(s, SettingValue::Groundcover(_))
-                            });
-                            seen_groundcover.clear();
-                        }
-                        "data-local" => self.set_data_local(None),
-                        "resources" => self.set_resources(None),
-                        "user-data" => self.set_userdata(None),
-                        "config" => {
-                            self.settings.clear();
-                            seen_content.clear();
-                            seen_groundcover.clear();
-                            seen_archives.clear();
-                            sub_configs.clear();
-                            pending_configs.clear();
-                        }
-                        _ => {}
-                    },
+
+                        self.settings
+                            .push(SettingValue::Replace(GenericSetting::new(
+                                key,
+                                value,
+                                &cfg_file_path,
+                                &mut queued_comment,
+                            )));
+                    }
                     _ => {
                         let setting =
                             GenericSetting::new(key, value, &cfg_file_path, &mut queued_comment);
@@ -1661,7 +1674,8 @@ impl OpenMWConfiguration {
 /// meaning of relative paths. Use [`OpenMWConfiguration::to_resolved_string`] or
 /// [`OpenMWConfiguration::save_resolved_to_path`] for importer/export output.
 ///
-/// Synthetic `data-local`-as-`data` entries are omitted. Comments are preserved.
+/// Synthetic `data-local`-as-`data` entries are omitted. Comments and `replace=` entries are
+/// preserved.
 impl fmt::Display for OpenMWConfiguration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.settings
