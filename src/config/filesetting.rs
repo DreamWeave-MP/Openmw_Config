@@ -45,6 +45,10 @@ impl GameSetting for FileSetting {
     fn meta(&self) -> &GameSettingMeta {
         &self.meta
     }
+
+    fn meta_mut(&mut self) -> &mut GameSettingMeta {
+        &mut self.meta
+    }
 }
 
 impl fmt::Display for FileSetting {

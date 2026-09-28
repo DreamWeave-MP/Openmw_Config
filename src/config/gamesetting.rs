@@ -185,6 +185,15 @@ impl GameSetting for GameSettingType {
             GameSettingType::Int(s) => &s.meta,
         }
     }
+
+    fn meta_mut(&mut self) -> &mut GameSettingMeta {
+        match self {
+            GameSettingType::Color(s) => &mut s.meta,
+            GameSettingType::String(s) => &mut s.meta,
+            GameSettingType::Float(s) => &mut s.meta,
+            GameSettingType::Int(s) => &mut s.meta,
+        }
+    }
 }
 
 impl PartialEq for GameSettingType {

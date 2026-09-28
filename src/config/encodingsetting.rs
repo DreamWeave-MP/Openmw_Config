@@ -60,6 +60,10 @@ impl GameSetting for EncodingSetting {
     fn meta(&self) -> &GameSettingMeta {
         &self.meta
     }
+
+    fn meta_mut(&mut self) -> &mut GameSettingMeta {
+        &mut self.meta
+    }
 }
 
 impl fmt::Display for EncodingSetting {

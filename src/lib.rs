@@ -67,6 +67,7 @@ pub use lua::create_lua_module;
 
 pub(crate) trait GameSetting: std::fmt::Display {
     fn meta(&self) -> &GameSettingMeta;
+    fn meta_mut(&mut self) -> &mut GameSettingMeta;
 }
 
 /// Source-tracking metadata attached to every setting value.
@@ -89,6 +90,11 @@ impl GameSettingMeta {
     #[must_use]
     pub fn comment(&self) -> &str {
         &self.comment
+    }
+
+    /// Re-attributes the setting to `source_config` (the file `save_*` will write it to).
+    pub(crate) fn set_source_config(&mut self, source_config: std::path::PathBuf) {
+        self.source_config = source_config;
     }
 }
 

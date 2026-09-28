@@ -88,6 +88,10 @@ impl crate::GameSetting for TrailingComment {
     fn meta(&self) -> &crate::GameSettingMeta {
         &self.meta
     }
+
+    fn meta_mut(&mut self) -> &mut crate::GameSettingMeta {
+        &mut self.meta
+    }
 }
 
 /// The comment line every serialization ends with; a loaded file's copy is dropped so the
@@ -183,6 +187,23 @@ impl SettingValue {
             SettingValue::Encoding(setting) => setting.meta(),
             SettingValue::Generic(setting) | SettingValue::Replace(setting) => setting.meta(),
             SettingValue::TrailingComment(setting) => setting.meta(),
+        }
+    }
+
+    fn meta_mut(&mut self) -> &mut crate::GameSettingMeta {
+        match self {
+            SettingValue::BethArchive(setting)
+            | SettingValue::Groundcover(setting)
+            | SettingValue::ContentFile(setting) => setting.meta_mut(),
+            SettingValue::UserData(setting)
+            | SettingValue::DataLocal(setting)
+            | SettingValue::DataDirectory(setting)
+            | SettingValue::Resources(setting)
+            | SettingValue::SubConfiguration(setting) => setting.meta_mut(),
+            SettingValue::GameSetting(setting) => setting.meta_mut(),
+            SettingValue::Encoding(setting) => setting.meta_mut(),
+            SettingValue::Generic(setting) | SettingValue::Replace(setting) => setting.meta_mut(),
+            SettingValue::TrailingComment(setting) => setting.meta_mut(),
         }
     }
 
@@ -739,6 +760,89 @@ impl OpenMWConfiguration {
         self.set_userdata(None);
     }
 
+    /// The file `save_user` writes: the user config directory's `openmw.cfg`.
+    fn user_cfg_file(&self) -> PathBuf {
+        self.user_config_path().join("openmw.cfg")
+    }
+
+    /// True when `setting` came from a file other than the user's: a parent of the chain. The
+    /// injected data directories (no source file) are nobody's.
+    fn is_inherited(setting: &SettingValue, user_cfg: &Path) -> bool {
+        let source = setting.meta().source_config();
+        !source.as_os_str().is_empty() && !util::paths_equivalent(source, user_cfg)
+    }
+
+    /// Makes the user config the owner of every `is_kind` entry: a `replace=<name>` line
+    /// attributed to the user config goes in front of the first such entry (or at the end when
+    /// none is left), and inherited entries are re-attributed to the user config, so
+    /// `save_user` writes the whole effective list and a reload yields exactly what is in
+    /// memory instead of the parents' entries coming back.
+    fn take_over_list(&mut self, name: &str, is_kind: impl Fn(&SettingValue) -> bool) {
+        let user_cfg = self.user_cfg_file();
+        for setting in self.settings.iter_mut().filter(|setting| is_kind(setting)) {
+            if Self::is_inherited(setting, &user_cfg) {
+                setting.meta_mut().set_source_config(user_cfg.clone());
+            }
+        }
+        let replace = SettingValue::Replace(GenericSetting::new(
+            "replace",
+            name,
+            &user_cfg,
+            &mut String::default(),
+        ));
+        let first = self.settings.iter().position(is_kind);
+        match first {
+            Some(index) => self.settings.insert(index, replace),
+            None => self.settings.push(replace),
+        }
+    }
+
+    /// Replaces every `is_kind` entry with `entries`, recording `replace=<name>` first when a
+    /// parent of the chain defined any of the old ones (see [`Self::take_over_list`]).
+    fn replace_list(
+        &mut self,
+        name: &str,
+        is_kind: impl Fn(&SettingValue) -> bool,
+        entries: impl IntoIterator<Item = SettingValue>,
+    ) {
+        let user_cfg = self.user_cfg_file();
+        let inherited = self
+            .settings
+            .iter()
+            .any(|setting| is_kind(setting) && Self::is_inherited(setting, &user_cfg));
+        self.clear_matching_internal(&is_kind);
+        if inherited {
+            self.settings
+                .push(SettingValue::Replace(GenericSetting::new(
+                    "replace",
+                    name,
+                    &user_cfg,
+                    &mut String::default(),
+                )));
+        }
+        self.settings.extend(entries);
+        self.rebuild_indexes();
+    }
+
+    /// Removes the `is_kind` entries matching `remove`; when one of them was a parent's, the
+    /// user config takes the list over (see [`Self::take_over_list`]) so the removal persists.
+    fn remove_from_list(
+        &mut self,
+        name: &str,
+        is_kind: impl Fn(&SettingValue) -> bool,
+        remove: impl Fn(&SettingValue) -> bool,
+    ) {
+        let user_cfg = self.user_cfg_file();
+        let removes_inherited = self.settings.iter().any(|setting| {
+            is_kind(setting) && remove(setting) && Self::is_inherited(setting, &user_cfg)
+        });
+        self.clear_matching_internal(|setting| is_kind(setting) && remove(setting));
+        if removes_inherited {
+            self.take_over_list(name, is_kind);
+        }
+        self.rebuild_indexes();
+    }
+
     /// Content files are the actual *mods* or plugins which are created by either `OpenCS` or Bethesda's construction set
     /// These entries only refer to the names and ordering of content files.
     /// vfstool-lib should be used to derive paths
@@ -856,42 +960,61 @@ impl OpenMWConfiguration {
     }
 
     /// Removes all `content=` entries matching `file_name`.
+    ///
+    /// Removing an entry a parent config defined makes the user config take the content list
+    /// over: `save_user` then writes `replace=content` and the remaining entries, so the
+    /// removal survives a reload.
     pub fn remove_content_file(&mut self, file_name: &str) {
-        self.clear_matching_internal(|setting| match setting {
-            SettingValue::ContentFile(existing_file) => existing_file == file_name,
-            _ => false,
-        });
-        self.rebuild_indexes();
+        self.remove_from_list(
+            "content",
+            |setting| matches!(setting, SettingValue::ContentFile(_)),
+            |setting| match setting {
+                SettingValue::ContentFile(existing_file) => existing_file == file_name,
+                _ => false,
+            },
+        );
     }
 
-    /// Removes all `groundcover=` entries matching `file_name`.
+    /// Removes all `groundcover=` entries matching `file_name`; a parent's entry is taken over
+    /// as in [`Self::remove_content_file`] (`replace=groundcover`).
     pub fn remove_groundcover_file(&mut self, file_name: &str) {
-        self.clear_matching_internal(|setting| match setting {
-            SettingValue::Groundcover(existing_file) => existing_file == file_name,
-            _ => false,
-        });
-        self.rebuild_indexes();
+        self.remove_from_list(
+            "groundcover",
+            |setting| matches!(setting, SettingValue::Groundcover(_)),
+            |setting| match setting {
+                SettingValue::Groundcover(existing_file) => existing_file == file_name,
+                _ => false,
+            },
+        );
     }
 
-    /// Removes all `fallback-archive=` entries matching `file_name`.
+    /// Removes all `fallback-archive=` entries matching `file_name`; a parent's entry is taken
+    /// over as in [`Self::remove_content_file`] (`replace=fallback-archives`).
     pub fn remove_archive_file(&mut self, file_name: &str) {
-        self.clear_matching_internal(|setting| match setting {
-            SettingValue::BethArchive(existing_file) => existing_file == file_name,
-            _ => false,
-        });
-        self.rebuild_indexes();
+        self.remove_from_list(
+            "fallback-archives",
+            |setting| matches!(setting, SettingValue::BethArchive(_)),
+            |setting| match setting {
+                SettingValue::BethArchive(existing_file) => existing_file == file_name,
+                _ => false,
+            },
+        );
     }
 
-    /// Removes any `data=` entry whose resolved path or original string matches `data_dir`.
+    /// Removes any `data=` entry whose resolved path or original string matches `data_dir`; a
+    /// parent's entry is taken over as in [`Self::remove_content_file`] (`replace=data`).
     pub fn remove_data_directory(&mut self, data_dir: &PathBuf) {
-        self.clear_matching_internal(|setting| match setting {
-            SettingValue::DataDirectory(existing_data_dir) => {
-                existing_data_dir.parsed() == data_dir
-                    || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
-            }
-            _ => false,
-        });
-        self.rebuild_indexes();
+        self.remove_from_list(
+            "data",
+            |setting| matches!(setting, SettingValue::DataDirectory(_)),
+            |setting| match setting {
+                SettingValue::DataDirectory(existing_data_dir) => {
+                    existing_data_dir.parsed() == data_dir
+                        || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
+                }
+                _ => false,
+            },
+        );
     }
 
     /// Appends a data directory entry attributed to the user config. Does not check for duplicates.
@@ -949,41 +1072,45 @@ impl OpenMWConfiguration {
     /// Replaces all `content=` entries with `plugins`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
+    /// When a parent config defined any of the old entries, a `replace=content` line attributed
+    /// to the user config precedes the new ones, so `save_user` persists exactly this list.
     pub fn set_content_files(&mut self, plugins: Option<Vec<String>>) {
-        self.clear_matching_internal(|setting| matches!(setting, SettingValue::ContentFile(_)));
-
-        if let Some(plugins) = plugins {
-            let cfg_path = self.user_config_path().join("openmw.cfg");
-            let mut empty = String::default();
-            for plugin in plugins {
-                self.settings
-                    .push(SettingValue::ContentFile(FileSetting::new(
-                        &plugin, &cfg_path, &mut empty,
-                    )));
-            }
-        }
-
-        self.rebuild_indexes();
+        let cfg_path = self.user_cfg_file();
+        let mut empty = String::default();
+        let entries: Vec<SettingValue> = plugins
+            .unwrap_or_default()
+            .iter()
+            .map(|plugin| {
+                SettingValue::ContentFile(FileSetting::new(plugin, &cfg_path, &mut empty))
+            })
+            .collect();
+        self.replace_list(
+            "content",
+            |setting| matches!(setting, SettingValue::ContentFile(_)),
+            entries,
+        );
     }
 
     /// Replaces all `fallback-archive=` entries with `archives`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
+    /// Parent-defined entries are replaced through `replace=fallback-archives` as in
+    /// [`Self::set_content_files`].
     pub fn set_fallback_archives(&mut self, archives: Option<Vec<String>>) {
-        self.clear_matching_internal(|setting| matches!(setting, SettingValue::BethArchive(_)));
-
-        if let Some(archives) = archives {
-            let cfg_path = self.user_config_path().join("openmw.cfg");
-            let mut empty = String::default();
-            for archive in archives {
-                self.settings
-                    .push(SettingValue::BethArchive(FileSetting::new(
-                        &archive, &cfg_path, &mut empty,
-                    )));
-            }
-        }
-
-        self.rebuild_indexes();
+        let cfg_path = self.user_cfg_file();
+        let mut empty = String::default();
+        let entries: Vec<SettingValue> = archives
+            .unwrap_or_default()
+            .iter()
+            .map(|archive| {
+                SettingValue::BethArchive(FileSetting::new(archive, &cfg_path, &mut empty))
+            })
+            .collect();
+        self.replace_list(
+            "fallback-archives",
+            |setting| matches!(setting, SettingValue::BethArchive(_)),
+            entries,
+        );
     }
 
     /// Iterates all preserved generic `key=value` entries in definition order.
@@ -997,25 +1124,26 @@ impl OpenMWConfiguration {
     /// Replaces all preserved generic `key=value` entries with `values`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
+    /// Parent-defined entries are replaced through `replace=<key>` as in
+    /// [`Self::set_content_files`]; loading honours `replace=` for any key.
     pub fn set_generic_settings(&mut self, key: &str, values: Option<Vec<String>>) {
-        self.clear_matching_internal(|setting| match setting {
-            SettingValue::Generic(generic) => generic.key() == key,
-            _ => false,
-        });
-
-        if let Some(values) = values {
-            let cfg_path = self.user_config_path().join("openmw.cfg");
-            let mut empty = String::default();
-
-            for value in values {
-                self.settings
-                    .push(SettingValue::Generic(GenericSetting::new(
-                        key, &value, &cfg_path, &mut empty,
-                    )));
-            }
-        }
-
-        self.rebuild_indexes();
+        let cfg_path = self.user_cfg_file();
+        let mut empty = String::default();
+        let entries: Vec<SettingValue> = values
+            .unwrap_or_default()
+            .iter()
+            .map(|value| {
+                SettingValue::Generic(GenericSetting::new(key, value, &cfg_path, &mut empty))
+            })
+            .collect();
+        self.replace_list(
+            key,
+            |setting| match setting {
+                SettingValue::Generic(generic) => generic.key() == key,
+                _ => false,
+            },
+            entries,
+        );
     }
 
     /// Appends a preserved generic `key=value` entry attributed to the user config.
@@ -1071,24 +1199,27 @@ impl OpenMWConfiguration {
     /// Replaces all `data=` entries with `dirs`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
+    /// Parent-defined entries are replaced through `replace=data` as in
+    /// [`Self::set_content_files`].
     pub fn set_data_directories(&mut self, dirs: Option<Vec<PathBuf>>) {
-        self.clear_matching_internal(|setting| matches!(setting, SettingValue::DataDirectory(_)));
-
-        if let Some(dirs) = dirs {
-            let cfg_path = self.user_config_path().join("openmw.cfg");
-            let mut empty = String::default();
-
-            for dir in dirs {
-                self.settings
-                    .push(SettingValue::DataDirectory(DirectorySetting::new(
-                        dir.to_string_lossy(),
-                        cfg_path.clone(),
-                        &mut empty,
-                    )));
-            }
-        }
-
-        self.rebuild_indexes();
+        let cfg_path = self.user_cfg_file();
+        let mut empty = String::default();
+        let entries: Vec<SettingValue> = dirs
+            .unwrap_or_default()
+            .iter()
+            .map(|dir| {
+                SettingValue::DataDirectory(DirectorySetting::new(
+                    dir.to_string_lossy(),
+                    cfg_path.clone(),
+                    &mut empty,
+                ))
+            })
+            .collect();
+        self.replace_list(
+            "data",
+            |setting| matches!(setting, SettingValue::DataDirectory(_)),
+            entries,
+        );
     }
 
     /// Given a string resembling a fallback= entry's value, as it would exist in openmw.cfg,
@@ -1124,34 +1255,33 @@ impl OpenMWConfiguration {
     /// Replaces all `fallback=` entries with `settings`, or clears them if `None`.
     ///
     /// Each string must be in `Key,Value` format — the same as it would appear after the `=` in
-    /// an `openmw.cfg` `fallback=` line.
+    /// an `openmw.cfg` `fallback=` line. Parent-defined entries are replaced through
+    /// `replace=fallback` as in [`Self::set_content_files`].
     ///
     /// # Errors
-    /// Returns [`ConfigError`] if any entry in `settings` cannot be parsed as a valid game setting.
+    /// Returns [`ConfigError`] if any entry in `settings` cannot be parsed as a valid game
+    /// setting; the old entries are then cleared and none of the new ones added.
     pub fn set_game_settings(&mut self, settings: Option<Vec<String>>) -> Result<(), ConfigError> {
-        self.clear_matching_internal(|setting| matches!(setting, SettingValue::GameSetting(_)));
-
-        if let Some(settings) = settings {
-            let cfg_path = self.user_config_path().join("openmw.cfg");
-            let mut empty = String::default();
-
-            for setting in settings {
-                let parsed =
-                    match GameSettingType::try_from((setting, cfg_path.clone(), &mut empty)) {
-                        Ok(parsed) => parsed,
-                        Err(error) => {
-                            self.rebuild_indexes();
-                            return Err(error);
-                        }
-                    };
-
-                self.settings.push(SettingValue::GameSetting(parsed));
+        let cfg_path = self.user_cfg_file();
+        let mut empty = String::default();
+        let mut entries = Vec::new();
+        let mut failure = None;
+        for setting in settings.unwrap_or_default() {
+            match GameSettingType::try_from((setting, cfg_path.clone(), &mut empty)) {
+                Ok(parsed) => entries.push(SettingValue::GameSetting(parsed)),
+                Err(error) => {
+                    failure = Some(error);
+                    entries.clear();
+                    break;
+                }
             }
         }
-
-        self.rebuild_indexes();
-
-        Ok(())
+        self.replace_list(
+            "fallback",
+            |setting| matches!(setting, SettingValue::GameSetting(_)),
+            entries,
+        );
+        failure.map_or(Ok(()), Err)
     }
 
     /// Iterates all `config=` sub-configuration entries in effective definition order.
@@ -1476,7 +1606,14 @@ impl OpenMWConfiguration {
                                 sub_configs.clear();
                                 pending_configs.clear();
                             }
-                            _ => {}
+                            // Any other option name: the preserved generic entries of that
+                            // key accumulated so far are discarded, as OpenMW does.
+                            _ => {
+                                self.clear_matching_internal(|s| match s {
+                                    SettingValue::Generic(generic) => generic.key() == value,
+                                    _ => false,
+                                });
+                            }
                         }
 
                         self.settings
@@ -1658,9 +1795,11 @@ impl OpenMWConfiguration {
 
     /// Saves the currently-defined user openmw.cfg configuration.
     ///
-    /// Only settings whose source is the user config file are written; settings inherited from
-    /// parent configs are not affected. Modifications applied to inherited settings at runtime
-    /// are therefore not persisted by this method.
+    /// Only settings whose source is the user config file are written; parent configs are never
+    /// touched. The `set_*` and `remove_*` methods keep that consistent: replacing a list a
+    /// parent contributed to, or removing a parent's entry, attributes the whole list to the
+    /// user config behind a `replace=` line, so what this writes loads back as what was in
+    /// memory.
     ///
     /// # Errors
     /// Returns [`ConfigError::NotWritable`] if the target path is not writable.

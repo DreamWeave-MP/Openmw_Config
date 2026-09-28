@@ -27,6 +27,10 @@ impl crate::GameSetting for DirectorySetting {
     fn meta(&self) -> &crate::GameSettingMeta {
         &self.meta
     }
+
+    fn meta_mut(&mut self) -> &mut crate::GameSettingMeta {
+        &mut self.meta
+    }
 }
 
 impl DirectorySetting {
