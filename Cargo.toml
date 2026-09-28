@@ -5,7 +5,12 @@ version = "2.0.1"
 authors = ["Dave Corley (S3kshun8) <corleycomputerrepair@protonmail.ch>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/DreamWeave-MP/Openmw_Config"
+homepage = "https://dreamweave-mp.github.io/Openmw_Config/"
+documentation = "https://dreamweave-mp.github.io/Openmw_Config/docs/"
 readme = "README.md"
+# The crate is the library. The website beside it (content/, templates/, sass/, static/, tools/)
+# is published to GitHub Pages, not crates.io.
+include = ["/src", "/benches", "/tests", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
 keywords = ["openmw", "config", "parsing", "gamedev"]
 categories = ["config", "game-engines", "parsing"]
 edition = "2024"
@@ -32,3 +37,8 @@ proptest = "1.11.0"
 [[bench]]
 name = "parsing"
 harness = false
+
+[[bench]]
+name = "luau_boundary"
+harness = false
+required-features = ["standalone-lua"]
