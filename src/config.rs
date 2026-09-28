@@ -177,6 +177,25 @@ impl SettingValue {
     }
 }
 
+/// Comment text in `openmw.cfg` form: lines that are not blank and do not start with `#` get a
+/// `# ` prefix, and a non-empty comment ends with a newline. Text the parser queued (already
+/// `#` lines and blank lines, newline-terminated) passes through unchanged.
+fn normalize_comment(comment: &str) -> String {
+    if comment.is_empty() {
+        return String::new();
+    }
+
+    let mut normalized = String::with_capacity(comment.len() + 2);
+    for line in comment.strip_suffix('\n').unwrap_or(comment).split('\n') {
+        if !line.trim().is_empty() && !line.trim_start().starts_with('#') {
+            normalized.push_str("# ");
+        }
+        normalized.push_str(line);
+        normalized.push('\n');
+    }
+    normalized
+}
+
 macro_rules! insert_dir_setting {
     ($self:ident, $variant:ident, $value:expr, $config_file:expr, $comment:expr) => {{
         $self
@@ -1038,6 +1057,11 @@ impl OpenMWConfiguration {
     /// Add it to the settings map.
     /// This process must be non-destructive
     ///
+    /// `comment` is the text written above the entry, in `openmw.cfg` comment form: every line
+    /// that is not blank and does not already start with `#` gets a `# ` prefix, and the whole
+    /// comment ends with a newline, so `"my note"` serializes as `# my note\nfallback=...`. It is
+    /// consumed (left empty), as the parser's queued comments are.
+    ///
     /// # Errors
     /// Returns [`ConfigError`] if `base_value` cannot be parsed as a valid game setting.
     pub fn set_game_setting(
@@ -1046,6 +1070,7 @@ impl OpenMWConfiguration {
         config_path: Option<PathBuf>,
         comment: &mut String,
     ) -> Result<(), ConfigError> {
+        *comment = normalize_comment(comment);
         let new_setting = GameSettingType::try_from((
             base_value.to_owned(),
             config_path.unwrap_or_else(|| self.user_config_path().join("openmw.cfg")),
@@ -1886,6 +1911,41 @@ mod tests {
         let config = load("fallback-archive=Morrowind.bsa\n");
         assert!(config.has_archive_file("Morrowind.bsa"));
         assert!(!config.has_archive_file("Tribunal.bsa"));
+    }
+
+    #[test]
+    fn test_set_game_setting_comment_is_written_as_a_comment_line() {
+        let mut config = load("content=Morrowind.esm\n");
+        let mut comment = String::from("my note");
+        config
+            .set_game_setting("fJumpHeight,1.0", None, &mut comment)
+            .unwrap();
+        assert!(comment.is_empty(), "the comment is consumed");
+        assert!(
+            config
+                .to_string()
+                .contains("# my note\nfallback=fJumpHeight,1.0\n"),
+            "{config}"
+        );
+
+        let mut multi = String::from("# already a comment\n\nsecond line");
+        config
+            .set_game_setting("iLevel,2", None, &mut multi)
+            .unwrap();
+        assert!(
+            config
+                .to_string()
+                .contains("# already a comment\n\n# second line\nfallback=iLevel,2\n"),
+            "{config}"
+        );
+
+        let mut empty = String::new();
+        config
+            .set_game_setting("iOther,3", None, &mut empty)
+            .unwrap();
+        assert!(config.to_string().contains("\nfallback=iOther,3\n"));
+        assert_eq!(normalize_comment("# kept\n"), "# kept\n");
+        assert_eq!(normalize_comment("\n"), "\n");
     }
 
     #[test]
