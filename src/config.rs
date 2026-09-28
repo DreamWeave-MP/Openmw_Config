@@ -864,7 +864,7 @@ impl OpenMWConfiguration {
 
         if let Some(duplicate) = duplicate {
             bail_config!(
-                duplicate_archive_file,
+                archive_already_defined,
                 duplicate.value().to_owned(),
                 duplicate.meta().source_config
             )
@@ -1891,7 +1891,11 @@ mod tests {
     #[test]
     fn test_add_duplicate_archive_errors() {
         let mut config = load("fallback-archive=Morrowind.bsa\n");
-        assert!(config.add_archive_file("Morrowind.bsa").is_err());
+        let result = config.add_archive_file("Morrowind.bsa");
+        assert!(
+            matches!(result, Err(ConfigError::CannotAddArchiveFile { ref file, .. }) if file == "Morrowind.bsa"),
+            "{result:?}"
+        );
     }
 
     #[test]
