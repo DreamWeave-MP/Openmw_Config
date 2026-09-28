@@ -85,3 +85,39 @@ fn test_save_user_keeps_replace_entries() {
         .collect();
     assert_eq!(content, ["UserOnly.esp"]);
 }
+
+#[test]
+fn test_injected_resources_vfs_directory_is_never_saved() {
+    let dir = temp_dir("save_resources_vfs");
+    let resources = temp_dir("save_resources_vfs_engine");
+    let vfs = resources.join("vfs");
+
+    write_cfg(
+        &dir,
+        &format!(
+            "# engine files\nresources={}\ndata=Data Files\n",
+            resources.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+    let first = config.data_directories_iter().next().unwrap();
+    assert_eq!(first.parsed(), vfs);
+
+    for serialized in [config.to_string(), config.to_resolved_string()] {
+        assert_eq!(serialized.matches("data=").count(), 1, "{serialized}");
+        assert_eq!(
+            serialized.matches("# engine files").count(),
+            1,
+            "{serialized}"
+        );
+    }
+
+    config.save_user().unwrap();
+    let reloaded = OpenMWConfiguration::new(Some(dir)).unwrap();
+    let copies = reloaded
+        .data_directories_iter()
+        .filter(|data_dir| data_dir.parsed() == vfs)
+        .count();
+    assert_eq!(copies, 1);
+}

@@ -442,11 +442,15 @@ impl OpenMWConfiguration {
             if let Some(setting) = config.resources() {
                 let dir = setting.parsed();
 
-                let engine_vfs = DirectorySetting::new(
+                let mut engine_vfs = DirectorySetting::new(
                     dir.join("vfs").to_string_lossy().to_string(),
                     setting.meta.source_config.clone(),
-                    &mut setting.meta.comment.clone(),
+                    &mut String::new(),
                 );
+                // Like data-local, resources/vfs is an effective data directory that no file
+                // declares. Without a source config it is never written back as a `data=` line,
+                // which would load as a second copy of it.
+                engine_vfs.meta.source_config = PathBuf::new();
 
                 config
                     .settings
@@ -988,19 +992,14 @@ impl OpenMWConfiguration {
         self.settings.retain(|s| !predicate(s));
     }
 
-    fn is_synthetic_data_local_data_directory(&self, setting: &SettingValue) -> bool {
-        let SettingValue::DataDirectory(data_dir) = setting else {
-            return false;
-        };
-
-        if !data_dir.meta().source_config.as_os_str().is_empty() {
-            return false;
-        }
-
-        self.data_local().is_some_and(|data_local| {
-            data_dir.parsed() == data_local.parsed()
-                || data_dir.original_str() == data_local.original_str()
-        })
+    /// The `data=` entries loading injects for `data-local=` and `resources=`/vfs. They belong to
+    /// the effective data directory list, but no file declares them, so they have no source config
+    /// and serialization leaves them out.
+    fn is_synthetic_data_directory(setting: &SettingValue) -> bool {
+        matches!(
+            setting,
+            SettingValue::DataDirectory(data_dir) if data_dir.meta().source_config.as_os_str().is_empty()
+        )
     }
 
     /// Removes all settings for which `predicate` returns `true`.
@@ -1529,7 +1528,8 @@ impl OpenMWConfiguration {
     /// emitted from their resolved paths, not their original token or relative spelling. Chain
     /// control entries such as `config=` and `replace=` are excluded because this output is already
     /// the composed result; reloading the chain from the flattened file would be doing the work
-    /// twice, and probably differently. Synthetic `data-local`-as-`data` entries are also omitted.
+    /// twice, and probably differently. The `data=` entries loading injects for `data-local=` and
+    /// `resources=` are also omitted.
     ///
     /// Use the [`Display`] implementation for preservation-oriented serialization instead.
     #[must_use]
@@ -1539,7 +1539,7 @@ impl OpenMWConfiguration {
         let mut config_string = String::new();
 
         for setting in &self.settings {
-            if self.is_synthetic_data_local_data_directory(setting) {
+            if Self::is_synthetic_data_directory(setting) {
                 continue;
             }
 
@@ -1607,7 +1607,7 @@ impl OpenMWConfiguration {
         for user_setting in self.settings_matching(|setting| {
             util::paths_equivalent(&setting.meta().source_config, &cfg_path)
         }) {
-            if self.is_synthetic_data_local_data_directory(user_setting) {
+            if Self::is_synthetic_data_directory(user_setting) {
                 continue;
             }
 
@@ -1652,7 +1652,7 @@ impl OpenMWConfiguration {
         for subconfig_setting in self.settings_matching(|setting| {
             util::paths_equivalent(&setting.meta().source_config, &cfg_path)
         }) {
-            if self.is_synthetic_data_local_data_directory(subconfig_setting) {
+            if Self::is_synthetic_data_directory(subconfig_setting) {
                 continue;
             }
 
@@ -1674,13 +1674,13 @@ impl OpenMWConfiguration {
 /// meaning of relative paths. Use [`OpenMWConfiguration::to_resolved_string`] or
 /// [`OpenMWConfiguration::save_resolved_to_path`] for importer/export output.
 ///
-/// Synthetic `data-local`-as-`data` entries are omitted. Comments and `replace=` entries are
-/// preserved.
+/// The `data=` entries loading injects for `data-local=` and `resources=` are omitted. Comments and
+/// `replace=` entries are preserved.
 impl fmt::Display for OpenMWConfiguration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.settings
             .iter()
-            .filter(|setting| !self.is_synthetic_data_local_data_directory(setting))
+            .filter(|setting| !Self::is_synthetic_data_directory(setting))
             .try_for_each(|setting| write!(f, "{setting}"))?;
 
         writeln!(
