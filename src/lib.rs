@@ -304,22 +304,21 @@ pub fn default_local_path() -> std::path::PathBuf {
 /// `openmw.cfg`, then the platform global config. The user config is loaded only if that root
 /// config references it, normally via `config="?userconfig?"`.
 ///
+/// Windows and macOS have no global config directory, so there the executable-adjacent config is
+/// the only candidate.
+///
 /// # Errors
-/// Returns [`ConfigError`] if platform paths cannot be resolved or no root `openmw.cfg` exists.
+/// Returns [`ConfigError::CannotFindRootConfig`] if no root `openmw.cfg` exists, or another
+/// [`ConfigError`] if the executable's directory cannot be resolved.
 pub fn try_default_root_config_path() -> Result<std::path::PathBuf, ConfigError> {
     let local_dir = try_default_local_path()?;
-    let local = local_dir.join("openmw.cfg");
-    if local.is_file() {
-        return Ok(local);
-    }
+    let global_config_dir = match try_default_global_config_path() {
+        Ok(global_config_dir) => Some(global_config_dir),
+        Err(ConfigError::PlatformPathUnavailable(_)) => None,
+        Err(error) => return Err(error),
+    };
 
-    let global_config_dir = try_default_global_config_path()?;
-    let global = global_config_dir.join("openmw.cfg");
-    if global.is_file() {
-        return Ok(global);
-    }
-
-    Err(ConfigError::CannotFindRootConfig { local, global })
+    discover_root_config_path(&local_dir, global_config_dir.as_deref())
 }
 
 /// Find the default root `openmw.cfg`, falling back to the default user `openmw.cfg`.
@@ -368,18 +367,20 @@ pub fn default_root_config_path() -> std::path::PathBuf {
     try_default_root_config_path().expect("FAILURE: COULD NOT FIND ROOT CONFIG")
 }
 
-#[cfg(test)]
+/// The root config among the candidates: executable-adjacent first, then global. Without a global
+/// config directory, [`ConfigError::CannotFindRootConfig`] carries an empty `global` path.
 pub(crate) fn discover_root_config_path(
     local_dir: &std::path::Path,
-    global_config_dir: &std::path::Path,
+    global_config_dir: Option<&std::path::Path>,
 ) -> Result<std::path::PathBuf, ConfigError> {
     let local = local_dir.join("openmw.cfg");
     if local.is_file() {
         return Ok(local);
     }
 
-    let global = global_config_dir.join("openmw.cfg");
-    if global.is_file() {
+    let global =
+        global_config_dir.map_or_else(std::path::PathBuf::new, |dir| dir.join("openmw.cfg"));
+    if global_config_dir.is_some() && global.is_file() {
         return Ok(global);
     }
 
@@ -716,7 +717,7 @@ mod tests {
         std::fs::write(&global_cfg, "content=Global.esm\n").unwrap();
 
         assert_eq!(
-            discover_root_config_path(&local_dir, &global_dir).unwrap(),
+            discover_root_config_path(&local_dir, Some(&global_dir)).unwrap(),
             local_cfg
         );
 
@@ -736,7 +737,7 @@ mod tests {
         std::fs::write(&global_cfg, "content=Global.esm\n").unwrap();
 
         assert_eq!(
-            discover_root_config_path(&local_dir, &global_dir).unwrap(),
+            discover_root_config_path(&local_dir, Some(&global_dir)).unwrap(),
             global_cfg
         );
 
@@ -753,11 +754,35 @@ mod tests {
         std::fs::create_dir_all(&global_dir).unwrap();
 
         assert!(matches!(
-            discover_root_config_path(&local_dir, &global_dir),
+            discover_root_config_path(&local_dir, Some(&global_dir)),
             Err(ConfigError::CannotFindRootConfig { .. })
         ));
 
         let _ = std::fs::remove_dir_all(global_dir);
+        let _ = std::fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn test_root_config_discovery_without_a_global_config_directory() {
+        let local_dir = unique_temp_dir("root_no_global_local");
+        std::fs::create_dir_all(&local_dir).unwrap();
+
+        match discover_root_config_path(&local_dir, None) {
+            Err(ConfigError::CannotFindRootConfig { local, global }) => {
+                assert_eq!(local, local_dir.join("openmw.cfg"));
+                assert!(global.as_os_str().is_empty());
+            }
+            other => panic!("expected CannotFindRootConfig, got {other:?}"),
+        }
+
+        let local_cfg = local_dir.join("openmw.cfg");
+        std::fs::write(&local_cfg, "content=Local.esm\n").unwrap();
+        assert_eq!(
+            discover_root_config_path(&local_dir, None).unwrap(),
+            local_cfg
+        );
+
+        let _ = std::fs::remove_file(local_cfg);
         let _ = std::fs::remove_dir_all(local_dir);
     }
 

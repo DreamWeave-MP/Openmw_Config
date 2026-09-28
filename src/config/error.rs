@@ -218,8 +218,10 @@ pub enum ConfigError {
     /// No `openmw.cfg` was found at the given path.
     CannotFind(PathBuf),
     /// Root config discovery tried both local and global config candidates and found neither.
+    /// `global` is empty on platforms without a global config directory (Windows, macOS).
     CannotFindRootConfig { local: PathBuf, global: PathBuf },
-    /// External-tool config discovery found neither root nor user config candidates.
+    /// External-tool config discovery found neither root nor user config candidates. `global` is
+    /// empty on platforms without a global config directory (Windows, macOS).
     CannotFindAnyConfig {
         local: PathBuf,
         global: PathBuf,
@@ -248,19 +250,27 @@ fn duplicate_message(file: &str, kind: &str, config_path: &Path, line: Option<us
     )
 }
 
+fn global_candidate(global: &Path) -> String {
+    if global.as_os_str().is_empty() {
+        "no global config path on this platform".to_string()
+    } else {
+        format!("global config path {}", global.display())
+    }
+}
+
 fn cannot_find_root_message(local: &Path, global: &Path) -> String {
     format!(
-        "OpenMW root config discovery found no openmw.cfg at local path {} or global config path {}",
+        "OpenMW root config discovery found no openmw.cfg at local path {}, and {}",
         local.display(),
-        global.display()
+        global_candidate(global)
     )
 }
 
 fn cannot_find_any_message(local: &Path, global: &Path, user: &Path) -> String {
     format!(
-        "OpenMW config discovery found no openmw.cfg at local path {}, global config path {}, or user config path {}",
+        "OpenMW config discovery found no openmw.cfg at local path {}, {}, or user config path {}",
         local.display(),
-        global.display(),
+        global_candidate(global),
         user.display()
     )
 }
@@ -420,6 +430,14 @@ mod tests {
         .to_string();
         assert!(cannot_find_root.contains("/tmp/local/openmw.cfg"));
         assert!(cannot_find_root.contains("/tmp/global/openmw.cfg"));
+
+        let without_global = ConfigError::CannotFindRootConfig {
+            local: PathBuf::from("/tmp/local/openmw.cfg"),
+            global: PathBuf::new(),
+        }
+        .to_string();
+        assert!(without_global.contains("/tmp/local/openmw.cfg"));
+        assert!(without_global.contains("no global config path on this platform"));
 
         let cannot_find_any = ConfigError::CannotFindAnyConfig {
             local: PathBuf::from("/tmp/local/openmw.cfg"),
