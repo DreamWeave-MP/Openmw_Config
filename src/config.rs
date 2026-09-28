@@ -67,11 +67,48 @@ pub enum SettingValue {
     BethArchive(FileSetting),
     /// A `groundcover=` entry naming a groundcover plugin file.
     Groundcover(FileSetting),
+    /// Comment and blank lines after a file's last setting, kept so serialization reproduces
+    /// them; the serializer's own version stamp is never one.
+    TrailingComment(TrailingComment),
+}
+
+/// The comment and blank lines that end a file without a setting after them.
+#[derive(Debug, Clone)]
+pub struct TrailingComment {
+    meta: crate::GameSettingMeta,
+}
+
+impl Display for TrailingComment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.meta.comment)
+    }
+}
+
+impl crate::GameSetting for TrailingComment {
+    fn meta(&self) -> &crate::GameSettingMeta {
+        &self.meta
+    }
+}
+
+/// The comment line every serialization ends with; a loaded file's copy is dropped so the
+/// stamp never accumulates.
+const SERIALIZER_STAMP_PREFIX: &str = "# OpenMW-Config Serializer Version:";
+
+fn write_serializer_stamp(out: &mut impl std::fmt::Write) -> fmt::Result {
+    writeln!(
+        out,
+        "{SERIALIZER_STAMP_PREFIX} {}",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 impl Display for SettingValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
+            // Already whole, newline-terminated lines.
+            SettingValue::TrailingComment(trailing) => {
+                return write!(f, "{}", trailing.meta().comment);
+            }
             SettingValue::Encoding(encoding_setting) => encoding_setting.to_string(),
             SettingValue::UserData(userdata_setting) => format!(
                 "{}user-data={}",
@@ -145,6 +182,7 @@ impl SettingValue {
             SettingValue::GameSetting(setting) => setting.meta(),
             SettingValue::Encoding(setting) => setting.meta(),
             SettingValue::Generic(setting) | SettingValue::Replace(setting) => setting.meta(),
+            SettingValue::TrailingComment(setting) => setting.meta(),
         }
     }
 
@@ -1480,6 +1518,22 @@ impl OpenMWConfiguration {
                     });
                 }
             }
+
+            // Lines after the last setting have nothing to attach to; keep them as the file's
+            // trailer, minus the stamp a previous serialization left.
+            let trailing: String = queued_comment
+                .split_inclusive('\n')
+                .filter(|line| !line.starts_with(SERIALIZER_STAMP_PREFIX))
+                .collect();
+            if !trailing.is_empty() {
+                self.settings
+                    .push(SettingValue::TrailingComment(TrailingComment {
+                        meta: crate::GameSettingMeta {
+                            source_config: cfg_file_path,
+                            comment: trailing,
+                        },
+                    }));
+            }
         }
 
         self.rebuild_indexes();
@@ -1559,8 +1613,6 @@ impl OpenMWConfiguration {
     /// Use the [`Display`] implementation for preservation-oriented serialization instead.
     #[must_use]
     pub fn to_resolved_string(&self) -> String {
-        use std::fmt::Write as _;
-
         let mut config_string = String::new();
 
         for setting in &self.settings {
@@ -1573,12 +1625,8 @@ impl OpenMWConfiguration {
             }
         }
 
-        writeln!(
-            config_string,
-            "# OpenMW-Config Serializer Version: {}",
-            env!("CARGO_PKG_VERSION")
-        )
-        .expect("writing to a String cannot fail");
+        // Writing to a String cannot fail.
+        let _ = write_serializer_stamp(&mut config_string);
 
         config_string
     }
@@ -1708,11 +1756,7 @@ impl fmt::Display for OpenMWConfiguration {
             .filter(|setting| !Self::is_synthetic_data_directory(setting))
             .try_for_each(|setting| write!(f, "{setting}"))?;
 
-        writeln!(
-            f,
-            "# OpenMW-Config Serializer Version: {}",
-            env!("CARGO_PKG_VERSION")
-        )?;
+        write_serializer_stamp(f)?;
 
         Ok(())
     }
@@ -1946,6 +1990,37 @@ mod tests {
         assert!(config.to_string().contains("\nfallback=iOther,3\n"));
         assert_eq!(normalize_comment("# kept\n"), "# kept\n");
         assert_eq!(normalize_comment("\n"), "\n");
+    }
+
+    #[test]
+    fn test_trailing_comments_survive_serialization() {
+        let config = load("# head\ncontent=A.esp\n\n# tail\n");
+        let serialized = config.to_string();
+        assert!(
+            serialized.starts_with(
+                "# head\ncontent=A.esp\n\n# tail\n# OpenMW-Config Serializer Version:"
+            ),
+            "{serialized}"
+        );
+
+        // The stamp never accumulates and the trailer is stable across reloads.
+        let reloaded = load(&serialized).to_string();
+        assert_eq!(reloaded, serialized);
+        assert_eq!(serialized.matches(SERIALIZER_STAMP_PREFIX).count(), 1);
+
+        // A file that ends right after its last setting has no trailer.
+        let plain = load("content=A.esp\n").to_string();
+        assert!(
+            plain.starts_with("content=A.esp\n# OpenMW-Config"),
+            "{plain}"
+        );
+
+        // A file of only comments keeps them.
+        let only = load("# nothing here\n").to_string();
+        assert!(
+            only.starts_with("# nothing here\n# OpenMW-Config"),
+            "{only}"
+        );
     }
 
     #[test]
