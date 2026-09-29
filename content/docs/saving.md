@@ -30,10 +30,12 @@ interchangeable.
 `save_user()` writes the settings attributed to the user's `openmw.cfg`, in order, each with the
 comments above it. Parent configs are not touched. Their entries are copied only into a list the
 user's config replaces, after its `replace=` line, which happens once you replace or remove what a
-parent put in that list. The directory is created if it does not exist.
+parent put in that list. The directory is created if it does not exist, as it does not on a fresh
+install, where the root names `?userconfig?` before anything has been saved there: OpenMW's
+launcher creates it and the file on its first save too.
 
 `save_subconfig(dir)` does the same for another config in the chain. `dir` must be the directory
-of a `config=` entry that loaded, given as its resolved path or its text in the file; anything
+of a `config=` entry in the chain, given as its resolved path or its text in the file; anything
 else fails with `ConfigError::SubconfigNotLoaded`, so it cannot overwrite a file that is not part
 of the chain. The root config is not a `config=` entry and cannot be saved this way.
 

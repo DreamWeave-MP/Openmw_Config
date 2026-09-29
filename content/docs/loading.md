@@ -108,13 +108,14 @@ until one of those settings is set.
 
 ## Which file is the user's
 
-The last file the chain loads is the user's: the one the launcher edits, and the one `save_user()`
-writes.
+The `openmw.cfg` in the last directory of the chain is the user's: the one the launcher edits, and
+the one `save_user()` writes, creating it on a fresh install.
 
-- `user_config_path()` is its directory: the last `config=` directory that loaded, or the root's own
-  directory when nothing chained.
+- `user_config_path()` is its directory: the last `config=` directory the chain reached, whether or
+  not it holds an `openmw.cfg` yet, or the root's own directory when nothing chained.
 - `is_user_config()` is true when the root config is that file.
-- `user_config()` and `user_config_ref()` load a new configuration starting from that directory.
+- `user_config()` and `user_config_ref()` load a new configuration starting from that directory,
+  empty when its `openmw.cfg` does not exist yet.
   The first consumes the configuration you have, the second leaves it alone. When this
   configuration already starts at the user's config, the first returns it unchanged and the second
   returns a clone.

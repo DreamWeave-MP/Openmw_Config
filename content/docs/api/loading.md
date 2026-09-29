@@ -95,9 +95,10 @@ constructor produces.
 
 {{ api_signature(value="fn user_config_path(&self) -> PathBuf") }}
 
-The directory of the user's config: the last `config=` directory in effect, or `root_config_dir()`
-when nothing chained. `save_user()` writes `openmw.cfg` here, and every entry the editing methods
-add is attributed to it.
+The directory of the user's config: the last `config=` directory in effect, whether or not it holds
+an `openmw.cfg` yet, or `root_config_dir()` when nothing chained. `save_user()` writes `openmw.cfg`
+here, creating the directory on a fresh install, and every entry the editing methods add is
+attributed to it.
 
 ## is_user_config
 
@@ -110,15 +111,16 @@ resolve to the same file count as equal.
 
 {{ api_signature(value="fn user_config(self) -> Result<OpenMWConfiguration, ConfigError>") }}
 
-A configuration loaded from `user_config_path()`, replacing this one. When this configuration
-already starts there, it is returned unchanged. Errors are those of `new()`.
+A configuration loaded from `user_config_path()` as `load_optional()` loads it, replacing this one:
+empty and rooted there when its `openmw.cfg` does not exist yet. When this configuration already
+starts there, it is returned unchanged. Errors are those of `load_optional()`.
 
 ## user_config_ref
 
 {{ api_signature(value="fn user_config_ref(&self) -> Result<OpenMWConfiguration, ConfigError>") }}
 
-`user_config()` without consuming `self`: a new configuration loaded from the user's config, or a
-clone of this one when it already starts there.
+`user_config()` without consuming `self`: a new configuration loaded from the user's config, empty
+when it does not exist yet, or a clone of this one when it already starts there.
 
 ## Errors while reading
 

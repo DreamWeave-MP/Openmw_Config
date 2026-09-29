@@ -39,8 +39,9 @@ fn main() -> Result<(), ConfigError> {
 {{ api_signature(value="fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting>") }}
 
 The `config=` entries still in effect, as directories: file by file in the order the files loaded,
-each file's in its own order. Skipped entries are not here, and neither are entries naming a config
-a `replace=config` dropped. The chain loads depth first, so the last entry need not be the user's
+each file's in its own order. Entries naming a directory without an `openmw.cfg` are here, as
+OpenMW keeps those directories in the chain; entries naming a config a `replace=config` dropped are
+not. The chain loads depth first, so the last entry need not be the user's
 config: `user_config_path()` is.
 
 ## ConfigChainEntry

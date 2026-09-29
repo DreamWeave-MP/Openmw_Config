@@ -90,12 +90,15 @@ const READ_SURFACE_SCRIPT: &str = r##"
     assert(cfg:hasArchiveFile("Root.bsa"))
     assert(cfg:hasDataDir(expectedDataDir))
 
+    -- A config= directory without an openmw.cfg stays in the chain, and the last is the user's.
     local subConfigs = cfg:subConfigs()
-    assert(#subConfigs == 1)
-    assert(cfg.subConfigCount == 1)
+    assert(#subConfigs == 2)
+    assert(cfg.subConfigCount == 2)
     assert(subConfigs[1] == subPath, subConfigs[1])
-    assert(subConfigs[2] == nil)
-    assert(#subConfigs:toTable() == 1)
+    assert(subConfigs[2] == missingPath, subConfigs[2])
+    assert(subConfigs[3] == nil)
+    assert(#subConfigs:toTable() == 2)
+    assert(cfg:userConfigPath() == missingPath, cfg:userConfigPath())
 
     local chain = cfg:configChain()
     assert(#chain == 3)
@@ -324,6 +327,7 @@ fn read_surface_comprehensive() {
     let runtime = runtime(&[
         ("rootPath", root.display().to_string()),
         ("subPath", sub.display().to_string()),
+        ("missingPath", missing.display().to_string()),
         ("expectedUserData", userdata_dir.display().to_string()),
         ("expectedResources", resources_dir.display().to_string()),
         ("expectedDataLocal", data_local_dir.display().to_string()),

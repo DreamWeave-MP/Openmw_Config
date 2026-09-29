@@ -292,8 +292,8 @@ pub struct OpenMWConfiguration {
     /// because it never writes the parents' files and a reload would otherwise bring back what
     /// they said.
     user_replaces: Vec<ListOption>,
-    /// The directory of the last config the chain loaded after the root, which `OpenMW` takes
-    /// as the user's; `None` when the root is the only one.
+    /// The last directory of the chain after the root, whether or not it holds an `openmw.cfg`
+    /// yet, which `OpenMW` takes as the user's; `None` when the root is the only one.
     user_config_dir: Option<PathBuf>,
 }
 
@@ -1013,6 +1013,10 @@ impl OpenMWConfiguration {
         util::paths_equivalent(&self.root_config_dir(), &self.user_config_path())
     }
 
+    /// The user's config on its own, loaded from [`Self::user_config_path`] as
+    /// [`Self::load_optional`] loads: empty and rooted there when its `openmw.cfg` does not
+    /// exist yet, as on a fresh install. `self` when it already starts there.
+    ///
     /// # Errors
     /// Returns [`ConfigError`] if the user config path cannot be loaded.
     pub fn user_config(self) -> Result<Self, ConfigError> {
@@ -1020,10 +1024,13 @@ impl OpenMWConfiguration {
         if util::paths_equivalent(&self.root_config_dir(), &user_path) {
             Ok(self)
         } else {
-            Self::new(Some(user_path))
+            Self::load_optional(user_path)
         }
     }
 
+    /// [`Self::user_config`] without consuming `self`: a clone when it already starts at the
+    /// user's config.
+    ///
     /// # Errors
     /// Returns [`ConfigError`] if the user config path cannot be loaded.
     pub fn user_config_ref(&self) -> Result<Self, ConfigError> {
@@ -1031,13 +1038,18 @@ impl OpenMWConfiguration {
         if util::paths_equivalent(&self.root_config_dir(), &user_path) {
             Ok(self.clone())
         } else {
-            Self::new(Some(user_path))
+            Self::load_optional(user_path)
         }
     }
 
-    /// The directory of the user's `openmw.cfg`: the last config the chain loaded, or the root's
-    /// directory when it loaded no other. That is the file `OpenMW` and its launcher write, and
-    /// the one [`Self::save_user`] writes; [`Self::user_config`] loads it on its own.
+    /// The directory of the user's `openmw.cfg`: the last directory of the chain, or the root's
+    /// when nothing chained. That is the file `OpenMW` and its launcher write, and the one
+    /// [`Self::save_user`] writes; [`Self::user_config`] loads it on its own.
+    ///
+    /// A `config=` directory without an `openmw.cfg` counts: `readConfiguration` adds every
+    /// directory it reaches to its active config paths, loaded or not. So on a fresh install,
+    /// where the root's `config="?userconfig?"` names a directory with no `openmw.cfg` yet, this is
+    /// that directory, and [`Self::save_user`] creates it.
     ///
     /// `config=` entries load depth first, as `OpenMW`'s `readConfiguration` walks them: a file's
     /// first `config=` and every file that one names load before its second. A root naming `a`
@@ -1597,9 +1609,10 @@ impl OpenMWConfiguration {
         failure.map_or(Ok(()), Err)
     }
 
-    /// Iterates the `config=` entries whose directories hold an `openmw.cfg`, file by file in the
-    /// order the files loaded, each file's in its own order. The chain loads depth first, so the
-    /// last entry here need not be the user's config: [`Self::user_config_path`] is.
+    /// Iterates the `config=` entries of the chain, file by file in the order the files loaded,
+    /// each file's in its own order. An entry naming a directory without an `openmw.cfg` is one:
+    /// `OpenMW` keeps that directory in the chain. The chain loads depth first, so the last entry
+    /// here need not be the user's config: [`Self::user_config_path`] is.
     ///
     /// An entry naming a config a `replace=config` dropped is left out, so
     /// [`Self::save_subconfig`] cannot write over that file.
@@ -1686,9 +1699,11 @@ impl OpenMWConfiguration {
         // or branches into the same directory twice reads each once. Paths compare as written
         // once resolved, not canonicalized.
         let mut tried_dirs: FxHashSet<PathBuf> = FxHashSet::default();
-        // The configs the chain keeps, with their directories, in load order: what
-        // readConfiguration's parsedConfigs holds.
-        let mut loaded: Vec<(PathBuf, ConfigFile)> = Vec::new();
+        // The configs the chain keeps, in load order: readConfiguration's parsedConfigs.
+        let mut loaded: Vec<ConfigFile> = Vec::new();
+        // The directories of the chain, in load order, those without an openmw.cfg included:
+        // readConfiguration's mActiveConfigPaths, whose last is the user config directory.
+        let mut active_dirs: Vec<PathBuf> = Vec::new();
 
         while let Some((config_path, depth)) = pending_configs.pop() {
             let cfg_file_path = if config_path.is_dir() {
@@ -1722,6 +1737,7 @@ impl OpenMWConfiguration {
                     depth,
                     status: ConfigChainStatus::SkippedMissing,
                 });
+                active_dirs.push(config_dir);
                 continue;
             }
 
@@ -1739,10 +1755,12 @@ impl OpenMWConfiguration {
             let file = ConfigFile::read(&cfg_file_path)?;
 
             // A config after the root that says replace=config drops the configs read before
-            // it except the root. Every line of its own stays, and the walk carries on through
+            // it except the root, and the directories with them, once a config other than the
+            // root has loaded. Every line of its own stays, and the walk carries on through
             // every config= entry still to load. In the root it does nothing.
             if loaded.len() > 1 && file.replaces.iter().any(|name| name == "config") {
                 loaded.truncate(1);
+                active_dirs.truncate(1);
             }
             // The first on top, as readConfiguration's addExtraConfigDirs pushes them.
             pending_configs.extend(
@@ -1750,13 +1768,14 @@ impl OpenMWConfiguration {
                     .rev()
                     .map(|dir| (dir.parsed().join("openmw.cfg"), depth + 1)),
             );
-            if depth > 0 {
-                self.user_config_dir = Some(config_dir.clone());
-            }
-            loaded.push((config_dir, file));
+            active_dirs.push(config_dir);
+            loaded.push(file);
         }
 
-        self.merge(loaded)?;
+        self.merge(loaded, &active_dirs)?;
+        if active_dirs.len() > 1 {
+            self.user_config_dir = active_dirs.pop();
+        }
         self.rebuild_indexes();
 
         Ok(())
@@ -1767,22 +1786,26 @@ impl OpenMWConfiguration {
     /// list stays unless a config after its own names that list in `replace=`, exactly as
     /// written. So a config's `replace=` discards what the configs before it said, and none of
     /// its own entries, wherever it sits. Single values, `replace=` lines and comments are no
-    /// lists; a `config=` entry stays while the config it names does.
+    /// lists; a `config=` entry stays while its directory is one of `active_dirs`, whether or
+    /// not it holds an `openmw.cfg`.
     ///
     /// # Errors
     /// Fails on a `content=`, `groundcover=` or `fallback-archive=` name that stays twice, at
     /// the second, as `OpenMW` refuses a content file listed twice.
-    fn merge(&mut self, loaded: Vec<(PathBuf, ConfigFile)>) -> Result<(), ConfigError> {
-        let loaded_dirs: Vec<PathBuf> = loaded.iter().map(|(dir, _)| dir.clone()).collect();
+    fn merge(
+        &mut self,
+        loaded: Vec<ConfigFile>,
+        active_dirs: &[PathBuf],
+    ) -> Result<(), ConfigError> {
         let mut replaced: FxHashSet<String> = FxHashSet::default();
         let mut kept_per_config = Vec::with_capacity(loaded.len());
-        for (_, file) in loaded.into_iter().rev() {
+        for file in loaded.into_iter().rev() {
             let kept: Vec<(SettingValue, usize)> = file
                 .settings
                 .into_iter()
                 .filter(|(setting, _)| match setting {
                     SettingValue::SubConfiguration(dir) => {
-                        loaded_dirs.iter().any(|loaded| loaded == dir.parsed())
+                        active_dirs.iter().any(|active| active == dir.parsed())
                     }
                     _ => list_name(setting).is_none_or(|list| !replaced.contains(list)),
                 })
@@ -2034,6 +2057,9 @@ impl OpenMWConfiguration {
     /// removed a parent's entry from one, the user config replaces that list: a `replace=` line
     /// followed by the entries the parents still contribute, then its own. So what this writes
     /// loads back as what was in memory.
+    ///
+    /// On a fresh install the user's directory and its `openmw.cfg` do not exist yet; this
+    /// creates both, as `OpenMW`'s launcher does when it first saves.
     ///
     /// # Errors
     /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
