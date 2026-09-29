@@ -150,9 +150,12 @@ pub fn input_config_path(config_path: PathBuf) -> Result<PathBuf, crate::ConfigE
 
 #[cfg(test)]
 mod tests {
-    use super::{display_preserving_absolute, expand_leading_tilde, paths_equivalent};
+    #[cfg(unix)]
+    use super::paths_equivalent;
+    use super::{display_preserving_absolute, expand_leading_tilde};
     use std::path::PathBuf;
 
+    #[cfg(unix)]
     fn unique_temp_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "openmw_config_util_{name}_{}_{}",

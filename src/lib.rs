@@ -97,6 +97,7 @@ const NO_GLOBAL_CONFIG_DIR: &str = "FAILURE: COULD NOT READ GLOBAL CONFIG DIRECT
 const DEFAULT_FLATPAK_APP_ID: &str = "org.openmw.OpenMW";
 
 #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
 fn has_flatpak_info_file() -> bool {
     use std::sync::OnceLock;
 
@@ -104,20 +105,16 @@ fn has_flatpak_info_file() -> bool {
     *HAS_FLATPAK_INFO.get_or_init(|| std::path::Path::new("/.flatpak-info").exists())
 }
 
+#[cfg(target_os = "linux")]
 fn flatpak_mode_enabled() -> bool {
-    #[cfg(not(target_os = "linux"))]
-    {
-        return false;
-    }
+    std::env::var_os("OPENMW_CONFIG_USING_FLATPAK").is_some()
+        || std::env::var_os("FLATPAK_ID").is_some()
+        || has_flatpak_info_file()
+}
 
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var_os("OPENMW_CONFIG_USING_FLATPAK").is_some() {
-            return true;
-        }
-
-        std::env::var_os("FLATPAK_ID").is_some() || has_flatpak_info_file()
-    }
+#[cfg(not(target_os = "linux"))]
+fn flatpak_mode_enabled() -> bool {
+    false
 }
 
 fn flatpak_app_id() -> String {

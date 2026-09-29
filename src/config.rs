@@ -1902,6 +1902,9 @@ impl OpenMWConfiguration {
         file.sync_all()?;
 
         #[cfg(windows)]
+        // The lint guards against making files world-writable on Unix; this block only
+        // clears the Windows read-only attribute so the destination can be replaced.
+        #[allow(clippy::permissions_set_readonly_false)]
         {
             if path.exists() {
                 if let Ok(metadata) = std::fs::metadata(path) {
@@ -2224,6 +2227,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(windows))]
     fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
         // SAFETY: callers hold env_lock(). Environment mutation is process-global.
         unsafe {

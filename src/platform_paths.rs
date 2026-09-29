@@ -44,12 +44,12 @@ pub(crate) fn home_dir() -> Result<PathBuf, ConfigError> {
 pub(crate) fn config_dir() -> Result<PathBuf, ConfigError> {
     #[cfg(target_os = "windows")]
     {
-        return document_dir().map(|path| path.join("My Games").join("openmw"));
+        document_dir().map(|path| path.join("My Games").join("openmw"))
     }
 
     #[cfg(target_os = "macos")]
     {
-        return home_dir().map(|path| path.join("Library").join("Preferences").join("openmw"));
+        home_dir().map(|path| path.join("Library").join("Preferences").join("openmw"))
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -65,16 +65,16 @@ pub(crate) fn config_dir() -> Result<PathBuf, ConfigError> {
 pub(crate) fn data_dir() -> Result<PathBuf, ConfigError> {
     #[cfg(target_os = "windows")]
     {
-        return config_dir();
+        config_dir()
     }
 
     #[cfg(target_os = "macos")]
     {
-        return home_dir().map(|path| {
+        home_dir().map(|path| {
             path.join("Library")
                 .join("Application Support")
                 .join("openmw")
-        });
+        })
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -97,7 +97,14 @@ fn document_dir() -> Result<PathBuf, ConfigError> {
     let mut raw_path: windows_sys::core::PWSTR = null_mut();
 
     // SAFETY: SHGetKnownFolderPath initializes `raw_path` on success for FOLDERID_Documents.
-    let status = unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, 0, null_mut(), &mut raw_path) };
+    let status = unsafe {
+        SHGetKnownFolderPath(
+            &raw const FOLDERID_Documents,
+            0,
+            null_mut(),
+            &raw mut raw_path,
+        )
+    };
     if status != 0 || raw_path.is_null() {
         return Err(ConfigError::PlatformPathUnavailable("documents"));
     }
