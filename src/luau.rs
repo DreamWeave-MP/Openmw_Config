@@ -26,7 +26,9 @@
 //!   `dataDirectories`, `subConfigs`, `gameSettings`, `genericSettings`, `configChain`) return
 //!   sequence views over the live configuration: `#list`, `list[i]` (1-based, nil past the
 //!   end), `for i, item in list do`, and `list:toTable()` for a plain table. Nothing is copied
-//!   until an element is read. `ipairs`/`pairs`/`table.*` need `:toTable()`.
+//!   until an element is read, and the generated definitions type all four with the element
+//!   type, so a strict script reads a view directly. `ipairs`/`pairs`/`table.*` need
+//!   `:toTable()`.
 //! - Rows are userdata with the field names of the old tables: `key`, `value`, `kind`,
 //!   `source`, `comment` on a game setting (plus `typed`: the parsed value, a Luau integer for
 //!   `Int`, a number for `Float`, a vector of the 0..255 components for `Color`, the string for
@@ -46,10 +48,10 @@ use std::rc::Rc;
 use l3i::bind::{Call, StackResults};
 use l3i::convert::{Integer, Push, Vector3};
 use l3i::direct::field::{DirectField, FieldValue};
-use l3i::extension::{Extension, ExtensionDescriptor, TagPolicy, UserdataBuilder};
-use l3i::sequence::{Sequence, SequenceSource};
+use l3i::extension::{Extension, ExtensionDescriptor, TagPolicy};
+use l3i::sequence::{Sequence, SequenceItem, SequenceSource};
 use l3i::source::CompileConstant;
-use l3i::stack::{Scope, ValueView};
+use l3i::stack::Scope;
 use l3i::userdata::{Owned, Userdata};
 use l3i::value::Table;
 use l3i::{Error, Result};
@@ -281,19 +283,19 @@ pub struct StringItem {
     position: usize,
 }
 
-impl Push for StringItem {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
+impl SequenceItem for StringItem {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
         let config = self.shared.read();
         match config.setting_at(self.position) {
             Some(
                 SettingValue::ContentFile(file)
                 | SettingValue::Groundcover(file)
                 | SettingValue::BethArchive(file),
-            ) => file.value_str().push_into(scope),
+            ) => file.value_str().push_only(scope),
             Some(SettingValue::DataDirectory(dir) | SettingValue::SubConfiguration(dir)) => {
-                dir.parsed().to_string_lossy().as_ref().push_into(scope)
+                dir.parsed().to_string_lossy().as_ref().push_only(scope)
             }
-            _ => ().push_into(scope),
+            _ => ().push_only(scope),
         }
     }
 }
@@ -320,7 +322,6 @@ impl SequenceSource for StringList {
 // ---------------------------------------------------------------------------------------------
 
 /// One `fallback=` entry (`dream.openmw.GameSetting`), read live from its configuration.
-#[derive(Clone)]
 pub struct GameSetting {
     shared: Rc<Shared>,
     position: usize,
@@ -374,7 +375,6 @@ impl SequenceSource for GameSettingList {
 // ---------------------------------------------------------------------------------------------
 
 /// One preserved `key=value` entry (`dream.openmw.GenericSetting`).
-#[derive(Clone)]
 pub struct GenericSetting {
     shared: Rc<Shared>,
     position: usize,
@@ -432,7 +432,6 @@ impl SequenceSource for GenericSettingList {
 
 /// One observed step of the chain traversal (`dream.openmw.ChainEntry`). The chain is fixed
 /// at load, so no generation check is needed.
-#[derive(Clone)]
 pub struct ChainEntry {
     shared: Rc<Shared>,
     index: usize,
@@ -502,42 +501,25 @@ impl Extension for OpenmwConfigExtension {
     }
 }
 
-/// The `toTable` a sequence declares returns `{ any }`; these lists know their element type.
-fn to_table_returns<S: SequenceSource>(list: &mut UserdataBuilder<'_, Sequence<S>>, element: &str) {
-    if let Some(member) = list
-        .decl()
-        .members
-        .iter_mut()
-        .find(|member| member.name == "toTable")
-    {
-        member.signature(format!("(self): {{ {element} }}"));
-    }
-}
-
+/// Each view names its element type, so the definitions declare `#`, `[i]`, `for`, and
+/// `toTable` with it and a strict script needs no `:toTable()` to read a view.
 fn describe_lists(d: &mut ExtensionDescriptor) {
-    let mut strings = d.sequence::<StringList>(STRINGS_TYPE);
-    strings.tag(TagPolicy::Preferred).doc(
-        "A live view over one of the configuration's string lists: #list, list[i], for i, name in list, list:toTable().",
-    );
-    to_table_returns(&mut strings, "string");
-
-    let mut game = d.sequence::<GameSettingList>(GAME_SETTINGS_TYPE);
-    game.tag(TagPolicy::Preferred).doc(
-        "A live view over the effective fallback= settings, one row per key, last-defined first.",
-    );
-    to_table_returns(&mut game, "dream_openmw_GameSetting");
-
-    let mut generic = d.sequence::<GenericSettingList>(GENERIC_SETTINGS_TYPE);
-    generic
+    d.sequence::<StringList>(STRINGS_TYPE)
+        .tag(TagPolicy::Preferred)
+        .item_type("string")
+        .doc("A live view over one of the configuration's string lists: #list, list[i], for i, name in list, list:toTable().");
+    d.sequence::<GameSettingList>(GAME_SETTINGS_TYPE)
+        .tag(TagPolicy::Preferred)
+        .item_type("dream_openmw_GameSetting")
+        .doc("A live view over the effective fallback= settings, one row per key, last-defined first.");
+    d.sequence::<GenericSettingList>(GENERIC_SETTINGS_TYPE)
         .tag(TagPolicy::Never)
+        .item_type("dream_openmw_GenericSetting")
         .doc("A live view over the preserved generic key=value entries.");
-    to_table_returns(&mut generic, "dream_openmw_GenericSetting");
-
-    let mut chain = d.sequence::<ChainList>(CONFIG_CHAIN_TYPE);
-    chain
+    d.sequence::<ChainList>(CONFIG_CHAIN_TYPE)
         .tag(TagPolicy::Never)
+        .item_type("dream_openmw_ChainEntry")
         .doc("The chain traversal in parser order: loaded files and skipped config= targets.");
-    to_table_returns(&mut chain, "dream_openmw_ChainEntry");
 }
 
 fn describe_game_setting(d: &mut ExtensionDescriptor) {

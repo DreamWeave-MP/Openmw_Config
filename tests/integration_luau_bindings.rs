@@ -671,15 +671,27 @@ fn the_declared_types_check_and_a_strict_script_passes() {
         cfg:addContentFile('Morrowind.esm')\n\
         cfg:setDataDirectories({ 'Data Files' })\n\
         local content: dream_openmw_Strings = cfg:contentFiles()\n\
+        local total: number = #content\n\
+        local first: string? = content[1]\n\
+        local joined = ''\n\
+        for i, name in content do local n: string = name joined ..= n total += i end\n\
         local names: { string } = content:toTable()\n\
         local user: boolean = cfg.isUserConfig\n\
         local count: number = cfg.contentFileCount + cfg.gameSettingCount\n\
         local setting = cfg:getGameSetting('iMaxLevel')\n\
         if setting then print(setting.kind, setting.value, setting.source, setting.typed) end\n\
-        local rows: { dream_openmw_GameSetting } = cfg:gameSettings():toTable()\n\
-        local chain: { dream_openmw_ChainEntry } = cfg:configChain():toTable()\n\
+        local rows: dream_openmw_GameSettings = cfg:gameSettings()\n\
+        local row: dream_openmw_GameSetting? = rows[1]\n\
+        local kinds = ''\n\
+        for _, r in rows do local kind: string = r.kind kinds ..= kind end\n\
+        local chain: dream_openmw_ConfigChain = cfg:configChain()\n\
+        local depth: number = 0\n\
+        for _, entry in chain do local status: string = entry.status depth += entry.depth end\n\
+        local generic: dream_openmw_GenericSettings = cfg:genericSettings()\n\
+        local plain: { dream_openmw_GenericSetting } = generic:toTable()\n\
         local defaultPath, pathError = openmwConfig.tryDefaultConfigPath()\n\
-        print(names, user, count, #rows, #chain, defaultPath or pathError, openmwConfig.version)\n";
+        print(total, first, joined, names, user, count, #rows, row, kinds, #chain, depth)\n\
+        print(#generic, #plain, defaultPath or pathError, openmwConfig.version)\n";
 
     let plan = plan();
     plan.check_definitions().unwrap();
@@ -688,6 +700,20 @@ fn the_declared_types_check_and_a_strict_script_passes() {
         definitions.contains("declare extern type dream_openmw_Config with"),
         "{definitions}"
     );
+    // The views name their element type: `#`, `[i]`, `for`, and `toTable` are typed with it.
+    for typed in [
+        "    [number]: string?",
+        "    function toTable(self): { string }",
+        "    [number]: dream_openmw_GameSetting?",
+        "(number?, dream_openmw_GameSetting), {}, number)",
+        "(number?, dream_openmw_ChainEntry), {}, number)",
+        "    function toTable(self): { dream_openmw_GenericSetting }",
+    ] {
+        assert!(
+            definitions.contains(typed),
+            "{typed:?} missing:\n{definitions}"
+        );
+    }
     for fallback in [
         "(self, ...any): any",
         "(...any) -> ...any",
