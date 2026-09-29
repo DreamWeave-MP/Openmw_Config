@@ -403,7 +403,14 @@ impl fmt::Display for ConfigError {
     }
 }
 
-impl std::error::Error for ConfigError {}
+impl std::error::Error for ConfigError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ConfigError::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for ConfigError {
     fn from(err: std::io::Error) -> Self {
@@ -464,6 +471,22 @@ mod tests {
         .to_string();
         assert!(invalid_line.contains("broken"));
         assert!(invalid_line.contains("line 42"));
+    }
+
+    #[test]
+    fn test_io_error_is_the_source() {
+        use std::error::Error;
+
+        let error = ConfigError::Io(std::io::Error::other("boom"));
+        assert_eq!(
+            error.source().map(ToString::to_string),
+            Some("boom".to_string())
+        );
+        assert!(
+            ConfigError::CannotFind(PathBuf::from("openmw.cfg"))
+                .source()
+                .is_none()
+        );
     }
 
     #[test]

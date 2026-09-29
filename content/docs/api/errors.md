@@ -10,7 +10,8 @@ kind = "api"
 {{ api_signature(value="enum ConfigError") }}
 
 The one error type for the whole crate. It implements `Debug`, `Display` and `std::error::Error`,
-and converts from `std::io::Error`. The enum is non-exhaustive: match with a `_` arm.
+and converts from `std::io::Error`, which `source()` then returns. The enum is non-exhaustive:
+match with a `_` arm.
 
 `line` fields are 1-based, and `Some` whenever the error came from reading a file.
 
