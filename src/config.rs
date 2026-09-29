@@ -1923,7 +1923,8 @@ impl OpenMWConfiguration {
     }
 
     /// The text of `cfg_path`, one file of the chain: the settings attributed to it, in order,
-    /// with their comments. In the user config, each list in `user_replaces` is written behind a
+    /// with their comments, and the comments that ended it still at the end, after any setting
+    /// added since. In the user config, each list in `user_replaces` is written behind a
     /// `replace=` line, ahead of the list's first entry in the file or at its end, followed by
     /// the entries the parents still contribute to that list.
     fn file_text(&self, cfg_path: &Path) -> String {
@@ -1934,11 +1935,16 @@ impl OpenMWConfiguration {
                 Vec::new()
             };
         let mut text = String::new();
+        let mut trailing = String::new();
 
         for setting in self.settings.iter().filter(|setting| {
             !Self::is_synthetic_data_directory(setting)
                 && util::paths_equivalent(setting.meta().source_config(), cfg_path)
         }) {
+            if let SettingValue::TrailingComment(end) = setting {
+                trailing.push_str(&end.to_string());
+                continue;
+            }
             // A replace= line the file already has serves; the parents' entries follow it.
             if let SettingValue::Replace(replace) = setting
                 && let Some(index) = pending.iter().position(|list| list.is_replaced_by(replace))
@@ -1959,6 +1965,7 @@ impl OpenMWConfiguration {
             self.write_inherited_entries(&mut text, list, cfg_path);
         }
 
+        text.push_str(&trailing);
         text
     }
 
@@ -2064,13 +2071,32 @@ impl OpenMWConfiguration {
 /// [`OpenMWConfiguration::save_resolved_to_path`] for importer/export output.
 ///
 /// The `data=` entries loading injects for `data-local=` and `resources=` are omitted. Comments and
-/// `replace=` entries are preserved.
+/// `replace=` entries are preserved. The comments that ended a file stay after that file's
+/// settings, including those added since loading.
 impl fmt::Display for OpenMWConfiguration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.settings
+        let mut trailing: Vec<&SettingValue> = Vec::new();
+
+        for setting in self
+            .settings
             .iter()
             .filter(|setting| !Self::is_synthetic_data_directory(setting))
-            .try_for_each(|setting| write!(f, "{setting}"))?;
+        {
+            if let SettingValue::TrailingComment(_) = setting {
+                trailing.push(setting);
+                continue;
+            }
+            if trailing
+                .first()
+                .is_some_and(|end| end.meta().source_config() != setting.meta().source_config())
+            {
+                trailing.drain(..).try_for_each(|end| write!(f, "{end}"))?;
+            }
+            write!(f, "{setting}")?;
+        }
+        trailing
+            .into_iter()
+            .try_for_each(|end| write!(f, "{end}"))?;
 
         write_serializer_stamp(f)?;
 

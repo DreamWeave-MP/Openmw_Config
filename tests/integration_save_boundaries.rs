@@ -121,3 +121,58 @@ fn test_injected_resources_vfs_directory_is_never_saved() {
         .count();
     assert_eq!(copies, 1);
 }
+
+/// What `S3LightFixes --auto-enable` does to the user's `openmw.cfg`: add its plugin and save.
+const TRAILED: &str = "content=A.esp\n\n# Disabled for now:\n#content=Broken.esp\n";
+const TRAILED_WITH_PLUGIN: &str =
+    "content=A.esp\ncontent=S3LightFixes.omwaddon\n\n# Disabled for now:\n#content=Broken.esp\n";
+
+#[test]
+fn test_save_user_keeps_the_comments_after_the_last_setting_last() {
+    let root_dir = temp_dir("save_trailer_root");
+    let user_dir = temp_dir("save_trailer_user");
+    write_cfg(&user_dir, TRAILED);
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Root.esm\n# root's end\nconfig={}\n",
+            user_dir.display()
+        ),
+    );
+
+    let mut config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    config.add_content_file("S3LightFixes.omwaddon").unwrap();
+    config.save_user().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(user_dir.join("openmw.cfg")).unwrap(),
+        TRAILED_WITH_PLUGIN
+    );
+
+    // The comments are the file's end again, not the plugin's, so removing it leaves them.
+    let mut reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    reloaded.remove_content_file("S3LightFixes.omwaddon");
+    reloaded.save_user().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(user_dir.join("openmw.cfg")).unwrap(),
+        TRAILED
+    );
+}
+
+#[test]
+fn test_serializing_a_single_config_keeps_its_trailing_comments_last() {
+    let dir = temp_dir("display_trailer");
+    write_cfg(&dir, TRAILED);
+    let mut config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+    config.add_content_file("S3LightFixes.omwaddon").unwrap();
+
+    let serialized = config.to_string();
+    assert!(
+        serialized.starts_with(&format!("{TRAILED_WITH_PLUGIN}# OpenMW-Config")),
+        "{serialized}"
+    );
+    config.save_user().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.join("openmw.cfg")).unwrap(),
+        TRAILED_WITH_PLUGIN
+    );
+}

@@ -56,7 +56,8 @@ exceptions.
 
 ## What a preserving save keeps
 
-- Comments and blank lines, above each setting and at the end of each file.
+- Comments and blank lines, above each setting and at the end of each file. The ones at the end
+  stay at the end: a setting you add goes above them, so they never become its comment.
 - Every value's own spelling: quoted paths, tokens, relative paths, `1.50` rather than `1.5`.
 - Unknown keys, and `replace=` lines where they were.
 
