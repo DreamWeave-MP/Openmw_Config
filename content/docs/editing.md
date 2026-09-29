@@ -77,11 +77,13 @@ exist; OpenMW does not either.
 - `add_data_directory(path)` appends a directory. The path is read like a value in the file, so
   tokens work, and a relative path is anchored to the user's config directory. It does not check
   for duplicates.
-- `remove_data_directory(path)` removes every entry whose resolved path, or whose original text,
-  equals `path`.
+- `remove_data_directory(path)` removes every `data=` entry whose resolved path, or whose original
+  text, equals `path`. The `resources/vfs` and `data-local` directories go only with their
+  settings.
 - `has_data_dir(path)` compares against the resolved paths, and accepts `/` or `\` in the query.
-- `set_data_directories(list)` replaces them all, including the `resources/vfs` and `data-local`
-  entries loading added. `None` leaves none.
+- `set_data_directories(list)` replaces every `data=` entry. `None` leaves none. The
+  `resources/vfs` and `data-local` directories stay, first and last, since no `data=` line
+  declares them.
 
 Replacing the data directories in the user's config copies every one the parents listed into the
 user's file, the package's own included. A relative path is copied resolved, because in the user's
@@ -153,8 +155,9 @@ tools add keys over time, and a round trip must not lose them.
 - `set_encoding(Some(setting))` and `set_encoding(None)` do the same for `encoding=`. The
   [Lua method](@/docs/lua/config.md#setencoding) takes the name directly.
 
-Changing `resources=` or `data-local=` after loading does not move the data directories that
-loading added for them. Load again to recompute them.
+Changing `resources=` or `data-local=` moves the data directories they add, as a reload would:
+`resources/vfs` stays first and `data-local` last, and clearing the setting removes its
+directory.
 
 ## Anything, by predicate
 

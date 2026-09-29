@@ -37,9 +37,9 @@ copying the remaining parent directories into it, relative ones as their resolve
 
 {{ api_signature(value="fn set_data_directories(&mut self, dirs: Option<Vec<PathBuf>>)") }}
 
-Removes every data directory, the added `resources/vfs` and `data-local` entries included, and adds
-`dirs` in order, attributed to the user's config, behind `replace=data` when a parent had
-contributed. `None` leaves none.
+Removes every `data=` entry and adds `dirs` in order, attributed to the user's config, behind
+`replace=data` when a parent had contributed. `None` leaves none. The `resources/vfs` and
+`data-local` directories stay first and last: they follow their own settings, not `data=` lines.
 
 ## resources=, user-data= and data-local=
 
@@ -88,5 +88,5 @@ The general form of the two above: `Some` replaces the last definition or adds o
 the last definition. The setting keeps the source you gave it in
 [`DirectorySetting::new`](@/docs/api/types.md#directorysetting), and saving writes it to that file.
 
-Changing `resources=` or `data-local=` after loading does not change the data directories loading
-added for them.
+Changing `resources=` or `data-local=` changes the data directories they add, as a reload would:
+`resources/vfs` first and `data-local` last, or neither once the setting is gone.

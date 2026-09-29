@@ -294,3 +294,59 @@ fn a_parents_relative_data_directory_keeps_its_meaning_in_the_user_config() {
         .collect();
     assert_eq!(dirs, [vfs_mw, userdata]);
 }
+
+fn data_dirs(config: &OpenMWConfiguration) -> Vec<PathBuf> {
+    config
+        .data_directories_iter()
+        .map(|dir| dir.parsed().to_path_buf())
+        .collect()
+}
+
+#[test]
+fn the_data_directories_loading_adds_follow_resources_and_data_local() {
+    let dir = temp_dir("wb_injected");
+    let resources = dir.join("resources");
+    let local = dir.join("local");
+    let other_local = dir.join("other-local");
+    write_cfg(
+        &dir,
+        &format!(
+            "resources={}\ndata-local={}\ndata=/game/Data Files\n",
+            resources.display(),
+            local.display()
+        ),
+    );
+    let mut config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+    let reloads_as_in_memory = |config: &OpenMWConfiguration| {
+        config.save_user().unwrap();
+        let reloaded = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        assert_eq!(data_dirs(&reloaded), data_dirs(config));
+    };
+
+    // data-local stays the last data directory, and follows its setting.
+    config.add_data_directory(std::path::Path::new("/mods/A"));
+    config.set_data_local_path(&other_local);
+    assert_eq!(
+        data_dirs(&config),
+        [
+            resources.join("vfs"),
+            PathBuf::from("/game/Data Files"),
+            PathBuf::from("/mods/A"),
+            other_local.clone(),
+        ]
+    );
+    reloads_as_in_memory(&config);
+
+    // Replacing the data= entries leaves the directories no data= line declares.
+    config.set_data_directories(Some(vec![PathBuf::from("/mods/B")]));
+    assert_eq!(
+        data_dirs(&config),
+        [resources.join("vfs"), PathBuf::from("/mods/B"), other_local]
+    );
+    reloads_as_in_memory(&config);
+
+    config.clear_data_local();
+    config.clear_resources();
+    assert_eq!(data_dirs(&config), [PathBuf::from("/mods/B")]);
+    reloads_as_in_memory(&config);
+}

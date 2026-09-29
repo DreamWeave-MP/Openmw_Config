@@ -399,7 +399,44 @@ impl ConfigChainEntry {
 }
 
 impl OpenMWConfiguration {
+    /// Makes the data directories no file declares match the settings that add them, as
+    /// loading would: `resources/vfs` first when `resources=` is set, the `data-local=`
+    /// directory last when that is. They have no source config, so no save writes them back as
+    /// `data=` lines, which would load as second copies of them.
+    fn inject_data_directories(&mut self) {
+        self.settings
+            .retain(|setting| !Self::is_synthetic_data_directory(setting));
+
+        let engine_vfs = self.resources().map(|resources| {
+            let mut engine_vfs = DirectorySetting::new(
+                resources.parsed().join("vfs").to_string_lossy(),
+                resources.meta.source_config.clone(),
+                &mut String::new(),
+            );
+            engine_vfs.meta.source_config = PathBuf::new();
+            engine_vfs
+        });
+        let data_local = self.data_local().map(|data_local| {
+            let mut data_local = data_local.clone();
+            data_local.meta.source_config = PathBuf::new();
+            data_local.meta.comment.clear();
+            data_local
+        });
+
+        if let Some(engine_vfs) = engine_vfs {
+            self.settings
+                .insert(0, SettingValue::DataDirectory(engine_vfs));
+        }
+        if let Some(data_local) = data_local {
+            self.settings.push(SettingValue::DataDirectory(data_local));
+        }
+    }
+
+    /// Rebuilds the lookup indexes after any change to `settings`, re-deriving the injected
+    /// data directories first so they follow the change.
     fn rebuild_indexes(&mut self) {
+        self.inject_data_directories();
+
         self.indexed_content.clear();
         self.indexed_groundcover.clear();
         self.indexed_archives.clear();
@@ -704,40 +741,7 @@ impl OpenMWConfiguration {
                         path.display()
                     ));
                 }
-
-                let mut synthetic_data_dir = dir.clone();
-                // data-local is part of the effective VFS data directory list, but it is not a
-                // persisted `data=` line. Give the injected entry no source config so save paths
-                // do not write it back as a real data directory and slowly grow the file. Bonsai,
-                // but for configuration lies.
-                synthetic_data_dir.meta.source_config = PathBuf::new();
-                synthetic_data_dir.meta.comment.clear();
-
-                config
-                    .settings
-                    .push(SettingValue::DataDirectory(synthetic_data_dir));
             }
-
-            if let Some(setting) = config.resources() {
-                let dir = setting.parsed();
-
-                let mut engine_vfs = DirectorySetting::new(
-                    dir.join("vfs").to_string_lossy().to_string(),
-                    setting.meta.source_config.clone(),
-                    &mut String::new(),
-                );
-                // Like data-local, resources/vfs is an effective data directory that no file
-                // declares. Without a source config it is never written back as a `data=` line,
-                // which would load as a second copy of it.
-                engine_vfs.meta.source_config = PathBuf::new();
-
-                config
-                    .settings
-                    .insert(0, SettingValue::DataDirectory(engine_vfs));
-            }
-
-            // The injected directories are part of the effective list; index them too.
-            config.rebuild_indexes();
 
             util::debug_log_lazy(|| format!("{:#?}", config.settings));
 
@@ -1164,7 +1168,8 @@ impl OpenMWConfiguration {
 
     /// Removes any `data=` entry whose resolved path or original string matches `data_dir`;
     /// removing a parent's makes the user config replace the list as in
-    /// [`Self::remove_content_file`] (`replace=data`).
+    /// [`Self::remove_content_file`] (`replace=data`). The `resources/vfs` and `data-local`
+    /// directories are no `data=` entries: they go when their settings are cleared.
     pub fn remove_data_directory(&mut self, data_dir: &PathBuf) {
         self.remove_from_list(ListOption::Data, |setting| match setting {
             SettingValue::DataDirectory(existing_data_dir) => {
@@ -1339,7 +1344,8 @@ impl OpenMWConfiguration {
         self.rebuild_indexes();
     }
 
-    /// Replaces all `data=` entries with `dirs`, or clears them if `None`.
+    /// Replaces all `data=` entries with `dirs`, or clears them if `None`. The `resources/vfs`
+    /// and `data-local` directories stay first and last, as they follow their own settings.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
     /// Parent-defined entries are replaced through `replace=data` as in

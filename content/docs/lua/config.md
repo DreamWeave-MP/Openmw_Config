@@ -63,8 +63,8 @@ Names compare exactly, case included.
 | `dataDirectories()` | The data directories, resolved, in load order | `data_directories_iter` |
 | `hasDataDir(path)` | Whether a data directory resolves to `path` | `has_data_dir` |
 | `addDataDirectory(path)` | Appends one | `add_data_directory` |
-| `removeDataDirectory(path)` | Removes every entry resolving to, or written as, `path` | `remove_data_directory` |
-| `setDataDirectories(list)` | Replaces them all; `nil` leaves none | `set_data_directories` |
+| `removeDataDirectory(path)` | Removes every `data=` entry resolving to, or written as, `path` | `remove_data_directory` |
+| `setDataDirectories(list)` | Replaces the `data=` entries; `nil` leaves none. `resources/vfs` and `data-local` stay | `set_data_directories` |
 | `userData()`, `resources()`, `dataLocal()` | The directory, resolved, or `nil` | `userdata`, `resources`, `data_local` |
 | `setUserData(path)`, `setResources(path)`, `setDataLocal(path)` | Sets it; `nil` removes the last definition | `set_*_path`, `clear_*` |
 

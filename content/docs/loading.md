@@ -102,7 +102,9 @@ them too:
   creates it. This is the one way loading writes to disk.
 
 They appear in `data_directories_iter()` like any other entry, and no save or export ever writes
-them back, so reloading never duplicates them. `new_empty()` adds neither.
+them back, so reloading never duplicates them. They follow later changes to `resources=` and
+`data-local=`, and stay first and last as other directories are added. `new_empty()` adds neither
+until one of those settings is set.
 
 ## Which file is the user's
 
