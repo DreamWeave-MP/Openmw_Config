@@ -28,3 +28,61 @@
   @media (max-width: 1180px)
     &::after
       display: none
+
+// Where the live chain is drawn, the engraved one steps aside for it.
+.dw-hero--art::after
+  display: none
+
+.dw-hero__art
+  > .ocfg-hero__canvas
+    opacity: 0
+    transition: opacity .6s var(--dw-ease)
+
+  > .ocfg-hero__still
+    position: absolute
+    opacity: 0
+    transition: opacity .6s var(--dw-ease)
+    pointer-events: none
+
+  &.is-placed > .ocfg-hero__still
+    opacity: 1
+
+  &.is-live > .ocfg-hero__canvas
+    opacity: 1
+
+  &.is-live > .ocfg-hero__still
+    opacity: 0
+
+// A pane held long enough to lift is being carried.
+.dw-hero.ocfg-dragging
+  cursor: grabbing
+  user-select: none
+  -webkit-user-select: none
+
+  *
+    cursor: grabbing
+
+html:not(.dw-js) .dw-hero--art .dw-hero__art::before
+  content: ""
+  position: absolute
+  top: 46%
+  right: max(1.5rem, calc((100% - var(--dw-width-page)) / 2 + 1.5rem))
+  width: min(34rem, 44%)
+  aspect-ratio: 1000 / 588
+  transform: translateY(-50%)
+  background: url("img/ocfg-chain.webp") center / contain no-repeat
+
+// On a phone or a tablet the text needs the width, so the chain stands above it.
+@media (max-width: 900px)
+  .dw-hero--art .dw-hero__text
+    padding-top: 17rem
+
+@media (max-width: 600px)
+  .dw-hero--art .dw-hero__text
+    padding-top: 13.5rem
+
+  html:not(.dw-js) .dw-hero--art .dw-hero__art::before
+    top: 1rem
+    right: 50%
+    width: min(19rem, 88%)
+    transform: translateX(50%)

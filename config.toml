@@ -51,6 +51,11 @@ menu_items = [
 # DreamWeave's own page-view counter: this is DreamWeave's site.
 goatcounter = "dreamweave-mp"
 
+# The hero draws the config chain live: static/js/ocfg-hero.js.
+[extra.hero]
+script = "js/ocfg-hero.js"
+preload = ["js/vendor/three.module.min.js", "js/vendor/three.core.min.js"]
+
 # GitHub Discussions on this repository, through giscus. The ids are looked up at build time.
 [extra.comments]
 enabled = true
