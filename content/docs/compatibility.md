@@ -10,20 +10,22 @@ kind = "reference"
 ## Versions
 
 openmw-config follows semantic versioning. A release that breaks the public API, Rust or Lua, is a
-new major version; 2.0 was one, because the `lua` feature stopped choosing a Lua runtime.
+new major version; 3.0 was one, because the Lua bindings became an l3i extension and their lists
+and rows changed shape.
 
 The minimum supported Rust version is 1.88, declared as `rust-version` in `Cargo.toml`. It can rise
 in any release that is otherwise compatible, and the release notes say so when it does.
 
 ## The Lua contract
 
-Within a major version, the documented `openmwConfig` functions and configuration methods keep
-their names, arguments and results, and the rows they return keep their shapes:
+Within a major version, the documented `@dream/openmw-config` functions, configuration methods
+and fields keep their names, arguments and results, the views keep `#`, `[i]`, `for` and
+`toTable()`, and the rows keep their fields:
 
 | Rows from | Fields |
 |---|---|
 | `configChain()` | `path`, `depth`, `status`: `"loaded"` or `"skippedMissing"` |
-| `gameSettings()`, `getGameSetting()` | `key`, `value`, `kind`, `source`, `comment`; `kind` is `"Color"`, `"String"`, `"Float"` or `"Int"` |
+| `gameSettings()`, `getGameSetting()` | `key`, `value`, `kind`, `typed`, `source`, `comment`; `kind` is `"Color"`, `"String"`, `"Float"` or `"Int"` |
 | `genericSettings()` | `key`, `value`, `source`, `comment` |
 
 `nil` clears in every setter that accepts it.

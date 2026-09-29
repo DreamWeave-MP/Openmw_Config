@@ -18,7 +18,9 @@ cargo add openmw-config
 ```
 
 The crate needs Rust 1.88 or newer. It has no required dependencies: on Windows it also uses
-`windows-sys` to find the Documents folder, and the optional `lua` feature adds `mlua`.
+`windows-sys` to find the Documents folder, and the optional `luau` feature adds
+[l3i](https://github.com/DreamWeave-MP/l3i), which builds Luau itself and needs clang and lld;
+[Embedding Luau](@/docs/lua-hosts.md) covers that.
 
 ## Load the configuration
 
@@ -83,4 +85,4 @@ crash cannot leave a half-written `openmw.cfg`.
 - [Config chains](@/docs/chains.md): what happens between the root config and the user's.
 - [Editing](@/docs/editing.md) and [Saving and exporting](@/docs/saving.md): the rest of the
   read-change-write cycle, and its traps.
-- [Embedding Lua](@/docs/lua-hosts.md), if your program runs scripts.
+- [Embedding Luau](@/docs/lua-hosts.md), if your program runs scripts.

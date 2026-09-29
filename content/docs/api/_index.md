@@ -41,7 +41,7 @@ save.
 
 | Feature | Adds |
 |---|---|
-| `lua` | `create_lua_module` and the `lua` module. See the [Lua API](@/docs/lua/_index.md). |
-| `standalone-lua` | `lua`, with `mlua`'s Luau runtime selected. |
+| `luau` | The `luau` module: `luau::extension()`, the l3i extension a host composes into its runtime plan, and `luau::Config`. Adds [l3i](https://github.com/DreamWeave-MP/l3i). See the [Lua API](@/docs/lua/_index.md) and [Embedding Luau](@/docs/lua-hosts.md). |
+| `luau-analysis` | `luau`, with l3i's `analysis` feature: Luau's type checker, which the crate's tests run over the module's declared types. |
 
 Neither is on by default.

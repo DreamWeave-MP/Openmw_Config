@@ -7,8 +7,9 @@ weight = 10
 kind = "api"
 +++
 
-The table `create_lua_module` returns. The examples assume the host registered it as the global
-`openmwConfig`; with `register_module`, start with `local openmwConfig = require("@openmwConfig")`.
+The module `require("@dream/openmw-config")` returns, frozen. The examples name it `openmwConfig`,
+as `local openmwConfig = require("@dream/openmw-config")` does; a host's policy may also expose it
+as a global of that name.
 
 ## Loaders
 
@@ -55,8 +56,8 @@ Strings, from the Rust [path functions](@/docs/api/paths.md).
 | | `tryDefaultRootOrUserConfigPath()` | The root `openmw.cfg`, else the user's |
 
 The `try*` forms return two values, `path, nil` or `nil, message`, and never raise. The `default*`
-forms fail where the platform has no such path, as a Rust panic inside the host: prefer the `try*`
-forms in scripts.
+forms fail where the platform has no such path, as a Rust panic inside the host, which aborts the
+process: prefer the `try*` forms in scripts.
 
 ```lua
 local config, err = openmwConfig.tryDefaultUserConfigFile()
@@ -67,4 +68,5 @@ print(config or ("no user config directory: " .. err))
 
 {{ api_signature(value="openmwConfig.version → string") }}
 
-The crate's version, like `"2.0.1"`. A field, not a function.
+The crate's version, like `"3.0.1"`. A constant, not a function; the compiler folds it when the
+host exposes the module as a global.

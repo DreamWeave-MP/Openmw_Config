@@ -17,7 +17,7 @@ kind = "guide"
 +++
 
 openmw-config turns OpenMW's chain of `openmw.cfg` files into one configuration you can read,
-change and save, from Rust or from Lua running inside a Rust program. These pages explain how it
+change and save, from Rust or from Luau running inside a Rust program. These pages explain how it
 behaves; the two references list every call.
 
 ## Learn it
@@ -37,8 +37,8 @@ behaves; the two references list every call.
   flattened copy, and why those are different things.
 - **[Paths and environment](@/docs/paths.md)**: where configs live on each platform, what each
   token means, and every environment variable the crate reads.
-- **[Embedding Lua](@/docs/lua-hosts.md)**: giving scripts in your Rust program an
-  `openmwConfig` module.
+- **[Embedding Luau](@/docs/lua-hosts.md)**: giving scripts in your Rust program the
+  `@dream/openmw-config` module, as an l3i extension in your runtime plan.
 - **[Compatibility](@/docs/compatibility.md)**: what the version number promises, the supported
   Rust version, what is tested, and what the crate does not do yet.
 
@@ -46,5 +46,5 @@ behaves; the two references list every call.
 
 - **[Rust API](@/docs/api/_index.md)**: `OpenMWConfiguration` method by method, the setting
   types, the path functions and every `ConfigError`.
-- **[Lua API](@/docs/lua/_index.md)**: the `openmwConfig` module and the configuration object
-  scripts receive.
+- **[Lua API](@/docs/lua/_index.md)**: the `@dream/openmw-config` module and the configuration
+  object scripts receive.

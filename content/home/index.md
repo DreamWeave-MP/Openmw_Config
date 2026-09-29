@@ -32,8 +32,8 @@ chain alone.
   trip. Every write goes to a temporary file beside the target, which then replaces it.
 - **Exports for importers.** A flattened copy of the whole chain, with resolved paths and no
   chain entries, that means the same thing wherever you write it.
-- **Speaks Lua.** Behind the `lua` feature, a Rust host hands scripts the same configuration
-  through a camelCase API.
+- **Speaks Luau.** Behind the `luau` feature, a Rust host composes an l3i extension into its
+  runtime plan and scripts get the same configuration through a camelCase API, typed.
 - **Tells you where it went wrong.** Parse errors name the file and line; `config_chain()` lists
   every file it loaded and every `config=` target it skipped.
 
@@ -58,7 +58,7 @@ This site is the crate's documentation, its API reference included.
 
 - **[Start here](@/docs/start-here.md)**: add the crate, load the chain, change it and save it.
 - **[Guide](@/docs/_index.md)**: loading, how chains resolve, editing, saving, paths, and
-  embedding Lua.
+  embedding Luau.
 - **[Rust API](@/docs/api/_index.md)** and **[Lua API](@/docs/lua/_index.md)**: every type,
   method and function, with what it does to your files.
 
