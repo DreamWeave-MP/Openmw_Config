@@ -95,16 +95,12 @@ fn document_dir() -> Result<PathBuf, ConfigError> {
     use windows_sys::Win32::UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath};
 
     let mut raw_path: windows_sys::core::PWSTR = null_mut();
+    // `FOLDERID_Documents` is a `const`; the call needs a pointer to a live GUID, not a temporary.
+    let documents = FOLDERID_Documents;
 
     // SAFETY: SHGetKnownFolderPath initializes `raw_path` on success for FOLDERID_Documents.
-    let status = unsafe {
-        SHGetKnownFolderPath(
-            &raw const FOLDERID_Documents,
-            0,
-            null_mut(),
-            &raw mut raw_path,
-        )
-    };
+    let status =
+        unsafe { SHGetKnownFolderPath(&raw const documents, 0, null_mut(), &raw mut raw_path) };
     if status != 0 || raw_path.is_null() {
         return Err(ConfigError::PlatformPathUnavailable("documents"));
     }
