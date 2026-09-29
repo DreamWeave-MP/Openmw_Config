@@ -53,6 +53,7 @@ looks them up in its data directories. `Clone`, `Debug`.
 | `new(value: &str, source_config: &Path, comment: &mut String) -> FileSetting` | Attributed to `source_config`, an `openmw.cfg` path |
 | `value(&self) -> &String` | The name as written |
 | `value_str(&self) -> &str` | The same, as `&str` |
+| `meta(&self) -> &GameSettingMeta` | Its source file and comment |
 | `Display` | The name alone, without key or comment |
 | `PartialEq` with `FileSetting`, `str`, `&str`, `&String` | Compares the name only, not where it came from |
 
@@ -87,14 +88,21 @@ A `fallback=Key,Value` line, typed by its value's text. The first rule that fits
 | `Int` | A whole number: `-7` |
 | `String` | Anything else: `1e5`, `256,0,0`, `hello, world` |
 
-The variants hold types the crate does not export, so match on the variant to learn the kind, and
-use the methods for the rest. The enum is non-exhaustive. `Clone`, `Debug`, `Eq`.
+The variants hold types the crate does not export, so match on the variant or ask `kind_name()` to
+learn the kind, and use the methods for the rest. The enum is non-exhaustive. `Clone`, `Debug`,
+`Eq`.
 
 | Item | |
 |---|---|
 | `key(&self) -> &String` | The text before the first comma |
 | `key_str(&self) -> &str` | The same, as `&str` |
 | `value(&self) -> Cow<'_, str>` | The text after the first comma, exactly as written: `1.50` stays `1.50` |
+| `value_str(&self) -> &str` | The same, borrowed |
+| `kind_name(&self) -> &'static str` | `"Color"`, `"String"`, `"Float"` or `"Int"` |
+| `int_value(&self) -> Option<i64>` | The number of an `Int`, `None` for the other kinds |
+| `float_value(&self) -> Option<f64>` | The number of a `Float` |
+| `color_value(&self) -> Option<(u8, u8, u8)>` | The red, green and blue of a `Color` |
+| `meta(&self) -> &GameSettingMeta` | Its source file and comment |
 | `Display` | The whole line, comment included: `fallback=Key,Value` |
 | `PartialEq` | Same variant and same key; the value is ignored |
 | `PartialEq<&str>` | The key equals the string |
@@ -112,6 +120,7 @@ A line whose key the crate does not recognize, kept so a round trip does not los
 | `new(key: &str, value: &str, source_config: &Path, comment: &mut String) -> GenericSetting` | Attributed to `source_config` |
 | `key(&self) -> &str` | The key |
 | `value(&self) -> &str` | The value, as written |
+| `meta(&self) -> &GameSettingMeta` | Its source file and comment |
 | `Display` | The comment and `key=value` |
 
 ## EncodingSetting
@@ -124,6 +133,7 @@ An `encoding=` line. `Clone`, `Debug`.
 |---|---|
 | `TryFrom<(String, P, &mut String)> where P: AsRef<Path>` | Parses `win1250`, `win1251` or `win1252`, exactly, attributed to the path. Fails with `BadEncoding` otherwise |
 | `value(&self) -> EncodingType` | The encoding |
+| `meta(&self) -> &GameSettingMeta` | Its source file and comment |
 | `PartialEq` | Same encoding |
 | `Display` | The comment and `encoding=<name>` |
 
@@ -154,6 +164,6 @@ Where a setting came from. `Clone`, `Debug`, `Eq`.
 | `source_config(&self) -> &Path` | The `openmw.cfg` the setting is attributed to; empty for entries loading added |
 | `comment(&self) -> &str` | The comment lines above it, blank lines included |
 
-Reach it through `DirectorySetting::meta`, or through `meta()` on the settings
-[`settings_matching`](@/docs/api/settings.md#any-setting) yields. `FileSetting`, `GenericSetting`,
-`GameSettingType` and `EncodingSetting` do not expose theirs directly.
+Every setting type has it: `meta()` on `SettingValue`, `FileSetting`, `GameSettingType`,
+`GenericSetting`, `EncodingSetting` and `TrailingComment`, and the public `meta` field on
+`DirectorySetting`.
