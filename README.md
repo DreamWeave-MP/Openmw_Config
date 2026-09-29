@@ -35,30 +35,47 @@ fn main() -> Result<(), ConfigError> {
 ```
 
 With the `luau` feature, a Rust host can give Luau scripts the same configuration. The bindings
-are an [l3i](https://github.com/DreamWeave-MP/dream-binder) extension: the host composes
-`openmw_config::luau::extension()` into a runtime plan (l3i builds Luau itself, so copy its
-`.cargo/config.toml` toolchain policy as this repository does), and scripts `require` the module:
+are an [l3i](https://github.com/DreamWeave-MP/l3i) extension: the host composes
+`openmw_config::luau::extension()` into a `RuntimePlan`, makes runtimes from the plan, and
+scripts `require("@dream/openmw-config")`. l3i builds Luau itself with clang and lld, so a host
+copies the toolchain lines of l3i's `.cargo/config.toml` into its own, as this repository does;
+[l3i's site](https://DreamWeave-MP.github.io/l3i/) explains the toolchain and the plan.
 
 ```toml
 [dependencies]
 openmw-config = { version = "3", features = ["luau"] }
-l3i = "0.1"
+l3i = "1"
 ```
 
-```lua
-local openmwConfig = require("@dream/openmw-config")
-local cfg = openmwConfig.fromEnvOrUserConfig()
-cfg:addContentFile("MyPlugin.esp")
-for i, name in cfg:contentFiles() do print(i, name) end
-cfg:saveUser()
+```rust
+use l3i::Runtime;
+use l3i::extension::RuntimePlan;
+
+fn main() -> l3i::Result<()> {
+    let plan = RuntimePlan::builder()
+        .extension(openmw_config::luau::extension())
+        .finalize()?;
+    let runtime = Runtime::from_plan(&plan)?;
+    runtime.exec(
+        r#"
+        local openmwConfig = require("@dream/openmw-config")
+        local cfg = openmwConfig.fromEnvOrUserConfig()
+        cfg:addContentFile("MyPlugin.esp")
+        for i, name in cfg:contentFiles() do print(i, name) end
+        cfg:saveUser()
+        "#,
+    )
+}
 ```
 
 Lists are live views (`#list`, `list[i]`, `for`, `list:toTable()`), rows are userdata with the
-same field names as before, and `cfg.isUserConfig` and the counts are fields. Version 3.0.0 moved
-from `mlua` to l3i: a `getGameSetting` or `hasContentFile` call costs about 0.1 to 0.2 µs from
-Luau (from 0.2 to 2 µs), list iteration allocates nothing, and loading a large chain is several
-times faster. See the [Lua API](https://dreamweave-mp.github.io/Openmw_Config/docs/lua/) for the
-surface and the breaks.
+same field names as before, and `cfg.isUserConfig` and the counts are fields. The plan renders
+typed definitions for the whole module, so a `--!strict` script checks against it. Version 3.0.0
+moved the bindings to l3i: a `getGameSetting` or `hasContentFile` call costs about 0.1 to 0.2 µs
+from Luau (from 0.2 to 2 µs), list iteration allocates nothing, and loading a large chain is
+several times faster. See the [Lua API](https://dreamweave-mp.github.io/Openmw_Config/docs/lua/)
+for the surface and the breaks, and
+[Embedding Luau](https://dreamweave-mp.github.io/Openmw_Config/docs/lua-hosts/) for the host side.
 
 ## What it does
 
