@@ -80,6 +80,14 @@ pub struct TrailingComment {
     meta: crate::GameSettingMeta,
 }
 
+impl TrailingComment {
+    /// The file the lines end; its comment is the lines themselves.
+    #[must_use]
+    pub fn meta(&self) -> &crate::GameSettingMeta {
+        &self.meta
+    }
+}
+
 impl Display for TrailingComment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.meta.comment)
@@ -175,6 +183,8 @@ impl From<DirectorySetting> for SettingValue {
 }
 
 impl SettingValue {
+    /// The file that defined the entry and the comment above it.
+    #[must_use]
     pub fn meta(&self) -> &crate::GameSettingMeta {
         match self {
             SettingValue::BethArchive(setting)

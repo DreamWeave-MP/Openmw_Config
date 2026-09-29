@@ -1,6 +1,6 @@
 +++
 title = "Setting types"
-description = "FileSetting, DirectorySetting, GameSettingType, GenericSetting, EncodingSetting, EncodingType and GameSettingMeta."
+description = "SettingValue, FileSetting, DirectorySetting, GameSettingType, GenericSetting, EncodingSetting, EncodingType, TrailingComment and GameSettingMeta."
 weight = 70
 
 [extra]
@@ -13,6 +13,33 @@ one yourself, but every type has a public constructor for when you do.
 A constructor's `comment` argument is the text written above the line when it is saved: whole
 comment lines, `#` and newline included, or empty. The constructor takes it and leaves the string
 empty.
+
+## SettingValue
+
+{{ api_signature(value="enum SettingValue") }}
+
+One entry of the configuration: a line, or for `TrailingComment` the lines that end a file.
+[`settings_matching`](@/docs/api/settings.md#any-setting) hands these out. Non-exhaustive, so a
+`match` needs a `_` arm. `Clone`, `Debug`.
+
+| Variant | Line | Holds |
+|---|---|---|
+| `ContentFile` | `content=` | `FileSetting` |
+| `Groundcover` | `groundcover=` | `FileSetting` |
+| `BethArchive` | `fallback-archive=` | `FileSetting` |
+| `DataDirectory` | `data=`, and the directories loading adds | `DirectorySetting` |
+| `SubConfiguration` | `config=` | `DirectorySetting` |
+| `Resources`, `UserData`, `DataLocal` | `resources=`, `user-data=`, `data-local=` | `DirectorySetting` |
+| `Encoding` | `encoding=` | `EncodingSetting` |
+| `GameSetting` | `fallback=` | `GameSettingType` |
+| `Replace` | `replace=` | `GenericSetting` |
+| `Generic` | Any other `key=value` | `GenericSetting` |
+| `TrailingComment` | Comment and blank lines after a file's last setting | `TrailingComment` |
+
+| Item | |
+|---|---|
+| `meta(&self) -> &GameSettingMeta` | Its source file and comment |
+| `Display` | Its line as it would be saved, comment included |
 
 ## FileSetting
 
@@ -107,6 +134,14 @@ An `encoding=` line. `Clone`, `Debug`.
 The code page OpenMW decodes plugin text with: `WIN1250` Central European, `WIN1251` Cyrillic,
 `WIN1252` Western European and the default. `Display` gives the config spelling, `win1252`.
 `Clone`, `Copy`, `Debug`, `Eq`. Non-exhaustive.
+
+## TrailingComment
+
+{{ api_signature(value="struct TrailingComment") }}
+
+The comment and blank lines after a file's last setting, kept so saving writes them back at the
+end of the file. `meta()` gives the file, and the lines as its comment; `Display` writes them.
+`Clone`, `Debug`.
 
 ## GameSettingMeta
 

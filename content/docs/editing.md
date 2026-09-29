@@ -181,4 +181,5 @@ fn main() -> Result<(), ConfigError> {
 }
 ```
 
-The setting type itself is not exported, so predicates cannot match on its kind.
+The setting is a [`SettingValue`](@/docs/api/types.md#settingvalue), one variant per kind of line,
+so a predicate can also match on its kind: `|setting| matches!(setting, SettingValue::ContentFile(_))`.

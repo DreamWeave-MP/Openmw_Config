@@ -1,7 +1,7 @@
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::OpenMWConfiguration;
+use openmw_config::{OpenMWConfiguration, SettingValue};
 use proptest::prelude::*;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -137,4 +137,34 @@ proptest! {
         prop_assert_eq!(groundcover_values(&loaded), groundcover_values(&reparsed));
         prop_assert_eq!(data_values(&loaded), data_values(&reparsed));
     }
+}
+
+#[test]
+fn test_settings_matching_hands_out_settings_callers_can_match_on() {
+    let dir = temp_dir("roundtrip_setting_kinds");
+    write_cfg(
+        &dir,
+        "content=A.esm\nfallback=iA,1\nno-sound=1\n# the end\n",
+    );
+    let config = OpenMWConfiguration::new(Some(dir)).unwrap();
+
+    let kinds: Vec<String> = config
+        .settings_matching(|_| true)
+        .map(|setting| match setting {
+            SettingValue::ContentFile(file) => format!("content {}", file.value()),
+            SettingValue::GameSetting(game) => format!("fallback {}", game.key()),
+            SettingValue::Generic(generic) => format!("generic {}", generic.key()),
+            SettingValue::TrailingComment(end) => format!("end {}", end.meta().comment().trim()),
+            _ => "other".to_owned(),
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "content A.esm",
+            "fallback iA",
+            "generic no-sound",
+            "end # the end"
+        ]
+    );
 }

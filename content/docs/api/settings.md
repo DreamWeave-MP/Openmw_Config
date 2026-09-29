@@ -87,7 +87,8 @@ config, behind `replace=<key>` when a parent had contributed. `None` only remove
 Every setting the predicate accepts, and removing them from memory. A setting here is any line of
 any file. Unlike the `remove_*` methods, `clear_matching` does not make the user's config replace
 a list, so a parent's setting it removes is back on the next load.
-Its type is not exported, so a predicate cannot match on its kind, but it can use:
+It is a [`SettingValue`](@/docs/api/types.md#settingvalue), so a predicate can match on its kind.
+Every setting also has:
 
 | Call | Gives |
 |---|---|

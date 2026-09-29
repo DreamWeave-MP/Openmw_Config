@@ -53,7 +53,7 @@ pub mod luau;
 mod platform_paths;
 
 pub use config::{
-    ConfigChainEntry, ConfigChainStatus, OpenMWConfiguration,
+    ConfigChainEntry, ConfigChainStatus, OpenMWConfiguration, SettingValue, TrailingComment,
     directorysetting::DirectorySetting,
     encodingsetting::{EncodingSetting, EncodingType},
     error::ConfigError,
