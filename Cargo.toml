@@ -14,12 +14,12 @@ include = ["/src", "/benches", "/tests", "/README.md", "/LICENSE-MIT", "/LICENSE
 keywords = ["openmw", "config", "parsing", "gamedev"]
 categories = ["config", "game-engines", "parsing"]
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.92"
 
 [dependencies]
 # The Luau bindings are an l3i extension; a path dependency for the migration campaign, the
 # crates.io version at release.
-l3i = { version = "1.0.0", path = "../dream-binder", optional = true }
+l3i = { version = "1.0.0", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
