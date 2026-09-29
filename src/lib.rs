@@ -88,11 +88,6 @@ impl GameSettingMeta {
     pub fn comment(&self) -> &str {
         &self.comment
     }
-
-    /// Re-attributes the setting to `source_config` (the file `save_*` will write it to).
-    pub(crate) fn set_source_config(&mut self, source_config: std::path::PathBuf) {
-        self.source_config = source_config;
-    }
 }
 
 const NO_CONFIG_DIR: &str = "FAILURE: COULD NOT READ CONFIG DIRECTORY";

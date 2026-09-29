@@ -288,6 +288,60 @@ pub struct OpenMWConfiguration {
     indexed_game_setting_last: RefCell<FxHashMap<String, usize>>,
     indexed_game_setting_order: RefCell<Vec<usize>>,
     game_setting_indexes_dirty: Cell<bool>,
+    /// The lists the user config must replace when saved: a list a parent contributed to was
+    /// replaced, or a parent's entry was removed from one. `save_user` writes each behind a
+    /// `replace=` line of the user config, followed by what the parents still contribute to it,
+    /// because it never writes the parents' files and a reload would otherwise bring back what
+    /// they said.
+    user_replaces: Vec<ListOption>,
+}
+
+/// A list option `replace=` can discard, which a user config may have to replace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ListOption {
+    Content,
+    Groundcover,
+    FallbackArchive,
+    Data,
+    Fallback,
+    /// Preserved generic entries with this key.
+    Generic(String),
+}
+
+impl ListOption {
+    /// The option's name, as `replace=` spells it.
+    fn name(&self) -> &str {
+        match self {
+            ListOption::Content => "content",
+            ListOption::Groundcover => "groundcover",
+            ListOption::FallbackArchive => "fallback-archive",
+            ListOption::Data => "data",
+            ListOption::Fallback => "fallback",
+            ListOption::Generic(key) => key,
+        }
+    }
+
+    /// Whether `setting` is an entry of this list. The data directories loading injects are
+    /// entries of the data list too, but no file declares them.
+    fn holds(&self, setting: &SettingValue) -> bool {
+        match (self, setting) {
+            (ListOption::Content, SettingValue::ContentFile(_))
+            | (ListOption::Groundcover, SettingValue::Groundcover(_))
+            | (ListOption::FallbackArchive, SettingValue::BethArchive(_))
+            | (ListOption::Data, SettingValue::DataDirectory(_))
+            | (ListOption::Fallback, SettingValue::GameSetting(_)) => true,
+            (ListOption::Generic(key), SettingValue::Generic(generic)) => generic.key() == key,
+            _ => false,
+        }
+    }
+
+    /// Whether `replace` is a `replace=` line for this list, compared as loading compares it.
+    fn is_replaced_by(&self, replace: &GenericSetting) -> bool {
+        match self {
+            ListOption::Generic(key) => replace.value() == key,
+            _ => replace.value().eq_ignore_ascii_case(self.name()),
+        }
+    }
 }
 
 /// Where the entries of each list kind sit in `settings`, in definition order, so the list
@@ -915,86 +969,48 @@ impl OpenMWConfiguration {
         self.user_config_path().join("openmw.cfg")
     }
 
-    /// True when `setting` came from a file other than the user's: a parent of the chain. The
-    /// injected data directories (no source file) are nobody's.
-    fn is_inherited(setting: &SettingValue, user_cfg: &Path) -> bool {
+    /// True when `setting` comes from a file other than `cfg`, such as a parent of the user
+    /// config. The injected data directories (no source file) are nobody's.
+    fn is_inherited(setting: &SettingValue, cfg: &Path) -> bool {
         let source = setting.meta().source_config();
-        !source.as_os_str().is_empty() && !util::paths_equivalent(source, user_cfg)
+        !source.as_os_str().is_empty() && !util::paths_equivalent(source, cfg)
     }
 
-    /// Makes the user config the owner of every `is_kind` entry: a `replace=<name>` line
-    /// attributed to the user config goes in front of the first such entry (or at the end when
-    /// none is left), and inherited entries are re-attributed to the user config, so
-    /// `save_user` writes the whole effective list and a reload yields exactly what is in
-    /// memory instead of the parents' entries coming back.
-    ///
-    /// Works on `settings` alone (the indexes may be stale here); the caller rebuilds them.
-    fn take_over_list(
-        &mut self,
-        name: &str,
-        is_kind: impl Fn(&SettingValue) -> bool,
-        user_cfg: &Path,
-    ) {
-        for setting in self.settings.iter_mut().filter(|setting| is_kind(setting)) {
-            if Self::is_inherited(setting, user_cfg) {
-                setting.meta_mut().set_source_config(user_cfg.to_path_buf());
-            }
-        }
-        let replace = SettingValue::Replace(GenericSetting::new(
-            "replace",
-            name,
-            user_cfg,
-            &mut String::default(),
-        ));
-        let first = self.settings.iter().position(is_kind);
-        match first {
-            Some(index) => self.settings.insert(index, replace),
-            None => self.settings.push(replace),
+    /// Records that the user config has to replace `list` when saved (see `user_replaces`).
+    fn replace_in_user_config(&mut self, list: ListOption) {
+        if !self.user_replaces.contains(&list) {
+            self.user_replaces.push(list);
         }
     }
 
-    /// Replaces every `is_kind` entry with `entries`, recording `replace=<name>` first when a
-    /// parent of the chain defined any of the old ones (see [`Self::take_over_list`]).
-    fn replace_list(
-        &mut self,
-        name: &str,
-        is_kind: impl Fn(&SettingValue) -> bool,
-        entries: impl IntoIterator<Item = SettingValue>,
-    ) {
+    /// Whether a parent of the chain contributes an entry of `list` that `select` accepts.
+    fn parent_holds(&self, list: &ListOption, select: impl Fn(&SettingValue) -> bool) -> bool {
         let user_cfg = self.user_cfg_file();
-        let inherited = self
-            .settings
-            .iter()
-            .any(|setting| is_kind(setting) && Self::is_inherited(setting, &user_cfg));
-        self.clear_matching_internal(&is_kind);
+        self.settings.iter().any(|setting| {
+            list.holds(setting) && select(setting) && Self::is_inherited(setting, &user_cfg)
+        })
+    }
+
+    /// Replaces every entry of `list` with `entries`. When a parent contributed to it, the user
+    /// config replaces the list when saved, so its parents' entries stay out on reload.
+    fn replace_list(&mut self, list: ListOption, entries: impl IntoIterator<Item = SettingValue>) {
+        let inherited = self.parent_holds(&list, |_| true);
+        self.clear_matching_internal(|setting| list.holds(setting));
         if inherited {
-            self.settings
-                .push(SettingValue::Replace(GenericSetting::new(
-                    "replace",
-                    name,
-                    &user_cfg,
-                    &mut String::default(),
-                )));
+            self.replace_in_user_config(list);
         }
         self.settings.extend(entries);
         self.rebuild_indexes();
     }
 
-    /// Removes the `is_kind` entries matching `remove`; when one of them was a parent's, the
-    /// user config takes the list over (see [`Self::take_over_list`]) so the removal persists.
-    fn remove_from_list(
-        &mut self,
-        name: &str,
-        is_kind: impl Fn(&SettingValue) -> bool,
-        remove: impl Fn(&SettingValue) -> bool,
-    ) {
-        let user_cfg = self.user_cfg_file();
-        let removes_inherited = self.settings.iter().any(|setting| {
-            is_kind(setting) && remove(setting) && Self::is_inherited(setting, &user_cfg)
-        });
-        self.clear_matching_internal(|setting| is_kind(setting) && remove(setting));
-        if removes_inherited {
-            self.take_over_list(name, is_kind, &user_cfg);
+    /// Removes the entries of `list` that `remove` accepts. When one was a parent's, the user
+    /// config replaces the list when saved, with the entries that remain, so the removal
+    /// persists without writing the parent's file; the remaining entries stay the parents'.
+    fn remove_from_list(&mut self, list: ListOption, remove: impl Fn(&SettingValue) -> bool) {
+        let inherited = self.parent_holds(&list, &remove);
+        self.clear_matching_internal(|setting| list.holds(setting) && remove(setting));
+        if inherited {
+            self.replace_in_user_config(list);
         }
         self.rebuild_indexes();
     }
@@ -1115,60 +1131,48 @@ impl OpenMWConfiguration {
 
     /// Removes all `content=` entries matching `file_name`.
     ///
-    /// Removing an entry a parent config defined makes the user config take the content list
-    /// over: `save_user` then writes `replace=content` and the remaining entries, so the
-    /// removal survives a reload.
+    /// Removing an entry a parent config defined makes the user config replace the content
+    /// list: `save_user` then writes `replace=content` and every remaining entry, the parents'
+    /// included, so the removal survives a reload. The remaining entries stay attributed to
+    /// the files that define them, so saving one of those with
+    /// [`save_subconfig`](Self::save_subconfig) writes them back there.
     pub fn remove_content_file(&mut self, file_name: &str) {
-        self.remove_from_list(
-            "content",
-            |setting| matches!(setting, SettingValue::ContentFile(_)),
-            |setting| match setting {
-                SettingValue::ContentFile(existing_file) => existing_file == file_name,
-                _ => false,
-            },
-        );
+        self.remove_from_list(ListOption::Content, |setting| match setting {
+            SettingValue::ContentFile(existing_file) => existing_file == file_name,
+            _ => false,
+        });
     }
 
-    /// Removes all `groundcover=` entries matching `file_name`; a parent's entry is taken over
-    /// as in [`Self::remove_content_file`] (`replace=groundcover`).
+    /// Removes all `groundcover=` entries matching `file_name`; removing a parent's makes the
+    /// user config replace the list as in [`Self::remove_content_file`] (`replace=groundcover`).
     pub fn remove_groundcover_file(&mut self, file_name: &str) {
-        self.remove_from_list(
-            "groundcover",
-            |setting| matches!(setting, SettingValue::Groundcover(_)),
-            |setting| match setting {
-                SettingValue::Groundcover(existing_file) => existing_file == file_name,
-                _ => false,
-            },
-        );
+        self.remove_from_list(ListOption::Groundcover, |setting| match setting {
+            SettingValue::Groundcover(existing_file) => existing_file == file_name,
+            _ => false,
+        });
     }
 
-    /// Removes all `fallback-archive=` entries matching `file_name`; a parent's entry is taken
-    /// over as in [`Self::remove_content_file`] (`replace=fallback-archive`).
+    /// Removes all `fallback-archive=` entries matching `file_name`; removing a parent's makes
+    /// the user config replace the list as in [`Self::remove_content_file`]
+    /// (`replace=fallback-archive`).
     pub fn remove_archive_file(&mut self, file_name: &str) {
-        self.remove_from_list(
-            "fallback-archive",
-            |setting| matches!(setting, SettingValue::BethArchive(_)),
-            |setting| match setting {
-                SettingValue::BethArchive(existing_file) => existing_file == file_name,
-                _ => false,
-            },
-        );
+        self.remove_from_list(ListOption::FallbackArchive, |setting| match setting {
+            SettingValue::BethArchive(existing_file) => existing_file == file_name,
+            _ => false,
+        });
     }
 
-    /// Removes any `data=` entry whose resolved path or original string matches `data_dir`; a
-    /// parent's entry is taken over as in [`Self::remove_content_file`] (`replace=data`).
+    /// Removes any `data=` entry whose resolved path or original string matches `data_dir`;
+    /// removing a parent's makes the user config replace the list as in
+    /// [`Self::remove_content_file`] (`replace=data`).
     pub fn remove_data_directory(&mut self, data_dir: &PathBuf) {
-        self.remove_from_list(
-            "data",
-            |setting| matches!(setting, SettingValue::DataDirectory(_)),
-            |setting| match setting {
-                SettingValue::DataDirectory(existing_data_dir) => {
-                    existing_data_dir.parsed() == data_dir
-                        || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
-                }
-                _ => false,
-            },
-        );
+        self.remove_from_list(ListOption::Data, |setting| match setting {
+            SettingValue::DataDirectory(existing_data_dir) => {
+                existing_data_dir.parsed() == data_dir
+                    || existing_data_dir.original() == data_dir.to_string_lossy().as_ref()
+            }
+            _ => false,
+        });
     }
 
     /// Appends a data directory entry attributed to the user config. Does not check for duplicates.
@@ -1223,8 +1227,8 @@ impl OpenMWConfiguration {
     /// Replaces all `content=` entries with `plugins`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
-    /// When a parent config defined any of the old entries, a `replace=content` line attributed
-    /// to the user config precedes the new ones, so `save_user` persists exactly this list.
+    /// When a parent config defined any of the old entries, `save_user` writes a
+    /// `replace=content` line ahead of the new ones, so a reload yields exactly this list.
     pub fn set_content_files(&mut self, plugins: Option<Vec<String>>) {
         let cfg_path = self.user_cfg_file();
         let mut empty = String::default();
@@ -1235,11 +1239,7 @@ impl OpenMWConfiguration {
                 SettingValue::ContentFile(FileSetting::new(plugin, &cfg_path, &mut empty))
             })
             .collect();
-        self.replace_list(
-            "content",
-            |setting| matches!(setting, SettingValue::ContentFile(_)),
-            entries,
-        );
+        self.replace_list(ListOption::Content, entries);
     }
 
     /// Replaces all `fallback-archive=` entries with `archives`, or clears them if `None`.
@@ -1257,11 +1257,7 @@ impl OpenMWConfiguration {
                 SettingValue::BethArchive(FileSetting::new(archive, &cfg_path, &mut empty))
             })
             .collect();
-        self.replace_list(
-            "fallback-archive",
-            |setting| matches!(setting, SettingValue::BethArchive(_)),
-            entries,
-        );
+        self.replace_list(ListOption::FallbackArchive, entries);
     }
 
     /// Iterates all preserved generic `key=value` entries in definition order.
@@ -1290,14 +1286,7 @@ impl OpenMWConfiguration {
                 SettingValue::Generic(GenericSetting::new(key, value, &cfg_path, &mut empty))
             })
             .collect();
-        self.replace_list(
-            key,
-            |setting| match setting {
-                SettingValue::Generic(generic) => generic.key() == key,
-                _ => false,
-            },
-            entries,
-        );
+        self.replace_list(ListOption::Generic(key.to_owned()), entries);
     }
 
     /// Appends a preserved generic `key=value` entry attributed to the user config.
@@ -1369,11 +1358,7 @@ impl OpenMWConfiguration {
                 ))
             })
             .collect();
-        self.replace_list(
-            "data",
-            |setting| matches!(setting, SettingValue::DataDirectory(_)),
-            entries,
-        );
+        self.replace_list(ListOption::Data, entries);
     }
 
     /// Given a string resembling a fallback= entry's value, as it would exist in openmw.cfg,
@@ -1430,11 +1415,7 @@ impl OpenMWConfiguration {
                 }
             }
         }
-        self.replace_list(
-            "fallback",
-            |setting| matches!(setting, SettingValue::GameSetting(_)),
-            entries,
-        );
+        self.replace_list(ListOption::Fallback, entries);
         failure.map_or(Ok(()), Err)
     }
 
@@ -1941,13 +1922,73 @@ impl OpenMWConfiguration {
         Self::save_string_to_path(&self.to_resolved_string(), path.as_ref())
     }
 
+    /// The text of `cfg_path`, one file of the chain: the settings attributed to it, in order,
+    /// with their comments. In the user config, each list in `user_replaces` is written behind a
+    /// `replace=` line, ahead of the list's first entry in the file or at its end, followed by
+    /// the entries the parents still contribute to that list.
+    fn file_text(&self, cfg_path: &Path) -> String {
+        let mut pending: Vec<&ListOption> =
+            if util::paths_equivalent(cfg_path, &self.user_cfg_file()) {
+                self.user_replaces.iter().collect()
+            } else {
+                Vec::new()
+            };
+        let mut text = String::new();
+
+        for setting in self.settings.iter().filter(|setting| {
+            !Self::is_synthetic_data_directory(setting)
+                && util::paths_equivalent(setting.meta().source_config(), cfg_path)
+        }) {
+            // A replace= line the file already has serves; the parents' entries follow it.
+            if let SettingValue::Replace(replace) = setting
+                && let Some(index) = pending.iter().position(|list| list.is_replaced_by(replace))
+            {
+                text.push_str(&setting.to_string());
+                self.write_inherited_entries(&mut text, pending.remove(index), cfg_path);
+                continue;
+            }
+            if let Some(index) = pending.iter().position(|list| list.holds(setting)) {
+                Self::write_replace_line(&mut text, pending[index]);
+                self.write_inherited_entries(&mut text, pending.remove(index), cfg_path);
+            }
+            text.push_str(&setting.to_string());
+        }
+
+        for list in pending {
+            Self::write_replace_line(&mut text, list);
+            self.write_inherited_entries(&mut text, list, cfg_path);
+        }
+
+        text
+    }
+
+    fn write_replace_line(text: &mut String, list: &ListOption) {
+        text.push_str("replace=");
+        text.push_str(list.name());
+        text.push('\n');
+    }
+
+    /// Writes the entries of `list` that files other than `cfg_path` define, as lines of
+    /// `cfg_path`. Their comments stay in their own files.
+    fn write_inherited_entries(&self, text: &mut String, list: &ListOption, cfg_path: &Path) {
+        for setting in self
+            .settings
+            .iter()
+            .filter(|setting| list.holds(setting) && Self::is_inherited(setting, cfg_path))
+        {
+            let mut entry = setting.clone();
+            entry.meta_mut().comment.clear();
+            text.push_str(&entry.to_string());
+        }
+    }
+
     /// Saves the currently-defined user openmw.cfg configuration.
     ///
     /// Only settings whose source is the user config file are written; parent configs are never
-    /// touched. The `set_*` and `remove_*` methods keep that consistent: replacing a list a
-    /// parent contributed to, or removing a parent's entry, attributes the whole list to the
-    /// user config behind a `replace=` line, so what this writes loads back as what was in
-    /// memory.
+    /// touched. When a `set_*` or `remove_*` method replaced a list a parent contributed to, or
+    /// removed a parent's entry from one, the user config replaces that list: a `replace=` line
+    /// followed by the entries the parents still contribute, then its own. So what this writes
+    /// loads back as what was in memory.
     ///
     /// # Errors
     /// Returns [`ConfigError::NotWritable`] if the target path is not writable.
@@ -1962,27 +2003,14 @@ impl OpenMWConfiguration {
             bail_config!(not_writable, &cfg_path);
         }
 
-        let mut user_settings_string = String::new();
-
-        for user_setting in self.settings_matching(|setting| {
-            util::paths_equivalent(&setting.meta().source_config, &cfg_path)
-        }) {
-            if Self::is_synthetic_data_directory(user_setting) {
-                continue;
-            }
-
-            user_settings_string.push_str(&user_setting.to_string());
-        }
-
-        Self::write_config(&user_settings_string, &cfg_path)?;
-
-        Ok(())
+        Self::write_config(&self.file_text(&cfg_path), &cfg_path)
     }
 
     /// Saves the openmw.cfg belonging to a loaded sub-configuration.
     ///
     /// `target_dir` must be the directory of a `config=` entry already present in the loaded
     /// chain. This method refuses to write to arbitrary paths to prevent accidental overwrites.
+    /// The file gets the settings attributed to it, as [`Self::save_user`] writes the user's.
     ///
     /// # Errors
     /// Returns [`ConfigError::SubconfigNotLoaded`] if `target_dir` is not part of the chain.
@@ -2007,21 +2035,7 @@ impl OpenMWConfiguration {
             bail_config!(not_writable, &cfg_path);
         }
 
-        let mut subconfig_settings_string = String::new();
-
-        for subconfig_setting in self.settings_matching(|setting| {
-            util::paths_equivalent(&setting.meta().source_config, &cfg_path)
-        }) {
-            if Self::is_synthetic_data_directory(subconfig_setting) {
-                continue;
-            }
-
-            subconfig_settings_string.push_str(&subconfig_setting.to_string());
-        }
-
-        Self::write_config(&subconfig_settings_string, &cfg_path)?;
-
-        Ok(())
+        Self::write_config(&self.file_text(&cfg_path), &cfg_path)
     }
 }
 

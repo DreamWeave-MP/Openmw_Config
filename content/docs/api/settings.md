@@ -84,8 +84,8 @@ config, behind `replace=<key>` when a parent had contributed. `None` only remove
 {{ api_signature(value="fn clear_matching<P>(&mut self, predicate: P) where P: Fn(&SettingValue) -> bool") }}
 
 Every setting the predicate accepts, and removing them from memory. A setting here is any line of
-any file. Unlike the `remove_*` methods, `clear_matching` does not take lists over, so a parent's
-setting it removes is back on the next load.
+any file. Unlike the `remove_*` methods, `clear_matching` does not make the user's config replace
+a list, so a parent's setting it removes is back on the next load.
 Its type is not exported, so a predicate cannot match on its kind, but it can use:
 
 | Call | Gives |

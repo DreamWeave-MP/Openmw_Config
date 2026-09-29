@@ -28,8 +28,9 @@ interchangeable.
 ## Saving the user's config
 
 `save_user()` writes the settings attributed to the user's `openmw.cfg`, in order, each with the
-comments above it, and nothing else. Settings from parent configs are not touched and not copied.
-The directory is created if it does not exist.
+comments above it. Parent configs are not touched. Their entries are copied only into a list the
+user's config replaces, after its `replace=` line, which happens once you replace or remove what a
+parent put in that list. The directory is created if it does not exist.
 
 `save_subconfig(dir)` does the same for another config in the chain. `dir` must be the directory
 of a `config=` entry that loaded, given as its resolved path or its text in the file; anything
@@ -48,7 +49,7 @@ fn main() -> Result<(), ConfigError> {
 
 {% callout(kind="note", title="Only the user's file changes") %}
 `save_user()` writes one file, and parent configs are never touched. When you replace or remove
-entries a parent defined, the user's config takes the list over behind a `replace=` line, so the
+entries a parent defined, the user's config replaces the list behind a `replace=` line, so the
 change survives a reload. [Editing](@/docs/editing.md#where-changes-go) has the details and the two
 exceptions.
 {% end %}

@@ -196,3 +196,62 @@ fn replace_of_a_generic_key_is_honoured_on_load() {
         .collect();
     assert_eq!(values, ["custom=3", "other=x"]);
 }
+
+/// root -> mid -> user, where `mid` holds `mid` and is a sub-configuration `save_subconfig` can
+/// write; returns the three directories and the loaded chain.
+fn three_level_chain(
+    tag: &str,
+    mid: &str,
+    user: &str,
+) -> (PathBuf, PathBuf, PathBuf, OpenMWConfiguration) {
+    let root_dir = temp_dir(&format!("wb_{tag}_root"));
+    let mid_dir = temp_dir(&format!("wb_{tag}_mid"));
+    let user_dir = temp_dir(&format!("wb_{tag}_user"));
+    write_cfg(&user_dir, user);
+    write_cfg(&mid_dir, &format!("{mid}config={}\n", user_dir.display()));
+    write_cfg(&root_dir, &format!("config={}\n", mid_dir.display()));
+    let config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    (root_dir, mid_dir, user_dir, config)
+}
+
+#[test]
+fn removing_a_parent_entry_leaves_the_parents_other_entries_in_its_file() {
+    let (root_dir, mid_dir, user_dir, mut config) = three_level_chain(
+        "remove_mid",
+        "content=A.esm\n# the modlist's pick\ncontent=B.esm\n",
+        "content=User.esp\n",
+    );
+    config.remove_content_file("A.esm");
+
+    let mid_cfg = mid_dir.join("openmw.cfg");
+    let kept = config
+        .content_files_iter()
+        .find(|file| file.value() == "B.esm")
+        .unwrap();
+    assert_eq!(
+        kept.meta().source_config(),
+        mid_cfg,
+        "B.esm is still the modlist's"
+    );
+
+    // Saving the modlist alone persists the removal in the modlist.
+    config.save_subconfig(&mid_dir).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&mid_cfg).unwrap(),
+        format!(
+            "# the modlist's pick\ncontent=B.esm\nconfig={}\n",
+            user_dir.display()
+        )
+    );
+    let reloaded = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    assert_eq!(content(&reloaded), ["B.esm", "User.esp"]);
+
+    // Saving the user's config takes the list over, without the modlist's comment.
+    config.save_user().unwrap();
+    assert_eq!(
+        user_file(&user_dir),
+        "replace=content\ncontent=B.esm\ncontent=User.esp\n"
+    );
+    let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    assert_eq!(content(&reloaded), ["B.esm", "User.esp"]);
+}

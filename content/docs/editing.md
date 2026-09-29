@@ -18,8 +18,9 @@ Everything the editing methods add is attributed to the user's `openmw.cfg`, the
 chain. `new_empty()` configurations attribute to the `openmw.cfg` in their own directory.
 
 Replacing or removing entries that a parent config defined is different: `save_user()` never
-touches the parent's file. So the user's config takes the list over. It gets a `replace=` line
-for that kind of entry, and every entry still in the list is attributed to it:
+touches the parent's file. So the user's config replaces the list. `save_user()` writes a
+`replace=` line for that kind of entry, then the entries the parents still contribute to the list,
+then the user's own:
 
 ```ini
 # The root config lists Morrowind.esm and Tribunal.esm; the user's lists Mod.esp.
@@ -30,12 +31,18 @@ content=Mod.esp
 ```
 
 When the chain loads again, the `replace=` discards the root's list and the user's copy takes its
-place, so what you had in memory is what you get back. The root's file is unchanged.
+place, so what you had in memory is what you get back. The root's file is unchanged. The copies
+leave the parent's comments behind, in the parent's file.
 
-| Method | Takes the list over when |
+| Method | Makes the user's config replace the list when |
 |---|---|
 | `set_content_files`, `set_fallback_archives`, `set_data_directories`, `set_game_settings`, `set_generic_settings` | Any of the old entries came from a parent |
 | `remove_content_file`, `remove_groundcover_file`, `remove_archive_file`, `remove_data_directory` | An entry it removes came from a parent |
+
+In memory, the parents' remaining entries stay theirs: `meta().source_config()` still names the
+file that defines them, and [`save_subconfig`](@/docs/saving.md#saving-the-user-s-config) on that
+file writes them back to it. So a change to an intermediate config in the chain can be saved there
+instead, or as well.
 
 Two kinds of change are not carried over this way. `clear_resources()` and the other `clear_*`
 methods remove the last definition, which lets a parent's value take effect again.
@@ -76,9 +83,9 @@ exist; OpenMW does not either.
 - `set_data_directories(list)` replaces them all, including the `resources/vfs` and `data-local`
   entries loading added. `None` leaves none.
 
-Taking over the data directories copies every one the parents listed into the user's file, the
-package's own included. That is what makes the result reload correctly, and it is why a tool that
-only adds directories should use `add_data_directory`.
+Replacing the data directories in the user's config copies every one the parents listed into the
+user's file, the package's own included. That is what makes the result reload correctly, and it is
+why a tool that only adds directories should use `add_data_directory`.
 
 ## Fallback settings
 

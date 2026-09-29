@@ -11,7 +11,7 @@ Three lists of file names, which OpenMW looks up in its data directories. Each i
 order and yields [`FileSetting`](@/docs/api/types.md#filesetting)s. Names compare exactly, case
 included.
 
-Removing or replacing entries a parent config defined makes the user's config take the list over,
+Removing or replacing entries a parent config defined makes the user's config replace the list,
 behind a `replace=` line, so `save_user()` persists the change: see
 [where changes go](@/docs/editing.md#where-changes-go).
 
@@ -32,7 +32,7 @@ chain.
 {{ api_signature(value="fn remove_content_file(&mut self, file_name: &str)") }}
 
 Removes every entry with that name, whichever file it came from. Removing a parent's entry makes
-the user's config take the list over with `replace=content`.
+the user's config replace the list with `replace=content` when saved.
 
 {{ api_signature(value="fn set_content_files(&mut self, plugins: Option<Vec<String>>)") }}
 
@@ -55,8 +55,8 @@ already listed.
 
 {{ api_signature(value="fn remove_groundcover_file(&mut self, file_name: &str)") }}
 
-Removes every entry with that name, taking the list over with `replace=groundcover` when one was a
-parent's. There is no `set_` form for groundcover.
+Removes every entry with that name. When one was a parent's, the user's config replaces the list
+with `replace=groundcover` when saved. There is no `set_` form for groundcover.
 
 ## Archives
 
@@ -73,8 +73,8 @@ listed.
 
 {{ api_signature(value="fn remove_archive_file(&mut self, file_name: &str)") }}
 
-Removes every entry with that name, taking the list over with `replace=fallback-archive` when one
-was a parent's.
+Removes every entry with that name. When one was a parent's, the user's config replaces the list
+with `replace=fallback-archive` when saved.
 
 {{ api_signature(value="fn set_fallback_archives(&mut self, archives: Option<Vec<String>>)") }}
 
