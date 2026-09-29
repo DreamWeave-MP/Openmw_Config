@@ -38,6 +38,12 @@ impl GenericSetting {
         &self.value
     }
 
+    /// The file that defined the entry and the comment above it.
+    #[must_use]
+    pub fn meta(&self) -> &GameSettingMeta {
+        &self.meta
+    }
+
     pub fn new(
         key: &str,
         value: &str,

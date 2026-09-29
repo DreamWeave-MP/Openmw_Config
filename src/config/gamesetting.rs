@@ -135,6 +135,50 @@ impl GameSettingType {
         }
     }
 
+    /// The kind's name: `Color`, `String`, `Float`, or `Int`.
+    #[must_use]
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            GameSettingType::Color(_) => "Color",
+            GameSettingType::String(_) => "String",
+            GameSettingType::Float(_) => "Float",
+            GameSettingType::Int(_) => "Int",
+        }
+    }
+
+    /// The parsed integer of an [`Int`](Self::Int) setting.
+    #[must_use]
+    pub fn int_value(&self) -> Option<i64> {
+        match self {
+            GameSettingType::Int(setting) => Some(setting.value),
+            _ => None,
+        }
+    }
+
+    /// The parsed number of a [`Float`](Self::Float) setting.
+    #[must_use]
+    pub fn float_value(&self) -> Option<f64> {
+        match self {
+            GameSettingType::Float(setting) => Some(setting.value),
+            _ => None,
+        }
+    }
+
+    /// The parsed `(r, g, b)` triple of a [`Color`](Self::Color) setting.
+    #[must_use]
+    pub fn color_value(&self) -> Option<(u8, u8, u8)> {
+        match self {
+            GameSettingType::Color(setting) => Some(setting.value),
+            _ => None,
+        }
+    }
+
+    /// The file that defined the setting and the comment above it.
+    #[must_use]
+    pub fn meta(&self) -> &GameSettingMeta {
+        <Self as GameSetting>::meta(self)
+    }
+
     /// Returns the setting value — the text after the first comma in a `fallback=Key,Value` entry.
     ///
     /// ```
@@ -147,20 +191,17 @@ impl GameSettingType {
     /// ```
     #[must_use]
     pub fn value(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.value_str())
+    }
+
+    /// Borrowed string view of [`Self::value`].
+    #[must_use]
+    pub fn value_str(&self) -> &str {
         match self {
-            GameSettingType::Color(setting) => {
-                let _ = setting.value;
-                Cow::Borrowed(&setting.raw_value)
-            }
-            GameSettingType::String(setting) => Cow::Borrowed(&setting.value),
-            GameSettingType::Float(setting) => {
-                let _ = setting.value;
-                Cow::Borrowed(&setting.raw_value)
-            }
-            GameSettingType::Int(setting) => {
-                let _ = setting.value;
-                Cow::Borrowed(&setting.raw_value)
-            }
+            GameSettingType::Color(setting) => &setting.raw_value,
+            GameSettingType::String(setting) => &setting.value,
+            GameSettingType::Float(setting) => &setting.raw_value,
+            GameSettingType::Int(setting) => &setting.raw_value,
         }
     }
 }
@@ -425,6 +466,30 @@ mod tests {
 
     fn parse(s: &str) -> Result<GameSettingType, crate::ConfigError> {
         GameSettingType::try_from((s.to_string(), PathBuf::default(), &mut String::new()))
+    }
+
+    #[test]
+    fn test_typed_values_follow_the_kind() {
+        let int = parse("iSpeed,42").unwrap();
+        assert_eq!(int.kind_name(), "Int");
+        assert_eq!(int.int_value(), Some(42));
+        assert_eq!(int.float_value(), None);
+        assert_eq!(int.color_value(), None);
+        assert_eq!(int.value_str(), "42");
+
+        let float = parse("fGravity,9.81").unwrap();
+        assert_eq!(float.kind_name(), "Float");
+        assert_eq!(float.float_value(), Some(9.81));
+        assert_eq!(float.int_value(), None);
+
+        let color = parse("iSkyColor,100,149,237").unwrap();
+        assert_eq!(color.kind_name(), "Color");
+        assert_eq!(color.color_value(), Some((100, 149, 237)));
+
+        let text = parse("sKey,hello").unwrap();
+        assert_eq!(text.kind_name(), "String");
+        assert_eq!(text.int_value(), None);
+        assert_eq!(text.meta().comment(), "");
     }
 
     #[test]

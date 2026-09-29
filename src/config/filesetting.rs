@@ -82,6 +82,12 @@ impl FileSetting {
     pub fn value_str(&self) -> &str {
         &self.value
     }
+
+    /// The file that defined the entry and the comment above it.
+    #[must_use]
+    pub fn meta(&self) -> &GameSettingMeta {
+        &self.meta
+    }
 }
 
 #[cfg(test)]

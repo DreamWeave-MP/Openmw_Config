@@ -48,6 +48,12 @@ impl EncodingSetting {
     pub fn value(&self) -> EncodingType {
         self.encoding
     }
+
+    /// The file that defined the entry and the comment above it.
+    #[must_use]
+    pub fn meta(&self) -> &GameSettingMeta {
+        &self.meta
+    }
 }
 
 impl PartialEq for EncodingSetting {
