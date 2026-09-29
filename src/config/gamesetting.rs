@@ -3,7 +3,8 @@
 
 use std::{borrow::Cow, fmt};
 
-use crate::{ConfigError, GameSetting, GameSettingMeta, bail_config};
+use crate::config::error::bail_config;
+use crate::{ConfigError, GameSetting, GameSettingMeta};
 
 /// A `fallback=` setting whose value is an RGB colour triple (`r,g,b` with each component 0–255).
 #[derive(Debug, Clone)]

@@ -8,7 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{ConfigError, GameSetting, bail_config};
+use crate::{ConfigError, GameSetting};
+use error::bail_config;
 use std::collections::{HashSet, VecDeque};
 
 pub mod directorysetting;
@@ -26,7 +27,6 @@ use genericsetting::GenericSetting;
 pub mod encodingsetting;
 use encodingsetting::EncodingSetting;
 
-#[macro_use]
 pub mod error;
 mod hash;
 use hash::{FxHashMap, FxHashSet};

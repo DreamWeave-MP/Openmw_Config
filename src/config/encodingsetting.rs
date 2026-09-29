@@ -3,7 +3,8 @@
 
 use std::fmt;
 
-use crate::{ConfigError, GameSetting, GameSettingMeta, bail_config};
+use crate::config::error::bail_config;
+use crate::{ConfigError, GameSetting, GameSettingMeta};
 
 /// The text encoding used to interpret byte strings in plugin data.
 ///

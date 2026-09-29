@@ -6,7 +6,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[macro_export]
 macro_rules! config_err {
     // InvalidGameSetting: value, path
     (invalid_game_setting, $value:expr, $path:expr) => {
@@ -152,14 +151,14 @@ macro_rules! config_err {
     };
 }
 
-#[macro_export]
+pub(crate) use config_err;
+
 macro_rules! bail_config {
-    ($($tt:tt)*) => {
-        {
-        return Err($crate::config_err!($($tt)*));
-    }
-};
+    ($($tt:tt)*) => {{
+        return Err($crate::config::error::config_err!($($tt)*));
+    }};
 }
+pub(crate) use bail_config;
 
 /// Errors that can arise while loading, mutating, or saving an `OpenMW` configuration.
 #[derive(Debug)]

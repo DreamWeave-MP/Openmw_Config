@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Dave Corley (S3kshun8)
 
-#[macro_export]
 macro_rules! impl_singleton_setting {
     ($($variant:ident => {
         get: $get_fn:ident,
