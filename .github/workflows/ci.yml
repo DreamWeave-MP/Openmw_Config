@@ -1,0 +1,24 @@
+name: OpenMW_Config CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: main
+    tags: ['*']
+
+jobs:
+  build:
+    permissions:
+      actions: write
+      contents: write
+      pages: write
+      id-token: write
+    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v49
+    secrets: inherit
+    with:
+      crate_names: '["openmw_config"]'
+      dependent_repo_names: '["DreamWeave-MP/S3lightfixes"]'
+      generate_benchmarks: true
+      # StroggForge records each version crates.io has in content/home/mod.lock and deploys this site.
+      mod_template: true

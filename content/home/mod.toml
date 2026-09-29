@@ -18,17 +18,11 @@ documentation = "@/docs/_index.md"
 support = "https://github.com/DreamWeave-MP/Openmw_Config/discussions"
 donate = "https://ko-fi.com/magicaldave"
 
-# A Rust library. StroggForge's library workflow tests it on every push; pushing a bare version
-# tag, like 2.0.1, publishes that version to crates.io.
+# A Rust library. StroggForge's library workflow (.github/workflows/ci.yml) tests it on every push;
+# pushing a bare version tag, like 3.0.0, publishes that version to crates.io and records it here.
 [package]
 format = "crate"
 crate = "openmw-config"
-
-[build]
-# S3lightfixes reads openmw.cfg through this crate: each release opens an issue there.
-dependents = ["DreamWeave-MP/S3lightfixes"]
-# cargo bench on every release, attached to its GitHub release as BENCHMARKS.md.
-benchmarks = true
 
 [[recommends]]
 name = "vfstool_lib"
