@@ -1,180 +1,73 @@
 # Notes for whoever works on the crate next
 
-Found on 2026-09-28 while writing the documentation site against the source. The site describes
-what the code does today. Each item below was reproduced with a small program against `main`
-unless it says otherwise.
+Only what is still open. What was fixed is in `git log`; the bug pass of 2026-09-29 runs from
+`c4475eb` to the commit that rewrote this file.
 
-## Already fixed
+## Reading `replace=` and `config=` differently from OpenMW
 
-These are committed; do not redo them.
+Found on 2026-09-29 while working out the `save_user` semantics against OpenMW's own code
+(`components/files/configurationmanager.cpp`: `readConfiguration`, `mergeComposingVariables`;
+the launcher's `components/config/gamesettings.cpp` reads files the same way). The site's
+compatibility page calls every difference from OpenMW a bug, but these change documented, tested
+loading behavior (the 1.0.1 notes present "`replace=` applied as it is read" as a feature), so
+they need the author's decision first. What `save_user` writes means the same under both readings:
+it puts `replace=` ahead of every entry of its list and spells the option in lower case.
 
-- `41be144` FIX: Keep replace= entries when serializing a configuration.
-- `bd5df7c` FIX: Stop persisting the injected resources/vfs data directory.
-- `6993d97` FIX: Fall back to the user config on Windows and macOS.
+- **`replace=` is per file in OpenMW, per line here.** OpenMW parses a whole file, then merges it
+  over the lower-priority files: a file's `replace=content` discards the content of every file
+  loaded before it and keeps all of its own `content=` lines, wherever the `replace=` sits. This
+  crate applies it at its line, so `content=A.esp` then `replace=content` in one file drops
+  `A.esp`, which OpenMW keeps. Most single-file tests in `tests/integration_chain_replace.rs`,
+  `tests/proptest_replace.rs` and the `config.rs` unit tests encode the per-line reading.
+- **Case.** OpenMW matches `replace=` values against option names exactly; `replace=Content` does
+  nothing there. This crate ignores case.
+- **Single values.** `replace=` only affects list options in OpenMW (`mergeComposingVariables`
+  skips the rest), so `replace=resources`, `user-data`, `data-local` and `encoding` do nothing
+  there. Here they remove the latest definition, which can bring an older file's value back.
+- **`replace=config`.** OpenMW discards the configs parsed so far except the root (local or global)
+  one, keeps the root's settings, and still follows every `config=` not yet read, the replacing
+  file's own included; in the root file itself it does nothing (only `--replace=config` on the
+  command line does). This crate discards everything loaded so far, the root included, every
+  queued `config=`, and the file's own earlier `config=` lines.
+- **Traversal order.** OpenMW's code walks `config=` with a stack: `dir1` with `config=dir2` then
+  `config=dir3`, and `dir2` with `config=dir4`, loads `dir1, dir2, dir4, dir3`. Its documentation
+  (`docs/source/reference/modding/paths.rst`) says `dir1, dir2, dir3, dir4`, which is what this
+  crate does and what `test_config_chain_priority_order_*` assert. Which one to follow is a
+  question for upstream as much as for this crate.
 
-## Bugs
+## The site's Lua pages still describe `mlua`
 
-- **`set_*` and `remove_*` change every file in memory, but `save_user()` only rewrites the user's
-  file.** Entries a parent config defines come back on the next load. For content files this also
-  breaks the saved chain. A root has `content=Morrowind.esm` and chains to a user config.
-  `set_content_files(Some(vec!["Morrowind.esm".into(), "Mod.esp".into()]))` then `save_user()`
-  writes both names into the user file. Reloading fails with `DuplicateContentFile`: "Morrowind.esm
-  has appeared in the content files list twice". `remove_content_file("Morrowind.esm")` then
-  `save_user()` reloads with Morrowind.esm still there. Nothing in the API writes a `replace=` line
-  where it would take effect: `add_generic_setting("replace", "content")` appends a generic entry
-  after the user's content lines. The same applies to `set_fallback_archives`,
-  `set_data_directories`, `set_game_settings`, `set_generic_settings` and the other `remove_*`
-  methods.
-- **`add_archive_file` returns the wrong error.** On a duplicate it returns
-  `DuplicateArchiveFile { line: None }` (the `duplicate_archive_file` arm of `bail_config!`), not
-  `CannotAddArchiveFile`, which its doc comment and `ConfigError`'s promise. `CannotAddArchiveFile`
-  is never constructed, and the `archive_already_defined` macro arm is unused.
-- **Comments passed to `set_game_setting` are written verbatim.** The Rust `comment: &mut String`
-  argument and the Lua `setGameSetting(value, source, comment)` argument go straight in front of the
-  line, so `"my note"` serializes as `my notefallback=fJumpHeight,1.0`, a line OpenMW cannot parse.
-  Callers must pass `"# my note\n"`. Either add the `#` and newline or reject text without them.
-- **Comments at the end of a file are lost.** Blank lines and `#` lines after a file's last setting
-  are queued for a setting that never comes, and are dropped. `# head\ncontent=A.esp\n\n# tail\n`
-  saves as `# head\ncontent=A.esp\n`.
-- **`benches/luau_boundary.rs:193` fails CI's Clippy.** `cargo clippy --workspace --all-targets
-  --all-features -- -W clippy::pedantic -D warnings` stops at `semicolon_if_nothing_returned`
-  (`b.iter(|| from_env.call::<bool>(()).unwrap())` needs a `;`). The file was untracked and in
-  progress when this was written.
+Left from the Stage 1 l3i migration. `content/docs/lua-hosts.md`, `content/docs/lua/_index.md`,
+`content/docs/lua/module.md`, the feature table in `content/docs/api/_index.md` and
+`content/docs/start-here.md` still name the `lua` and `standalone-lua` features,
+`create_lua_module`, the `openmwConfig` global and `mlua`. Since `498fa6f` the crate has the `luau`
+and `luau-analysis` features, `openmw_config::luau::extension()` and the
+`@dream/openmw-config` module.
 
-## API a caller cannot reach
+## A Luau boundary figure to remeasure
 
-- `SettingValue` is `pub` inside the private `config` module and not re-exported, so callers
-  cannot name it. `settings_matching` and `clear_matching` hand predicates a `&SettingValue` they
-  cannot match on; only `.meta()` and `Display` work.
-- A setting's source file and comment are public on `DirectorySetting` (a `pub meta` field) but not
-  on `FileSetting`, `GenericSetting`, `GameSettingType` or `EncodingSetting`. They carry them
-  through the `pub(crate)` `GameSetting` trait only. From Rust the only way to read where a content
-  file came from is `settings_matching(..)` and `.meta().source_config()`. The Lua bindings expose
-  `source` and `comment` on every row.
-- Typed fallback values are parsed and then unreachable. `ColorGameSetting`, `FloatGameSetting` and
-  `IntGameSetting` store `(u8, u8, u8)`, `f64` and `i64`, but the structs are unnameable and
-  `GameSettingType::value()` returns the raw text (`let _ = setting.value;`).
-- `#[macro_export]` makes `config_err!`, `bail_config!` and `impl_singleton_setting!` public at the
-  crate root.
+The Stage 1 l3i cleanup pass measured `gameSettings` iterated with `for` over 500 rows at 0.44 and
+0.55 µs per row (10 to 20 percent wide intervals, machine load 5 to 15), against 0.23 µs for
+3.0.0. Remeasure quietly (`cargo bench --features luau --bench luau_boundary -- --warm-up-time 1
+--measurement-time 2`) before treating it as a regression; if it holds, l3i's by-value
+`Owned<T>` iterator path is the place to look. The README's numbers were left alone for the same
+reason.
 
-## Smaller things
+## The next release is not declared
 
-- `game_settings()` yields each key once, most recently defined first: `A,1 B,2 C,3 A,4` iterates
-  as `A=4, C=3, B=2`. Nothing documents the order; the site now does. Decide whether it is intended.
-- `ConfigError::PlatformPathUnavailable`'s doc comment says the path came "via `dirs`". The crate
-  no longer depends on `dirs`.
-- `impl std::error::Error for ConfigError` has no `source()`, so `Io` hides its `std::io::Error`
-  from error chains.
-- `clear_resources`, `clear_user_data` and `clear_data_local` remove only the last definition, so a
-  parent's value becomes effective again. The injected `resources/vfs` and `data-local` data
-  directories are computed once in `new()` and do not follow later changes to those settings.
-  Both look deliberate. The site documents them as behavior.
+`content/home/mod.toml` lists nothing past 2.0.1, which is tagged, while `Cargo.toml` says 3.0.1.
+When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bug passes of
+2026-09-28 and 29:
 
-## Stage 1 l3i migration (2026-09-28, the binder agent)
-
-Everything below is committed on `main`; the site's Lua pages (`content/docs/lua/*`,
-`content/docs/lua-hosts.md`, `content/home/mod.toml` if it names the `lua` feature or version 2)
-describe the old `mlua` surface and need to follow.
-
-### Bugs fixed (each with a regression test)
-
-- `97e88a5` FIX: `add_archive_file` returns `CannotAddArchiveFile` on a duplicate.
-- `cc09244` FIX: `set_game_setting` (Rust and Lua) writes its comment as comment lines: every
-  non-blank line without `#` gets `# `, and the comment ends with a newline. `"my note"` →
-  `# my note\nfallback=...`. Text already in `#` form passes through unchanged.
-- `3d45e84` FIX: comment and blank lines after a file's last setting are kept (a
-  `SettingValue::TrailingComment` entry attributed to that file) and written back; the serializer's
-  own `# OpenMW-Config Serializer Version:` line is dropped on load so it never accumulates.
-- `fdb40da` FIX: `set_*` and `remove_*` persist through `save_user()`. Replacing a list a parent
-  contributed to (`set_content_files`, `set_fallback_archives`, `set_data_directories`,
-  `set_game_settings`, `set_generic_settings(key, ..)`) records `replace=<name>` in the user config
-  ahead of the new entries; removing a parent's entry (`remove_content_file`,
-  `remove_groundcover_file`, `remove_archive_file`, `remove_data_directory`) makes the user config
-  take the whole list over: `replace=<name>` plus the remaining entries re-attributed to the user
-  file. A single-file chain writes no `replace=` line. Loading now honours `replace=<any key>` for
-  generic entries, as OpenMW does. `save_user` never touches a parent file.
-- `1fbcfe3` FIX: the singleton setters (`set_encoding`, `clear_user_data`, ...) and the injected
-  `data=` entries rebuild the lookup indexes; before, `get_game_setting` could return a shifted
-  entry after `clear_*`, and `has_data_dir` was false for the injected `resources/vfs` directory.
-- The `benches/luau_boundary.rs` Clippy failure was fixed in `85ffeb3` before the bench landed.
-
-### Rust core
-
-- `b9fef28` PERF: per-kind position indexes (list iterators no longer scan the flat list),
-  `game_settings()` no longer clones its index per call, `has_data_dir` allocates only when it
-  rewrites separators, and `new()` no longer pretty-prints every setting on every load (that
-  `format!` ran unconditionally: large config 6.65 ms → 1.21 ms).
-- `a4fadeb` PERF: `FxHash` for the string indexes (`get_game_setting` miss 25 ns → 9 ns).
-- `b980248` FEAT: `GameSettingType::{kind_name, int_value, float_value, color_value, value_str,
-  meta}` and `meta()` on `FileSetting`, `GenericSetting`, `EncodingSetting` (two of the
-  "API a caller cannot reach" items). `content_file_count()` and the other counts are public.
-
-### Luau surface (`498fa6f`, version 3.0.0)
-
-- Feature `lua` → `luau`; `standalone-lua` is gone (l3i owns Luau); `create_lua_module` is gone.
-  `openmw_config::luau::extension()` is an l3i extension: id `dream.openmw-config`, module
-  `@dream/openmw-config`, types `dream.openmw.Config`, `.Strings`, `.GameSetting`,
-  `.GameSettings`, `.GenericSetting`, `.GenericSettings`, `.ChainEntry`, `.ConfigChain`.
-  `luau-analysis` enables l3i's analysis frontend for the definitions gate in the tests.
-- Scripts `require("@dream/openmw-config")`; the `openmwConfig` global is the host's
-  (`RuntimePolicy::compat_global("@dream/openmw-config", "openmwConfig")`).
-- Breaks: `cfg:isUserConfig()` → `cfg.isUserConfig`; the list methods return live views
-  (`#list`, `list[i]`, `for i, v in list`, `list:toTable()`; `ipairs`/`pairs`/`table.*` need
-  `:toTable()`); `gameSettings()`, `genericSettings()`, `configChain()` are views of userdata rows
-  with the old field names (`pairs(row)` no longer works; a row read after the configuration was
-  mutated raises "stale"); `ipairs(cfg:contentFiles())` errors.
-- Additions: `row.typed` on game settings (Int → Luau integer, Float → number, Color → vector of
-  the 0..255 components, String → string); direct fields `contentFileCount`,
-  `groundcoverFileCount`, `archiveFileCount`, `dataDirectoryCount`, `gameSettingCount` (distinct
-  keys), `genericSettingCount`, `subConfigCount`; `__tostring` on Config and rows; a non-string in
-  a list argument names the entry (`list entry 2: ...`).
-- Everything else keeps its name, arguments, return shape, and error behaviour.
-
-### Boundary numbers (`benches/luau_boundary.rs`, per operation, same frozen scripts)
-
-Before (mlua 0.12, commit 85ffeb3) → after (l3i): getGameSetting found 1.09/1.80/2.18 µs at
-n=50/500/2000 → 0.21/0.22/0.18 µs; missing 159 → 94 ns; hasContentFile hit 232 → 94 ns, miss
-267 → 99 ns; contentFiles 500 entries: materialise 96 → 86 ns/entry (`:toTable()`), `[i]` loop 191
-→ 130 ns/entry, `for` 211 → 125 ns/entry (no allocation); gameSettings `for` over 500 rows
-1.6 µs → 0.23 µs per row; `fromEnv` load (500 plugins, 500 fallbacks) 3.86 ms → 0.48 ms.
-Measured with four agents building (load 40+); a later `nice -n 19` run under load read about
-twice these figures across the board, contention, not code.
-
-## Stage 1 l3i cleanup (2026-09-28, the binder agent, version 3.0.1)
-
-l3i at `9563658` shipped what the migration asked for; this pass adopts it. Committed on `main`:
-
-- `f3a2f3b` FEAT: the views declare their element type (`d.sequence::<S>(key).item_type(..)`:
-  `string` for `dream.openmw.Strings`, `dream_openmw_GameSetting`, `dream_openmw_GenericSetting`,
-  `dream_openmw_ChainEntry` for the row views), so the generated definitions carry `__len`, a
-  `[number]: T?` indexer, `__iter`, and a typed `toTable`; the `decl().members` patch that rewrote
-  `toTable`'s signature is gone. The strict script in
-  `tests/integration_luau_bindings.rs` now exercises `#view`, `view[i]`, and `for i, x in view`
-  on the string, game setting, and chain views without `:toTable()`, asserts the typed
-  declarations are in the `.d.luau`, and still runs `plan.check_definitions()`. `StringItem`
-  implements `l3i::sequence::SequenceItem` (items push by value) instead of `Push`;
-  `GameSetting`, `GenericSetting`, and `ChainEntry` lost the `Clone` derives that existed only so
-  a sequence could serve them. `Config` keeps `Clone`: `Push for Owned<T>` needs it, and a host
-  pushes `Owned(Config::new(..))` through `set_global`.
-- `b3b1e8a` CLEANUP: `benches/luau_boundary.rs` runs the frozen chunk through `Runtime::eval`
-  instead of wrapping it in `return function() .. end` for `load_function`. Scripts unchanged.
-- `1bc25b7` CLEANUP: version 3.0.1.
-- Not changed: `strings()` in `src/luau.rs` wraps the read error as `list entry N: <cause>`;
-  the cause is already l3i's `ValueView::type_error` wording, so there was no hand-written type
-  error to replace. No option tables, so `Options::required_str` and friends are unused here.
-  `Frame::check` is unneeded (nothing pushes in bulk). Plain `cargo test` and `--features luau`
-  resolve l3i to `default` only; `luau-analysis` (on under `--all-features`) is what builds the
-  analysis frontend.
-
-### Boundary numbers (`luau_boundary`, l3i `9563658`, one throttled run, load 9 to 15)
-
-Per operation, against the 3.0.0 figures above (which were read at load 40+): getGameSetting
-found 0.21/0.22/0.18 µs → 0.16/0.17/0.16 µs at n=50/500/2000; missing 94 → 73 ns;
-hasContentFile hit 94 → 90 ns, miss 99 → 83 ns; contentFiles 500 entries: `:toTable()` 86 →
-72 ns/entry, `[i]` loop 130 → 100 ns/entry (l3i now reads the receiver and key from the value
-layout), `for` 125 → 95 to 138 ns/entry across two runs; fromEnv 0.48 → 0.38 ms. gameSettings
-`for` over 500 rows read 0.44 and 0.55 µs per row in two runs with 10 to 20 percent wide
-intervals, against 0.23 µs recorded for 3.0.0; the machine never got under load 5 during this
-pass, so that figure is unresolved: remeasure it quietly before treating it as a regression, and
-if it holds, the by-value `Owned<T>` iterator path in l3i is the place to look. README numbers
-were left alone for the same reason.
+- fixed: `add_archive_file` returns `CannotAddArchiveFile`; `set_game_setting` writes its comment
+  as comment lines; the comments that end a file are kept, and stay at its end when settings are
+  added; `set_*` and `remove_*` of what a parent defined persist through `save_user`, which writes
+  `replace=` and the parents' remaining entries into the user config (relative data directories
+  resolved) while those entries stay the parents' in memory; `replace=fallback-archive` is the
+  archive option's name, as in OpenMW, and `replace=fallback-archives` no longer means anything;
+  the `resources/vfs` and `data-local` data directories follow their settings and survive
+  `set_data_directories`; setting `resources=`, `user-data=`, `data-local=` or `encoding=` leaves a
+  parent's definition in place; `ConfigError::source()` returns the I/O error.
+- added: `SettingValue` and `TrailingComment` are exported; typed game setting values and `meta()`
+  on every setting type.
+- breaking: `config_err!`, `bail_config!` and `impl_singleton_setting!` are no longer exported.
