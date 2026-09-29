@@ -130,7 +130,7 @@ one, the line:
 | `InvalidLine` | A line that is not blank, not a comment, and has no `=` |
 | `InvalidGameSetting` | A `fallback=` value without a comma |
 | `BadEncoding` | An `encoding=` other than `win1250`, `win1251` or `win1252` |
-| `DuplicateContentFile`, `DuplicateGroundcoverFile`, `DuplicateArchiveFile` | The same name twice in the chain, without a `replace=` between |
+| `DuplicateContentFile`, `DuplicateGroundcoverFile`, `DuplicateArchiveFile` | The same name twice in what the chain keeps once each `replace=` has discarded the lists of the configs before its own |
 | `CannotFind` | A file in the chain disappeared while loading |
 | `MaxDepthExceeded` | More than 16 levels of `config=` below the root |
 | `Io` | The operating system refused to read a file |

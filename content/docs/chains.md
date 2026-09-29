@@ -89,7 +89,7 @@ written, not normalized.
 
 | Setting | Across the chain |
 |---|---|
-| `content`, `groundcover`, `fallback-archive` | Lists, in load order. The same name twice fails with `DuplicateContentFile`, `DuplicateGroundcoverFile` or `DuplicateArchiveFile`, unless a `replace=` cleared the first. |
+| `content`, `groundcover`, `fallback-archive` | Lists, in load order. The same name twice fails with `DuplicateContentFile`, `DuplicateGroundcoverFile` or `DuplicateArchiveFile`, unless a `replace=` in a later config discarded the first. |
 | `data` | A list, in load order. Duplicates are allowed. |
 | `fallback` | Every definition is kept; the last one of each key is the value. |
 | `resources`, `user-data`, `data-local`, `encoding` | The last definition wins. |
@@ -99,13 +99,30 @@ Names compare exactly: `Morrowind.esm` and `morrowind.esm` are different plugins
 
 ## replace=
 
-`replace=` discards what the chain has loaded so far, for one kind of setting, and then reading
-carries on. The value is the setting's key, which is OpenMW's name for the option, spelled
-exactly: OpenMW compares it case included, so `replace=Content` names no option and discards
-nothing. The archives' key is `fallback-archive`, singular: OpenMW has no `fallback-archives`
-option, so `replace=fallback-archives` leaves the archives alone.
+`replace=` works per config, not per line. OpenMW reads a whole `openmw.cfg`, then merges it over
+the configs loaded before it (`mergeComposingVariables`): a config's `replace=content` discards the
+`content=` entries of every config before it, and keeps all of its own, wherever the `replace=`
+line sits. In a chain of one file, it discards nothing. The configs loaded after it are untouched.
 
-| Line | Discards |
+```ini
+# root/openmw.cfg
+content=Morrowind.esm
+config=../user
+
+# user/openmw.cfg
+content=Mod.esp
+replace=content
+content=Other.esp
+```
+
+The content files are `Mod.esp` and `Other.esp`: the root's list is gone, the user's is whole.
+
+The value is the setting's key, which is OpenMW's name for the option, spelled exactly: OpenMW
+compares it case included, so `replace=Content` names no option and discards nothing. The archives'
+key is `fallback-archive`, singular: OpenMW has no `fallback-archives` option, so
+`replace=fallback-archives` leaves the archives alone.
+
+| Line | Discards, from every config before its own |
 |---|---|
 | `replace=content` | Every `content=` entry |
 | `replace=groundcover` | Every `groundcover=` entry |
@@ -113,8 +130,8 @@ option, so `replace=fallback-archives` leaves the archives alone.
 | `replace=data` | Every `data=` entry |
 | `replace=fallback` | Every `fallback=` entry |
 | `replace=resources`, `replace=user-data`, `replace=data-local`, `replace=encoding` | Nothing: these hold one value, and OpenMW's `replace=` only reaches lists. The last file that sets one still wins |
-| `replace=config` | In a file after the root, every config loaded before it except the root, with all their settings. In the root, nothing |
-| `replace=<key>`, for any other key | Every unknown-key entry with exactly that key |
+| `replace=config` | In a config after the root, every config loaded before it except the root, with all their settings. In the root, nothing |
+| `replace=<key>`, for any other key | Every unknown-key entry with exactly that key. OpenMW ignores keys it does not know; the crate keeps them as lists, and discards them as it does OpenMW's |
 
 The line itself is kept, and written back where it was, so a saved file still means what it did.
 

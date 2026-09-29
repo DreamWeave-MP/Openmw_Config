@@ -3,22 +3,29 @@
 Only what is still open. What was fixed is in `git log`; the bug pass of 2026-09-29 runs from
 `c4475eb` to the commit that rewrote this file.
 
-## Reading `replace=` and `config=` differently from OpenMW
+## Where loading still differs from OpenMW
 
-Found on 2026-09-29 while working out the `save_user` semantics against OpenMW's own code
-(`components/files/configurationmanager.cpp`: `readConfiguration`, `mergeComposingVariables`;
-the launcher's `components/config/gamesettings.cpp` reads files the same way). The site's
-compatibility page calls every difference from OpenMW a bug, but these change documented, tested
-loading behavior (the 1.0.1 notes present "`replace=` applied as it is read" as a feature), so
-they need the author's decision first. What `save_user` writes means the same under both readings:
-it puts `replace=` ahead of every entry of its list and spells the option in lower case.
+The crate now loads as `components/files/configurationmanager.cpp` does (`readConfiguration`,
+`mergeComposingVariables`; checked against upstream `46bd459920`). These differences are left,
+each for the author's decision:
 
-- **`replace=` is per file in OpenMW, per line here.** OpenMW parses a whole file, then merges it
-  over the lower-priority files: a file's `replace=content` discards the content of every file
-  loaded before it and keeps all of its own `content=` lines, wherever the `replace=` sits. This
-  crate applies it at its line, so `content=A.esp` then `replace=content` in one file drops
-  `A.esp`, which OpenMW keeps. Most single-file tests in `tests/integration_chain_replace.rs`,
-  `tests/proptest_replace.rs` and the `config.rs` unit tests encode the per-line reading.
+- **A `config=` directory without an `openmw.cfg`.** `readConfiguration` adds it to
+  `mActiveConfigPaths` whether or not it loads, so a missing `?userconfig?` is still OpenMW's user
+  config directory, where the engine and the launcher write. The crate skips it: its
+  `user_config_path()` is the last config that loaded, so on a fresh install `save_user()` writes
+  the root's directory, and the `config=` line naming the missing directory is dropped from
+  memory, so a save of the file that holds it loses the line. Changing it moves where
+  `save_user()` writes, and `user_config()`/`user_config_ref()` would need a missing file to load.
+- **`replace=replace`.** In the engine, `replace` is itself a composing option, so a config's
+  `replace=replace` cancels the `replace=` lines of the configs before it for the configs before
+  those. The launcher (`gamesettings.cpp`, `readFile`) applies each file's `replace=` as it reads
+  it, so there it does nothing. The two readers disagree; the crate does what the launcher does.
+- **Unknown keys.** OpenMW ignores keys it does not register, and treats the ones it registers
+  outside this crate's model (`start=`, `skip-menu=`, `no-sound=` and so on) as single values.
+  The crate keeps every unknown key as a list, and `replace=<key>` discards the configs before it
+  as for OpenMW's lists, which `set_generic_settings` relies on to take a parent's entries over.
+- **A single value twice in one file.** Boost's `store` refuses a non-composing option given twice
+  in one source (`multiple_occurrences`; read from Boost, not run); the crate takes the last.
 
 ## The site's Lua pages still describe `mlua`
 
@@ -79,3 +86,9 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
     those above the `replace=` included; a dropped directory is not read again. In the root it
     does nothing. It used to drop everything loaded so far, the root included, every queued
     `config=`, and the file's own earlier lines.
+  - `replace=` is per config, as `mergeComposingVariables` merges whole files: a config's
+    `replace=content` discards the `content=` entries of every config before it and keeps all of
+    its own, wherever the line sits; in a single file it discards nothing. The 1.0 notes
+    presented "`replace=` applied as it is read"; that reading is gone. A name that stays twice
+    fails as a duplicate even when a `replace=` sits between the two in one file, and one a
+    later `replace=` discards may come back.

@@ -240,17 +240,17 @@ fn a_user_config_with_replace_config_saves_and_reloads_as_it_was() {
 
 #[test]
 fn replace_of_a_generic_key_is_honoured_on_load() {
-    let dir = temp_dir("wb_generic_replace");
-    write_cfg(
-        &dir,
-        "custom=1\ncustom=2\nreplace=custom\ncustom=3\nother=x\n",
+    // As for OpenMW's lists: the files before discard theirs, the file keeps its own.
+    let (_root_dir, _user_dir, config) = chain(
+        "generic_replace",
+        "custom=1\ncustom=2\nother=root\n",
+        "custom=0\nreplace=custom\ncustom=3\nother=x\n",
     );
-    let config = OpenMWConfiguration::new(Some(dir)).unwrap();
     let values: Vec<_> = config
         .generic_settings_iter()
         .map(|setting| format!("{}={}", setting.key(), setting.value()))
         .collect();
-    assert_eq!(values, ["custom=3", "other=x"]);
+    assert_eq!(values, ["other=root", "custom=0", "custom=3", "other=x"]);
 }
 
 /// root -> mid -> user, where `mid` holds `mid` and is a sub-configuration `save_subconfig` can

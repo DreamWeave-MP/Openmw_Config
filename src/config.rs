@@ -267,18 +267,6 @@ fn normalize_comment(comment: &str) -> String {
     normalized
 }
 
-macro_rules! insert_dir_setting {
-    ($self:ident, $variant:ident, $value:expr, $config_file:expr, $comment:expr) => {{
-        $self
-            .settings
-            .push(SettingValue::$variant(DirectorySetting::new(
-                $value,
-                $config_file,
-                $comment,
-            )));
-    }};
-}
-
 /// A fully-resolved `OpenMW` configuration chain.
 ///
 /// Constructed by walking the `config=` chain starting from a root `openmw.cfg`, accumulating
@@ -355,18 +343,167 @@ impl ListOption {
     }
 }
 
-/// The names `settings` lists for `list`, one of the lists that holds file names.
-fn listed_names(settings: &[SettingValue], list: &ListOption) -> HashSet<String> {
-    settings
-        .iter()
-        .filter(|setting| list.holds(setting))
-        .filter_map(|setting| match setting {
-            SettingValue::ContentFile(file)
-            | SettingValue::Groundcover(file)
-            | SettingValue::BethArchive(file) => Some(file.value().clone()),
-            _ => None,
-        })
-        .collect()
+/// The option name `replace=` gives the list `setting` is an entry of, if it is one: `OpenMW`'s
+/// composing options, and for unknown keys the key.
+fn list_name(setting: &SettingValue) -> Option<&str> {
+    match setting {
+        SettingValue::ContentFile(_) => Some("content"),
+        SettingValue::Groundcover(_) => Some("groundcover"),
+        SettingValue::BethArchive(_) => Some("fallback-archive"),
+        SettingValue::DataDirectory(_) => Some("data"),
+        SettingValue::GameSetting(_) => Some("fallback"),
+        SettingValue::Generic(generic) => Some(generic.key()),
+        _ => None,
+    }
+}
+
+/// One config of the chain as read, before the configs after it discard any of its entries.
+struct ConfigFile {
+    /// Its settings in file order, each with its line, then its `config=` entries and the
+    /// comments that end it, which have none (0).
+    settings: Vec<(SettingValue, usize)>,
+    /// The option names its `replace=` lines give, as written.
+    replaces: Vec<String>,
+}
+
+impl ConfigFile {
+    /// Its `config=` entries, in file order.
+    fn sub_configs(&self) -> impl DoubleEndedIterator<Item = &DirectorySetting> {
+        self.settings
+            .iter()
+            .filter_map(|(setting, _)| match setting {
+                SettingValue::SubConfiguration(dir) => Some(dir),
+                _ => None,
+            })
+    }
+
+    /// Reads the whole file at `cfg_file_path`, as `OpenMW` parses a config before merging it.
+    #[allow(clippy::too_many_lines)]
+    fn read(cfg_file_path: &Path) -> Result<Self, ConfigError> {
+        let lines = read_to_string(cfg_file_path)?;
+        let source = cfg_file_path.to_path_buf();
+
+        let mut settings: Vec<(SettingValue, usize)> = Vec::new();
+        let mut replaces = Vec::new();
+        let mut queued_comment = String::new();
+        let mut sub_configs: Vec<(String, String)> = Vec::new();
+
+        for (index, line) in lines.lines().enumerate() {
+            let line_no = index + 1;
+            let trimmed = line.trim();
+
+            if trimmed.is_empty() {
+                queued_comment.push('\n');
+                continue;
+            } else if trimmed.starts_with('#') {
+                queued_comment.push_str(line);
+                queued_comment.push('\n');
+                continue;
+            }
+
+            let Some((key, value)) = trimmed.split_once('=') else {
+                bail_config!(invalid_line, trimmed.into(), source, line_no);
+            };
+
+            let key = key.trim();
+            let value = value.trim();
+            let comment = &mut queued_comment;
+
+            let setting = match key {
+                "content" => SettingValue::ContentFile(FileSetting::new(value, &source, comment)),
+                "groundcover" => {
+                    SettingValue::Groundcover(FileSetting::new(value, &source, comment))
+                }
+                "fallback-archive" => {
+                    SettingValue::BethArchive(FileSetting::new(value, &source, comment))
+                }
+                "fallback" => SettingValue::GameSetting(
+                    GameSettingType::try_from((value.to_owned(), source.clone(), comment))
+                        .map_err(|error| match error {
+                            ConfigError::InvalidGameSetting {
+                                value, config_path, ..
+                            } => ConfigError::InvalidGameSetting {
+                                value,
+                                config_path,
+                                line: Some(line_no),
+                            },
+                            _ => error,
+                        })?,
+                ),
+                "encoding" => {
+                    let encoding = EncodingSetting::try_from((value.to_owned(), &source, comment))
+                        .map_err(|error| match error {
+                            ConfigError::BadEncoding {
+                                value, config_path, ..
+                            } => ConfigError::BadEncoding {
+                                value,
+                                config_path,
+                                line: Some(line_no),
+                            },
+                            _ => error,
+                        })?;
+                    // A second encoding= takes the first's place, as setting one does.
+                    if let Some(first) = settings
+                        .iter_mut()
+                        .find(|(setting, _)| matches!(setting, SettingValue::Encoding(_)))
+                    {
+                        *first = (SettingValue::Encoding(encoding), line_no);
+                        continue;
+                    }
+                    SettingValue::Encoding(encoding)
+                }
+                "config" => {
+                    sub_configs.push((value.to_owned(), std::mem::take(comment)));
+                    continue;
+                }
+                "data" => SettingValue::DataDirectory(DirectorySetting::new(
+                    value,
+                    source.clone(),
+                    comment,
+                )),
+                "resources" => {
+                    SettingValue::Resources(DirectorySetting::new(value, source.clone(), comment))
+                }
+                "user-data" => {
+                    SettingValue::UserData(DirectorySetting::new(value, source.clone(), comment))
+                }
+                "data-local" => {
+                    SettingValue::DataLocal(DirectorySetting::new(value, source.clone(), comment))
+                }
+                "replace" => {
+                    replaces.push(value.to_owned());
+                    SettingValue::Replace(GenericSetting::new(key, value, &source, comment))
+                }
+                _ => SettingValue::Generic(GenericSetting::new(key, value, &source, comment)),
+            };
+            settings.push((setting, line_no));
+        }
+
+        for (subconfig_path, mut comment) in sub_configs {
+            let setting = DirectorySetting::new(subconfig_path, source.clone(), &mut comment);
+            settings.push((SettingValue::SubConfiguration(setting), 0));
+        }
+
+        // Lines after the last setting have nothing to attach to; keep them as the file's
+        // trailer, minus the stamp a previous serialization left.
+        let trailing: String = queued_comment
+            .split_inclusive('\n')
+            .filter(|line| !line.starts_with(SERIALIZER_STAMP_PREFIX))
+            .collect();
+        if !trailing.is_empty() {
+            settings.push((
+                SettingValue::TrailingComment(TrailingComment {
+                    meta: crate::GameSettingMeta {
+                        source_config: source,
+                        comment: trailing,
+                    },
+                }),
+                0,
+            ));
+        }
+
+        Ok(Self { settings, replaces })
+    }
 }
 
 /// Where the entries of each list kind sit in `settings`, in definition order, so the list
@@ -1537,26 +1674,21 @@ impl OpenMWConfiguration {
 
     const MAX_CONFIG_DEPTH: usize = 16;
 
-    #[allow(clippy::too_many_lines)]
+    /// Loads the chain rooted at `root_config` as `OpenMW`'s `ConfigurationManager` does: the
+    /// configs in the order `readConfiguration` reads them, then merged as
+    /// `mergeComposingVariables` merges them.
     fn load(&mut self, root_config: &Path) -> Result<(), ConfigError> {
-        // The config= entries still to load, the next on top. ConfigurationManager's
-        // readConfiguration walks them with a stack, so a file's first config= and everything it
-        // names load before its second.
+        // The config= entries still to load, the next on top. readConfiguration walks them with
+        // a stack, so a file's first config= and everything it names load before its second.
         let mut pending_configs = vec![(root_config.to_path_buf(), 0usize)];
-
-        let mut seen_content = listed_names(&self.settings, &ListOption::Content);
-        let mut seen_groundcover = listed_names(&self.settings, &ListOption::Groundcover);
-        let mut seen_archives = listed_names(&self.settings, &ListOption::FallbackArchive);
-
         // Every directory the walk has tried, the root's first: readConfiguration skips a
         // config= directory it has already tried ("Repeated config dir"), so a chain that loops
         // or branches into the same directory twice reads each once. Paths compare as written
         // once resolved, not canonicalized.
         let mut tried_dirs: FxHashSet<PathBuf> = FxHashSet::default();
-        // The directories of the configs the chain keeps, in load order, and the root's file:
-        // what readConfiguration's parsedConfigs holds.
-        let mut loaded_dirs: Vec<PathBuf> = Vec::new();
-        let mut root_cfg_file = PathBuf::new();
+        // The configs the chain keeps, with their directories, in load order: what
+        // readConfiguration's parsedConfigs holds.
+        let mut loaded: Vec<(PathBuf, ConfigFile)> = Vec::new();
 
         while let Some((config_path, depth)) = pending_configs.pop() {
             let cfg_file_path = if config_path.is_dir() {
@@ -1604,283 +1736,96 @@ impl OpenMWConfiguration {
                 depth,
                 status: ConfigChainStatus::Loaded,
             });
-            if depth == 0 {
-                root_cfg_file.clone_from(&cfg_file_path);
-            } else {
-                self.user_config_dir = Some(config_dir.clone());
-            }
-            loaded_dirs.push(config_dir);
+            let file = ConfigFile::read(&cfg_file_path)?;
 
-            let lines = read_to_string(&cfg_file_path)?;
-
-            let mut queued_comment = String::new();
-            let mut sub_configs: Vec<(String, String)> = Vec::new();
-
-            for (index, line) in lines.lines().enumerate() {
-                let line_no = index + 1;
-                let trimmed = line.trim();
-
-                if trimmed.is_empty() {
-                    queued_comment.push('\n');
-                    continue;
-                } else if trimmed.starts_with('#') {
-                    queued_comment.push_str(line);
-                    queued_comment.push('\n');
-                    continue;
-                }
-
-                let Some((key, value)) = trimmed.split_once('=') else {
-                    bail_config!(invalid_line, trimmed.into(), cfg_file_path.clone(), line_no);
-                };
-
-                let key = key.trim();
-                let value = value.trim();
-
-                match key {
-                    "content" => {
-                        if !seen_content.insert(value.to_owned()) {
-                            bail_config!(
-                                duplicate_content_file,
-                                value.to_owned(),
-                                cfg_file_path,
-                                line_no
-                            );
-                        }
-                        self.settings
-                            .push(SettingValue::ContentFile(FileSetting::new(
-                                value,
-                                &cfg_file_path,
-                                &mut queued_comment,
-                            )));
-                    }
-                    "groundcover" => {
-                        if !seen_groundcover.insert(value.to_owned()) {
-                            bail_config!(
-                                duplicate_groundcover_file,
-                                value.to_owned(),
-                                cfg_file_path,
-                                line_no
-                            );
-                        }
-                        self.settings
-                            .push(SettingValue::Groundcover(FileSetting::new(
-                                value,
-                                &cfg_file_path,
-                                &mut queued_comment,
-                            )));
-                    }
-                    "fallback-archive" => {
-                        if !seen_archives.insert(value.to_owned()) {
-                            bail_config!(
-                                duplicate_archive_file,
-                                value.to_owned(),
-                                cfg_file_path,
-                                line_no
-                            );
-                        }
-                        self.settings
-                            .push(SettingValue::BethArchive(FileSetting::new(
-                                value,
-                                &cfg_file_path,
-                                &mut queued_comment,
-                            )));
-                    }
-                    "fallback" => {
-                        let game_setting = GameSettingType::try_from((
-                            value.to_owned(),
-                            cfg_file_path.clone(),
-                            &mut queued_comment,
-                        ))
-                        .map_err(|error| match error {
-                            ConfigError::InvalidGameSetting {
-                                value, config_path, ..
-                            } => ConfigError::InvalidGameSetting {
-                                value,
-                                config_path,
-                                line: Some(line_no),
-                            },
-                            _ => error,
-                        })?;
-
-                        self.settings.push(SettingValue::GameSetting(game_setting));
-                    }
-                    "encoding" => {
-                        let encoding = EncodingSetting::try_from((
-                            value.to_owned(),
-                            &cfg_file_path,
-                            &mut queued_comment,
-                        ))
-                        .map_err(|error| match error {
-                            ConfigError::BadEncoding {
-                                value, config_path, ..
-                            } => ConfigError::BadEncoding {
-                                value,
-                                config_path,
-                                line: Some(line_no),
-                            },
-                            _ => error,
-                        })?;
-                        self.set_encoding(Some(encoding));
-                    }
-                    "config" => {
-                        sub_configs.push((value.to_owned(), std::mem::take(&mut queued_comment)));
-                    }
-                    "data" => {
-                        insert_dir_setting!(
-                            self,
-                            DataDirectory,
-                            value,
-                            cfg_file_path.clone(),
-                            &mut queued_comment
-                        );
-                    }
-                    "resources" => {
-                        insert_dir_setting!(
-                            self,
-                            Resources,
-                            value,
-                            cfg_file_path.clone(),
-                            &mut queued_comment
-                        );
-                    }
-                    "user-data" => {
-                        insert_dir_setting!(
-                            self,
-                            UserData,
-                            value,
-                            cfg_file_path.clone(),
-                            &mut queued_comment
-                        );
-                    }
-                    "data-local" => {
-                        insert_dir_setting!(
-                            self,
-                            DataLocal,
-                            value,
-                            cfg_file_path.clone(),
-                            &mut queued_comment
-                        );
-                    }
-                    "replace" => {
-                        // OpenMW names options case included: `replace=Content` names none.
-                        match value {
-                            "content" => {
-                                self.clear_matching_internal(|s| {
-                                    matches!(s, SettingValue::ContentFile(_))
-                                });
-                                seen_content.clear();
-                            }
-                            "data" => {
-                                self.clear_matching_internal(|s| {
-                                    matches!(s, SettingValue::DataDirectory(_))
-                                });
-                            }
-                            "fallback" => {
-                                self.clear_matching_internal(|s| {
-                                    matches!(s, SettingValue::GameSetting(_))
-                                });
-                            }
-                            "fallback-archive" => {
-                                self.clear_matching_internal(|s| {
-                                    matches!(s, SettingValue::BethArchive(_))
-                                });
-                                seen_archives.clear();
-                            }
-                            "groundcover" => {
-                                self.clear_matching_internal(|s| {
-                                    matches!(s, SettingValue::Groundcover(_))
-                                });
-                                seen_groundcover.clear();
-                            }
-                            // readConfiguration: a config after the root that says
-                            // replace=config drops the configs read before it except the root.
-                            // Its own lines stay, config= entries included, and so does every
-                            // config= entry still to load.
-                            "config" if depth > 0 => {
-                                self.settings.retain(|setting| {
-                                    let source = setting.meta().source_config();
-                                    source == root_cfg_file || source == cfg_file_path
-                                });
-                                let this_config = loaded_dirs.len() - 1;
-                                loaded_dirs.drain(1..this_config);
-                                seen_content = listed_names(&self.settings, &ListOption::Content);
-                                seen_groundcover =
-                                    listed_names(&self.settings, &ListOption::Groundcover);
-                                seen_archives =
-                                    listed_names(&self.settings, &ListOption::FallbackArchive);
-                            }
-                            // Single values: mergeComposingVariables only merges the lists,
-                            // so replace= leaves these to the last file that sets them. And
-                            // replace=config in the root does nothing.
-                            "resources" | "user-data" | "data-local" | "encoding" | "config" => {}
-                            // Any other option name: the preserved generic entries of that
-                            // key accumulated so far are discarded, as OpenMW does.
-                            _ => {
-                                self.clear_matching_internal(|s| match s {
-                                    SettingValue::Generic(generic) => generic.key() == value,
-                                    _ => false,
-                                });
-                            }
-                        }
-
-                        self.settings
-                            .push(SettingValue::Replace(GenericSetting::new(
-                                key,
-                                value,
-                                &cfg_file_path,
-                                &mut queued_comment,
-                            )));
-                    }
-                    _ => {
-                        let setting =
-                            GenericSetting::new(key, value, &cfg_file_path, &mut queued_comment);
-                        self.settings.push(SettingValue::Generic(setting));
-                    }
-                }
-            }
-
-            let mut children = Vec::with_capacity(sub_configs.len());
-            for (subconfig_path, mut subconfig_comment) in sub_configs {
-                let mut comment = std::mem::take(&mut subconfig_comment);
-                let setting =
-                    DirectorySetting::new(subconfig_path, cfg_file_path.clone(), &mut comment);
-                let subconfig_file = setting.parsed().join("openmw.cfg");
-
-                if subconfig_file.exists() {
-                    self.settings.push(SettingValue::SubConfiguration(setting));
-                }
-                children.push((subconfig_file, depth + 1));
+            // A config after the root that says replace=config drops the configs read before
+            // it except the root. Every line of its own stays, and the walk carries on through
+            // every config= entry still to load. In the root it does nothing.
+            if loaded.len() > 1 && file.replaces.iter().any(|name| name == "config") {
+                loaded.truncate(1);
             }
             // The first on top, as readConfiguration's addExtraConfigDirs pushes them.
-            pending_configs.extend(children.into_iter().rev());
-
-            // Lines after the last setting have nothing to attach to; keep them as the file's
-            // trailer, minus the stamp a previous serialization left.
-            let trailing: String = queued_comment
-                .split_inclusive('\n')
-                .filter(|line| !line.starts_with(SERIALIZER_STAMP_PREFIX))
-                .collect();
-            if !trailing.is_empty() {
-                self.settings
-                    .push(SettingValue::TrailingComment(TrailingComment {
-                        meta: crate::GameSettingMeta {
-                            source_config: cfg_file_path,
-                            comment: trailing,
-                        },
-                    }));
+            pending_configs.extend(
+                file.sub_configs()
+                    .rev()
+                    .map(|dir| (dir.parsed().join("openmw.cfg"), depth + 1)),
+            );
+            if depth > 0 {
+                self.user_config_dir = Some(config_dir.clone());
             }
+            loaded.push((config_dir, file));
         }
 
-        // The config= entries naming a config replace=config dropped are no longer in effect,
-        // so save_subconfig cannot write an empty file over one.
-        self.settings.retain(|setting| match setting {
-            SettingValue::SubConfiguration(dir) => {
-                loaded_dirs.iter().any(|loaded| loaded == dir.parsed())
-            }
-            _ => true,
-        });
-
+        self.merge(loaded)?;
         self.rebuild_indexes();
+
+        Ok(())
+    }
+
+    /// Adds the chain's configs to the settings in load order, merged as
+    /// `mergeComposingVariables` merges them: from the last config to the first, an entry of a
+    /// list stays unless a config after its own names that list in `replace=`, exactly as
+    /// written. So a config's `replace=` discards what the configs before it said, and none of
+    /// its own entries, wherever it sits. Single values, `replace=` lines and comments are no
+    /// lists; a `config=` entry stays while the config it names does.
+    ///
+    /// # Errors
+    /// Fails on a `content=`, `groundcover=` or `fallback-archive=` name that stays twice, at
+    /// the second, as `OpenMW` refuses a content file listed twice.
+    fn merge(&mut self, loaded: Vec<(PathBuf, ConfigFile)>) -> Result<(), ConfigError> {
+        let loaded_dirs: Vec<PathBuf> = loaded.iter().map(|(dir, _)| dir.clone()).collect();
+        let mut replaced: FxHashSet<String> = FxHashSet::default();
+        let mut kept_per_config = Vec::with_capacity(loaded.len());
+        for (_, file) in loaded.into_iter().rev() {
+            let kept: Vec<(SettingValue, usize)> = file
+                .settings
+                .into_iter()
+                .filter(|(setting, _)| match setting {
+                    SettingValue::SubConfiguration(dir) => {
+                        loaded_dirs.iter().any(|loaded| loaded == dir.parsed())
+                    }
+                    _ => list_name(setting).is_none_or(|list| !replaced.contains(list)),
+                })
+                .collect();
+            replaced.extend(file.replaces);
+            kept_per_config.push(kept);
+        }
+
+        let mut seen_content = FxHashSet::default();
+        let mut seen_groundcover = FxHashSet::default();
+        let mut seen_archives = FxHashSet::default();
+        for (setting, line) in kept_per_config.into_iter().rev().flatten() {
+            match &setting {
+                SettingValue::ContentFile(file) if !seen_content.insert(file.value().clone()) => {
+                    bail_config!(
+                        duplicate_content_file,
+                        file.value().clone(),
+                        file.meta().source_config(),
+                        line
+                    );
+                }
+                SettingValue::Groundcover(file)
+                    if !seen_groundcover.insert(file.value().clone()) =>
+                {
+                    bail_config!(
+                        duplicate_groundcover_file,
+                        file.value().clone(),
+                        file.meta().source_config(),
+                        line
+                    );
+                }
+                SettingValue::BethArchive(file) if !seen_archives.insert(file.value().clone()) => {
+                    bail_config!(
+                        duplicate_archive_file,
+                        file.value().clone(),
+                        file.meta().source_config(),
+                        line
+                    );
+                }
+                _ => {}
+            }
+            self.settings.push(setting);
+        }
 
         Ok(())
     }
@@ -2705,23 +2650,44 @@ mod tests {
     // Replace semantics
     // -----------------------------------------------------------------------
 
+    /// A root holding `root` that chains to a user config holding `user`.
+    fn load_chain(root: &str, user: &str) -> OpenMWConfiguration {
+        let root_dir = temp_dir();
+        let user_dir = temp_dir();
+        write_cfg(&user_dir, user);
+        write_cfg(&root_dir, &format!("{root}config={}\n", user_dir.display()));
+        OpenMWConfiguration::new(Some(root_dir)).unwrap()
+    }
+
     #[test]
     fn test_replace_content_clears_prior_plugins() {
-        let config = load("content=Old.esm\nreplace=content\ncontent=New.esm\n");
+        let config = load_chain("content=Old.esm\n", "replace=content\ncontent=New.esm\n");
         assert!(!config.has_content_file("Old.esm"));
         assert!(config.has_content_file("New.esm"));
     }
 
     #[test]
+    fn test_replace_content_keeps_the_files_own_plugins() {
+        // mergeComposingVariables applies a file's replace= to the files before it only.
+        let config = load("content=Old.esm\nreplace=content\ncontent=New.esm\n");
+        assert!(config.has_content_file("Old.esm"));
+        assert!(config.has_content_file("New.esm"));
+    }
+
+    #[test]
     fn test_replace_data_clears_prior_dirs() {
-        let config = load("data=/old\nreplace=data\ndata=/new\n");
+        let config = load_chain("data=/old\n", "data=/own\nreplace=data\ndata=/new\n");
         assert!(!config.has_data_dir("/old"));
+        assert!(config.has_data_dir("/own"));
         assert!(config.has_data_dir("/new"));
     }
 
     #[test]
     fn test_replace_keeps_comment_adjacency() {
-        let config = load("content=Old.esm\nreplace=content\n\n# keep me\ncontent=New.esm\n");
+        let config = load_chain(
+            "content=Old.esm\n",
+            "replace=content\n\n# keep me\ncontent=New.esm\n",
+        );
         let output = config.to_string();
 
         assert!(!output.contains("Old.esm"));
@@ -4128,17 +4094,17 @@ fallback=iGamma,1.00\n",
 
     #[test]
     fn test_indexes_coherent_after_replace_during_load() {
-        let config = load(
+        let config = load_chain(
             "content=Root.esm\n\
-replace=content\n\
-content=AfterReplace.esm\n\
 groundcover=GrassRoot.esp\n\
+fallback-archive=Root.bsa\n\
+fallback=iFoo,1\n",
+            "replace=content\n\
+content=AfterReplace.esm\n\
 replace=groundcover\n\
 groundcover=GrassAfter.esp\n\
-fallback-archive=Root.bsa\n\
 replace=fallback-archive\n\
 fallback-archive=After.bsa\n\
-fallback=iFoo,1\n\
 replace=fallback\n\
 fallback=iFoo,2\n",
         );

@@ -1,7 +1,7 @@
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::{ConfigChainStatus, EncodingSetting, OpenMWConfiguration};
+use openmw_config::{ConfigChainStatus, ConfigError, EncodingSetting, OpenMWConfiguration};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -70,18 +70,100 @@ fn test_replace_config_matches_exactly() {
 }
 
 #[test]
-fn test_replace_fallback_clears_prior_game_settings() {
-    let config = load("fallback=iOld,1\nreplace=fallback\nfallback=iNew,2\n");
-    assert!(config.get_game_setting("iOld").is_none());
-    assert_eq!(config.get_game_setting("iNew").unwrap().value(), "2");
+fn test_replace_is_per_file_and_keeps_the_files_own_entries() {
+    // OpenMW parses a whole file before mergeComposingVariables applies its replace= lines to
+    // the files before it: in a file alone they discard nothing, wherever they sit.
+    let config = load(
+        "content=Old.esm\nreplace=content\ncontent=New.esm\n\
+         groundcover=Old.esp\nreplace=groundcover\ngroundcover=New.esp\n\
+         fallback-archive=Old.bsa\nreplace=fallback-archive\nfallback-archive=New.bsa\n\
+         data=/old\nreplace=data\ndata=/new\n\
+         fallback=iOld,1\nfallback=iBoth,1\nreplace=fallback\nfallback=iBoth,2\n\
+         custom=old\nreplace=custom\ncustom=new\n",
+    );
+
+    assert_eq!(content(&config), ["Old.esm", "New.esm"]);
+    assert!(config.has_groundcover_file("Old.esp") && config.has_groundcover_file("New.esp"));
+    assert!(config.has_archive_file("Old.bsa") && config.has_archive_file("New.bsa"));
+    assert!(config.has_data_dir("/old") && config.has_data_dir("/new"));
+    assert_eq!(config.get_game_setting("iOld").unwrap().value(), "1");
+    assert_eq!(config.get_game_setting("iBoth").unwrap().value(), "2");
+    let custom: Vec<_> = config
+        .generic_settings_iter()
+        .map(|setting| setting.value().to_owned())
+        .collect();
+    assert_eq!(custom, ["old", "new"]);
 }
 
 #[test]
-fn test_replace_fallback_archive_clears_prior_archives() {
-    let config =
-        load("fallback-archive=Old.bsa\nreplace=fallback-archive\nfallback-archive=New.bsa\n");
-    assert!(!config.has_archive_file("Old.bsa"));
-    assert!(config.has_archive_file("New.bsa"));
+fn test_replace_discards_the_lists_of_every_file_before_it() {
+    let (_, config) = linear_chain(
+        "replace_per_file",
+        &[
+            "content=Root.esm\ngroundcover=Root.esp\nfallback-archive=Root.bsa\ndata=/root\nfallback=iRoot,1\nfallback=iKey,1\ncustom=root\n",
+            "content=Mid.esm\ngroundcover=Mid.esp\nfallback-archive=Mid.bsa\ndata=/mid\nfallback=iMid,1\ncustom=mid\n",
+            "content=User1.esp\nfallback=iKey,2\nreplace=content\nreplace=groundcover\nreplace=fallback-archive\nreplace=data\nreplace=fallback\nreplace=custom\ncontent=User2.esp\ncustom=user\n",
+        ],
+    );
+
+    assert_eq!(content(&config), ["User1.esp", "User2.esp"]);
+    assert_eq!(config.groundcover_iter().count(), 0);
+    assert_eq!(config.fallback_archives_iter().count(), 0);
+    assert_eq!(config.data_directories_iter().count(), 0);
+    assert!(config.get_game_setting("iRoot").is_none());
+    assert!(config.get_game_setting("iMid").is_none());
+    assert_eq!(config.get_game_setting("iKey").unwrap().value(), "2");
+    let custom: Vec<_> = config
+        .generic_settings_iter()
+        .map(|setting| setting.value().to_owned())
+        .collect();
+    assert_eq!(custom, ["user"]);
+}
+
+#[test]
+fn test_replace_leaves_the_files_after_it_alone() {
+    let (_, config) = linear_chain(
+        "replace_middle",
+        &[
+            "content=Root.esm\ndata=/root\n",
+            "content=Mid1.esm\nreplace=content\ncontent=Mid2.esm\n",
+            "content=User.esp\n",
+        ],
+    );
+
+    assert_eq!(content(&config), ["Mid1.esm", "Mid2.esm", "User.esp"]);
+    assert!(config.has_data_dir("/root"));
+}
+
+#[test]
+fn test_a_name_a_replace_discards_may_come_back() {
+    // The root's A.esm is gone before OpenMW looks for a name listed twice.
+    let (_, config) = linear_chain(
+        "replace_duplicate_ok",
+        &["content=A.esm\n", "content=A.esm\nreplace=content\n"],
+    );
+
+    assert_eq!(content(&config), ["A.esm"]);
+}
+
+#[test]
+fn test_a_name_twice_around_a_replace_in_one_file_is_a_duplicate() {
+    // Both stay, as OpenMW keeps both and then refuses a content file listed twice.
+    let dir = temp_dir("replace_duplicate_fails");
+    let cfg = write_cfg(&dir, "content=A.esm\nreplace=content\ncontent=A.esm\n");
+
+    match OpenMWConfiguration::new(Some(dir)) {
+        Err(ConfigError::DuplicateContentFile {
+            file,
+            config_path,
+            line,
+        }) => {
+            assert_eq!(file, "A.esm");
+            assert_eq!(config_path, cfg);
+            assert_eq!(line, Some(3));
+        }
+        other => panic!("expected DuplicateContentFile, got {other:?}"),
+    }
 }
 
 /// A root config holding `Root.bsa` that chains to a user config with `user`'s contents; the
@@ -116,13 +198,6 @@ fn test_replace_names_the_archive_option_as_openmw_does() {
         "replace=fallback-archives\nfallback-archive=User.bsa\n",
     );
     assert_eq!(archives, ["Root.bsa", "User.bsa"]);
-}
-
-#[test]
-fn test_replace_groundcover_clears_prior_groundcover() {
-    let config = load("groundcover=Old.esp\nreplace=groundcover\ngroundcover=New.esp\n");
-    assert!(!config.has_groundcover_file("Old.esp"));
-    assert!(config.has_groundcover_file("New.esp"));
 }
 
 #[test]

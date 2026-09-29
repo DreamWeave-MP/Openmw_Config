@@ -1,190 +1,211 @@
+//! Random chains with random `replace=` lines, loaded by the crate and by a model of `OpenMW`'s
+//! own reading: `ConfigurationManager::readConfiguration` drops the configs before a
+//! `replace=config` except the root, then `mergeComposingVariables` merges the files from the
+//! last to the first, each list entry kept unless a file after its own names the list in
+//! `replace=`, exactly as written.
+
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::OpenMWConfiguration;
+use openmw_config::{FileSetting, OpenMWConfiguration};
 use proptest::prelude::*;
 use std::collections::HashSet;
 use std::fmt::Write as _;
+use std::path::PathBuf;
 
-fn unique_preserve_order(values: Vec<String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
+/// The lists a line adds to, by the option name `replace=` gives each.
+const LISTS: [&str; 6] = [
+    "content",
+    "groundcover",
+    "fallback-archive",
+    "data",
+    "fallback",
+    "custom",
+];
 
-    for value in values {
-        if seen.insert(value.clone()) {
-            out.push(value);
+/// What a `replace=` line names: every list, lists in another case or misspelled, single
+/// values, and `config`.
+const REPLACED: [&str; 12] = [
+    "content",
+    "groundcover",
+    "fallback-archive",
+    "data",
+    "fallback",
+    "custom",
+    "Content",
+    "DATA",
+    "fallback-archives",
+    "resources",
+    "encoding",
+    "config",
+];
+
+#[derive(Debug, Clone)]
+enum Line {
+    /// An entry of `LISTS[list]`.
+    Entry(usize),
+    /// `replace=REPLACED[name]`.
+    Replace(usize),
+}
+
+fn line() -> impl Strategy<Value = Line> {
+    prop_oneof![
+        3 => (0..LISTS.len()).prop_map(Line::Entry),
+        1 => (0..REPLACED.len()).prop_map(Line::Replace),
+    ]
+}
+
+fn chain_files() -> impl Strategy<Value = Vec<Vec<Line>>> {
+    prop::collection::vec(prop::collection::vec(line(), 0..10), 1..5)
+}
+
+/// The value of the entry on line `index` of file `file`: unique across the chain, so no name
+/// is listed twice.
+fn entry_value(list: &str, file: usize, index: usize) -> String {
+    match list {
+        "content" => format!("F{file}L{index}.esp"),
+        "groundcover" => format!("G{file}L{index}.esp"),
+        "fallback-archive" => format!("A{file}L{index}.bsa"),
+        "data" => format!("/data/f{file}l{index}"),
+        "fallback" => format!("iF{file}L{index},{index}"),
+        _ => format!("f{file}l{index}"),
+    }
+}
+
+/// How `lists` reads an entry back: `fallback=` entries by key, the rest by value.
+fn read_back(list: &str, value: String) -> String {
+    if list == "fallback" {
+        value.split(',').next().unwrap_or_default().to_owned()
+    } else {
+        value
+    }
+}
+
+/// A chain of these files, root first, each ending in a `config=` line naming the next.
+fn write_chain(files: &[Vec<Line>]) -> Vec<PathBuf> {
+    let dirs: Vec<PathBuf> = files.iter().map(|_| temp_dir("prop_replace")).collect();
+    for (file, lines) in files.iter().enumerate() {
+        let mut text = String::new();
+        for (index, line) in lines.iter().enumerate() {
+            match line {
+                Line::Entry(list) => {
+                    let value = entry_value(LISTS[*list], file, index);
+                    writeln!(text, "{}={value}", LISTS[*list]).unwrap();
+                }
+                Line::Replace(name) => writeln!(text, "replace={}", REPLACED[*name]).unwrap(),
+            }
+        }
+        if let Some(next) = dirs.get(file + 1) {
+            writeln!(text, "config={}", next.display()).unwrap();
+        }
+        write_cfg(&dirs[file], &text);
+    }
+    dirs
+}
+
+/// Each list as `OpenMW`'s code reads the chain, `fallback=` keys sorted.
+fn model(files: &[Vec<Line>]) -> Vec<Vec<String>> {
+    let replace_lines = |file: usize| {
+        files[file].iter().filter_map(|line| match line {
+            Line::Replace(name) => Some(REPLACED[*name]),
+            Line::Entry(_) => None,
+        })
+    };
+
+    // readConfiguration: replace=config after the root drops the configs before it but the
+    // root.
+    let mut loaded = vec![0];
+    for file in 1..files.len() {
+        if loaded.len() > 1 && replace_lines(file).any(|name| name == "config") {
+            loaded.truncate(1);
+        }
+        loaded.push(file);
+    }
+
+    // mergeComposingVariables, from the last file to the first.
+    let mut replaced: HashSet<&str> = HashSet::new();
+    let mut kept_per_file = Vec::new();
+    for &file in loaded.iter().rev() {
+        let kept: Vec<(usize, String)> = files[file]
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| match line {
+                Line::Entry(list) if !replaced.contains(LISTS[*list]) => Some((
+                    *list,
+                    read_back(LISTS[*list], entry_value(LISTS[*list], file, index)),
+                )),
+                _ => None,
+            })
+            .collect();
+        kept_per_file.push(kept);
+        replaced.extend(replace_lines(file));
+    }
+
+    let mut lists = vec![Vec::new(); LISTS.len()];
+    for kept in kept_per_file.into_iter().rev() {
+        for (list, value) in kept {
+            lists[list].push(value);
         }
     }
-
-    out
+    lists[4].sort();
+    lists
 }
 
-fn load_cfg(tag: &str, cfg: &str) -> OpenMWConfiguration {
-    let dir = temp_dir(tag);
-    write_cfg(&dir, cfg);
-    OpenMWConfiguration::new(Some(dir)).unwrap()
-}
-
-fn content_values(config: &OpenMWConfiguration) -> Vec<String> {
-    config
-        .content_files_iter()
-        .map(|f| f.value().clone())
-        .collect()
-}
-
-fn archive_values(config: &OpenMWConfiguration) -> Vec<String> {
-    config
-        .fallback_archives_iter()
-        .map(|f| f.value().clone())
-        .collect()
-}
-
-fn groundcover_values(config: &OpenMWConfiguration) -> Vec<String> {
-    config
-        .groundcover_iter()
-        .map(|f| f.value().clone())
-        .collect()
-}
-
-fn fallback_map(config: &OpenMWConfiguration) -> std::collections::HashMap<String, String> {
-    let mut map = std::collections::HashMap::new();
-    for setting in config.game_settings() {
-        map.insert(setting.key().clone(), setting.value().to_string());
-    }
-    map
+/// Each list as the crate holds it, `fallback=` keys sorted: `game_settings()` yields the
+/// latest first.
+fn lists(config: &OpenMWConfiguration) -> Vec<Vec<String>> {
+    let names = |files: Vec<&FileSetting>| -> Vec<String> {
+        files.into_iter().map(|file| file.value().clone()).collect()
+    };
+    let mut fallback: Vec<String> = config
+        .game_settings()
+        .map(|setting| setting.key().clone())
+        .collect();
+    fallback.sort();
+    vec![
+        names(config.content_files_iter().collect()),
+        names(config.groundcover_iter().collect()),
+        names(config.fallback_archives_iter().collect()),
+        config
+            .data_directories_iter()
+            .map(|dir| dir.original().clone())
+            .collect(),
+        fallback,
+        config
+            .generic_settings_iter()
+            .filter(|setting| setting.key() == "custom")
+            .map(|setting| setting.value().to_owned())
+            .collect(),
+    ]
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(48))]
+    #![proptest_config(ProptestConfig::with_cases(96))]
 
     #[test]
-    fn prop_replace_content_resets_prior_content_only(
-        pre_content in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esm", 0..12),
-        post_content in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esm", 0..12),
-        archives in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.bsa", 0..12),
-        ground in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esp", 0..12),
-        fallback in prop::collection::vec(("[A-Za-z][A-Za-z0-9_]{0,20}", "[A-Za-z][A-Za-z0-9]{0,6}"), 0..12),
-    ) {
-        let pre_content = unique_preserve_order(pre_content);
-        let post_content = unique_preserve_order(post_content);
-        let archives = unique_preserve_order(archives);
-        let ground = unique_preserve_order(ground);
+    fn prop_a_chain_loads_as_openmw_merges_it(files in chain_files()) {
+        let dirs = write_chain(&files);
+        let config = OpenMWConfiguration::new(Some(dirs[0].clone())).unwrap();
 
-        let mut cfg = String::new();
-        for item in &pre_content {
-            writeln!(&mut cfg, "content={item}").expect("writing to String cannot fail");
-        }
-        for item in &archives {
-            writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
-        }
-        for item in &ground {
-            writeln!(&mut cfg, "groundcover={item}").expect("writing to String cannot fail");
-        }
-        for (k, v) in &fallback {
-            writeln!(&mut cfg, "fallback={k},{v}").expect("writing to String cannot fail");
-        }
-
-        cfg.push_str("replace=content\n");
-        for item in &post_content {
-            writeln!(&mut cfg, "content={item}").expect("writing to String cannot fail");
-        }
-
-        let loaded = load_cfg("prop_replace_content", &cfg);
-
-        prop_assert_eq!(content_values(&loaded), post_content);
-        prop_assert_eq!(archive_values(&loaded), archives);
-        prop_assert_eq!(groundcover_values(&loaded), ground);
+        prop_assert_eq!(lists(&config), model(&files));
+        prop_assert_eq!(config.user_config_path(), dirs[dirs.len() - 1].clone());
     }
 
     #[test]
-    fn prop_replace_fallback_resets_prior_fallback_only(
-        pre_fallback in prop::collection::vec(("[A-Za-z][A-Za-z0-9_]{0,20}", "[A-Za-z][A-Za-z0-9]{0,6}"), 0..12),
-        post_fallback in prop::collection::vec(("[A-Za-z][A-Za-z0-9_]{0,20}", "[A-Za-z][A-Za-z0-9]{0,6}"), 0..12),
-        content in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esm", 0..12),
-        archives in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.bsa", 0..12),
-    ) {
-        let content = unique_preserve_order(content);
-        let archives = unique_preserve_order(archives);
+    fn prop_save_user_writes_what_reloads_as_it_was(files in chain_files()) {
+        let dirs = write_chain(&files);
+        let mut config = OpenMWConfiguration::new(Some(dirs[0].clone())).unwrap();
 
-        let mut cfg = String::new();
-        for item in &content {
-            writeln!(&mut cfg, "content={item}").expect("writing to String cannot fail");
+        // Take out the first plugin, which may be a parent's, replace a list, and add a plugin.
+        let first = config.content_files_iter().next().map(|file| file.value().clone());
+        if let Some(first) = first {
+            config.remove_content_file(&first);
         }
-        for item in &archives {
-            writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
-        }
-        for (k, v) in &pre_fallback {
-            writeln!(&mut cfg, "fallback={k},{v}").expect("writing to String cannot fail");
-        }
+        config.set_generic_settings("custom", Some(vec!["user".to_owned()]));
+        config.add_content_file("Added.esp").unwrap();
+        config.save_user().unwrap();
 
-        cfg.push_str("replace=fallback\n");
-        for (k, v) in &post_fallback {
-            writeln!(&mut cfg, "fallback={k},{v}").expect("writing to String cannot fail");
-        }
-
-        let loaded = load_cfg("prop_replace_fallback", &cfg);
-
-        let mut expected = std::collections::HashMap::new();
-        for (k, v) in &post_fallback {
-            expected.insert(k.clone(), v.clone());
-        }
-
-        prop_assert_eq!(fallback_map(&loaded), expected);
-        prop_assert_eq!(content_values(&loaded), content);
-        prop_assert_eq!(archive_values(&loaded), archives);
-    }
-
-    #[test]
-    fn prop_replace_groundcover_resets_prior_groundcover_only(
-        pre_ground in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esp", 0..12),
-        post_ground in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esp", 0..12),
-        content in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esm", 0..12),
-    ) {
-        let pre_ground = unique_preserve_order(pre_ground);
-        let post_ground = unique_preserve_order(post_ground);
-        let content = unique_preserve_order(content);
-
-        let mut cfg = String::new();
-        for item in &content {
-            writeln!(&mut cfg, "content={item}").expect("writing to String cannot fail");
-        }
-        for item in &pre_ground {
-            writeln!(&mut cfg, "groundcover={item}").expect("writing to String cannot fail");
-        }
-        cfg.push_str("replace=groundcover\n");
-        for item in &post_ground {
-            writeln!(&mut cfg, "groundcover={item}").expect("writing to String cannot fail");
-        }
-
-        let loaded = load_cfg("prop_replace_ground", &cfg);
-        prop_assert_eq!(groundcover_values(&loaded), post_ground);
-        prop_assert_eq!(content_values(&loaded), content);
-    }
-
-    #[test]
-    fn prop_replace_fallback_archives_resets_prior_archives_only(
-        pre_archives in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.bsa", 0..12),
-        post_archives in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.bsa", 0..12),
-        content in prop::collection::vec("[A-Za-z0-9_-]{1,24}\\.esm", 0..12),
-    ) {
-        let pre_archives = unique_preserve_order(pre_archives);
-        let post_archives = unique_preserve_order(post_archives);
-        let content = unique_preserve_order(content);
-
-        let mut cfg = String::new();
-        for item in &content {
-            writeln!(&mut cfg, "content={item}").expect("writing to String cannot fail");
-        }
-        for item in &pre_archives {
-            writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
-        }
-        cfg.push_str("replace=fallback-archive\n");
-        for item in &post_archives {
-            writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
-        }
-
-        let loaded = load_cfg("prop_replace_archives", &cfg);
-        prop_assert_eq!(archive_values(&loaded), post_archives);
-        prop_assert_eq!(content_values(&loaded), content);
+        let reloaded = OpenMWConfiguration::new(Some(dirs[0].clone())).unwrap();
+        prop_assert_eq!(lists(&reloaded), lists(&config));
     }
 }
