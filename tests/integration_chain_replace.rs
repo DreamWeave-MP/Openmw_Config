@@ -70,6 +70,42 @@ fn test_replace_config_matches_exactly() {
 }
 
 #[test]
+fn test_replace_fallback_clears_prior_game_settings() {
+    let (_, config) = linear_chain(
+        "replace_fallback",
+        &["fallback=iOld,1\n", "replace=fallback\nfallback=iNew,2\n"],
+    );
+    assert!(config.get_game_setting("iOld").is_none());
+    assert_eq!(config.get_game_setting("iNew").unwrap().value(), "2");
+}
+
+#[test]
+fn test_replace_fallback_archive_clears_prior_archives() {
+    let (_, config) = linear_chain(
+        "replace_archives",
+        &[
+            "fallback-archive=Old.bsa\n",
+            "replace=fallback-archive\nfallback-archive=New.bsa\n",
+        ],
+    );
+    assert!(!config.has_archive_file("Old.bsa"));
+    assert!(config.has_archive_file("New.bsa"));
+}
+
+#[test]
+fn test_replace_groundcover_clears_prior_groundcover() {
+    let (_, config) = linear_chain(
+        "replace_groundcover",
+        &[
+            "groundcover=Old.esp\n",
+            "replace=groundcover\ngroundcover=New.esp\n",
+        ],
+    );
+    assert!(!config.has_groundcover_file("Old.esp"));
+    assert!(config.has_groundcover_file("New.esp"));
+}
+
+#[test]
 fn test_replace_is_per_file_and_keeps_the_files_own_entries() {
     // OpenMW parses a whole file before mergeComposingVariables applies its replace= lines to
     // the files before it: in a file alone they discard nothing, wherever they sit.
