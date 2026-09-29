@@ -48,8 +48,8 @@
 //! directory values and omitting chain-control entries such as `config=` and `replace=`.
 
 mod config;
-#[cfg(feature = "lua")]
-pub mod lua;
+#[cfg(feature = "luau")]
+pub mod luau;
 mod platform_paths;
 
 pub use config::{
@@ -61,9 +61,6 @@ pub use config::{
     gamesetting::GameSettingType,
     genericsetting::GenericSetting,
 };
-
-#[cfg(feature = "lua")]
-pub use lua::create_lua_module;
 
 pub(crate) trait GameSetting: std::fmt::Display {
     fn meta(&self) -> &GameSettingMeta;

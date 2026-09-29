@@ -1,0 +1,28 @@
+# The verified toolchain (TOOLCHAIN.md): clang compiles Luau, the Rust side emits bitcode, and
+# lld runs one thin LTO over both languages. build.rs refuses anything else unless
+# L3I_UNVERIFIED_TOOLCHAIN is set (docs.rs is exempt). Environment variables override every
+# entry here. Linux is the measured configuration; the macOS and Windows entries follow the
+# same shape (Homebrew or release LLVM on macOS, clang-cl plus lld-link on MSVC) and are what
+# CI runs.
+[env]
+CXX = "clang++"
+CXX_x86_64-pc-windows-msvc = "clang-cl"
+CXX_aarch64-pc-windows-msvc = "clang-cl"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=lld-link"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=lld-link"]

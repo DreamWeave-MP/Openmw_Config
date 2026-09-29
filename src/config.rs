@@ -300,6 +300,18 @@ struct ListIndex {
     generic: Vec<usize>,
 }
 
+/// A list kind whose entries the bindings read by position.
+#[cfg(feature = "luau")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListKind {
+    Content,
+    Groundcover,
+    Archives,
+    DataDirectories,
+    SubConfigs,
+    Generic,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ConfigChainStatus {
     Loaded,
@@ -394,6 +406,45 @@ impl OpenMWConfiguration {
                 SettingValue::DataDirectory(dir) | SettingValue::SubConfiguration(dir) => Some(dir),
                 _ => None,
             })
+    }
+
+    /// The positions of every `kind` entry in the flat settings list, in definition order.
+    #[cfg(feature = "luau")]
+    pub(crate) fn list_positions(&self, kind: ListKind) -> &[usize] {
+        match kind {
+            ListKind::Content => &self.lists.content,
+            ListKind::Groundcover => &self.lists.groundcover,
+            ListKind::Archives => &self.lists.archives,
+            ListKind::DataDirectories => &self.lists.data_dirs,
+            ListKind::SubConfigs => &self.lists.sub_configs,
+            ListKind::Generic => &self.lists.generic,
+        }
+    }
+
+    /// The setting at `index` of the flat list.
+    #[cfg(feature = "luau")]
+    pub(crate) fn setting_at(&self, index: usize) -> Option<&SettingValue> {
+        self.settings.get(index)
+    }
+
+    /// The flat-list position of the effective (last-defined) `fallback=` entry for `key`.
+    #[cfg(feature = "luau")]
+    pub(crate) fn game_setting_position(&self, key: &str) -> Option<usize> {
+        self.ensure_game_setting_indexes();
+        self.indexed_game_setting_last.borrow().get(key).copied()
+    }
+
+    /// The flat-list position of the `index`th entry [`Self::game_settings`] yields.
+    #[cfg(feature = "luau")]
+    pub(crate) fn game_setting_position_at(&self, index: usize) -> Option<usize> {
+        self.ensure_game_setting_indexes();
+        self.indexed_game_setting_order.borrow().get(index).copied()
+    }
+
+    /// The `index`th chain entry [`Self::config_chain`] yields.
+    #[cfg(feature = "luau")]
+    pub(crate) fn chain_entry(&self, index: usize) -> Option<&ConfigChainEntry> {
+        self.chain.get(index)
     }
 
     /// How many `content=` entries there are.

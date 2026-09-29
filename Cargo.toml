@@ -17,18 +17,22 @@ edition = "2024"
 rust-version = "1.88"
 
 [dependencies]
-mlua = { version = "0.12.1", optional = true, default-features = false }
+# The Luau bindings are an l3i extension; a path dependency for the migration campaign, the
+# crates.io version at release.
+l3i = { path = "../dream-binder", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
 
 [features]
 default = []
-lua = ["dep:mlua"]
-standalone-lua = ["lua", "mlua/luau"]
+# The Luau bindings: `openmw_config::luau::extension()` for an l3i runtime plan.
+luau = ["dep:l3i"]
+# Luau's analysis frontend through l3i, for this crate's own type-definition gate in `tests/`.
+luau-analysis = ["luau", "l3i/analysis"]
 
 [package.metadata.docs.rs]
-features = ["standalone-lua"]
+features = ["luau"]
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
@@ -41,4 +45,4 @@ harness = false
 [[bench]]
 name = "luau_boundary"
 harness = false
-required-features = ["standalone-lua"]
+required-features = ["luau"]
