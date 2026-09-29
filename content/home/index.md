@@ -25,7 +25,7 @@ chain alone.
 ## What it does
 
 - **Loads like OpenMW.** Root discovery through `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, the
-  executable's directory and the global config; `config=` level by level; every `replace=` form;
+  executable's directory and the global config; `config=` depth first, as OpenMW's loader walks it; every `replace=` form;
   the `?local?`, `?global?`, `?userdata?` and `?userconfig?` tokens, Flatpak included.
 - **Saves without damage.** Comments, unknown keys and each value's own spelling survive a round
   trip. Every write goes to a temporary file beside the target, which then replaces it.

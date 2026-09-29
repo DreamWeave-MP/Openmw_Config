@@ -100,12 +100,12 @@ const READ_SURFACE_SCRIPT: &str = r##"
     local chain = cfg:configChain()
     assert(#chain == 3)
     assert(chain[1].status == "loaded")
-    assert(chain[2].status == "skippedMissing")
-    assert(chain[3].status == "loaded")
+    assert(chain[2].status == "loaded")
+    assert(chain[3].status == "skippedMissing")
     assert(type(chain[1].depth) == "number")
-    assert(chain[1].depth == 0 and chain[2].depth == 1)
+    assert(chain[1].depth == 0 and chain[2].depth == 1 and chain[3].depth == 1)
     assert(type(chain[1].path) == "string")
-    assert(tostring(chain[2]):find("skippedMissing", 1, true))
+    assert(tostring(chain[3]):find("skippedMissing", 1, true))
     local seen = 0
     for i, entry in chain do assert(entry.path == chain[i].path) seen += 1 end
     assert(seen == 3)

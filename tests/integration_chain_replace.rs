@@ -337,10 +337,54 @@ fn test_config_chain_reports_loaded_and_missing_entries() {
         ),
     );
 
-    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
-    let chain: Vec<_> = config.config_chain().cloned().collect();
+    let config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    let chain: Vec<_> = config
+        .config_chain()
+        .map(|entry| (entry.path().to_path_buf(), entry.status().clone()))
+        .collect();
 
-    assert_eq!(chain[0].status(), &ConfigChainStatus::Loaded);
-    assert_eq!(chain[1].status(), &ConfigChainStatus::SkippedMissing);
-    assert_eq!(chain[2].status(), &ConfigChainStatus::Loaded);
+    // In the order readConfiguration tries them: each config= entry when the walk reaches it.
+    assert_eq!(
+        chain,
+        [
+            (root_dir.join("openmw.cfg"), ConfigChainStatus::Loaded),
+            (loaded_dir.join("openmw.cfg"), ConfigChainStatus::Loaded),
+            (
+                missing_dir.join("openmw.cfg"),
+                ConfigChainStatus::SkippedMissing
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_config_entries_load_depth_first() {
+    // readConfiguration pushes a file's config= entries on a stack, first on top, so the first
+    // one and everything it names load before the second.
+    let root_dir = temp_dir("depth_first_root");
+    let first_dir = temp_dir("depth_first_first");
+    let second_dir = temp_dir("depth_first_second");
+    let nested_dir = temp_dir("depth_first_nested");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Root.esm\nconfig={}\nconfig={}\n",
+            first_dir.display(),
+            second_dir.display()
+        ),
+    );
+    write_cfg(
+        &first_dir,
+        &format!("content=First.esp\nconfig={}\n", nested_dir.display()),
+    );
+    write_cfg(&second_dir, "content=Second.esp\n");
+    write_cfg(&nested_dir, "content=Nested.esp\n");
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+
+    assert_eq!(
+        content(&config),
+        ["Root.esm", "First.esp", "Nested.esp", "Second.esp"]
+    );
+    assert_eq!(config.user_config_path(), second_dir);
 }

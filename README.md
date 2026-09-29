@@ -63,7 +63,7 @@ surface and the breaks.
 ## What it does
 
 - Root discovery through `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, the executable's directory and the
-  global config; `config=` level by level; every `replace=` form; the `?local?`, `?global?`,
+  global config; `config=` depth first, as OpenMW's loader walks it; every `replace=` form; the `?local?`, `?global?`,
   `?userdata?` and `?userconfig?` tokens, Flatpak included.
 - Round trips that keep comments, unknown keys and each value's spelling, written through a
   temporary file.

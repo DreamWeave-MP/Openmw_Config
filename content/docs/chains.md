@@ -24,8 +24,15 @@ Each line is `key=value`, split at the first `=`. Spaces around the key and the 
 ## Following config=
 
 A file's `config=` entries are read after the rest of the file, and the files they name are loaded
-level by level: every file named by the root, in order, before any file those name. The last file
-loaded is the user's config.
+depth first: a file's first `config=`, and every file that one names, before its second. The last
+file loaded is the user's config. A root naming `a` then `b`, where `a` names `c`, loads `root`,
+`a`, `c`, `b`, and `b` is the user's config.
+
+That is what OpenMW's loader, `ConfigurationManager::readConfiguration`, does: it keeps the
+`config=` entries still to load on a stack. OpenMW's
+[paths documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources)
+describes the same example level by level, `root`, `a`, `b`, `c`. Where the two disagree, the crate
+does what OpenMW's code does.
 
 - A `config=` directory without an `openmw.cfg` is skipped, not an error. The chain records it as
   skipped.

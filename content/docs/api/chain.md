@@ -13,8 +13,8 @@ kind = "api"
 
 {{ api_signature(value="fn config_chain(&self) -> impl Iterator<Item = &ConfigChainEntry>") }}
 
-Every `openmw.cfg` the loader tried, in the order it tried them: the root first, then each level of
-`config=` entries. Files a `replace=config` later discarded are still listed, because they were
+Every `openmw.cfg` the loader tried, in the order it tried them: the root first, then depth first
+through the `config=` entries, as OpenMW walks them. Files a `replace=config` later discarded are still listed, because they were
 read. A configuration from `new_empty()` has none.
 
 ```rust
@@ -37,8 +37,10 @@ fn main() -> Result<(), ConfigError> {
 
 {{ api_signature(value="fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting>") }}
 
-The `config=` entries still in effect, in load order, as directories. Skipped entries are not here,
-and neither are entries a `replace=config` discarded. The last one is the user's config directory.
+The `config=` entries still in effect, as directories: file by file in the order the files loaded,
+each file's in its own order. Skipped entries are not here, and neither are entries a
+`replace=config` discarded. The chain loads depth first, so the last entry need not be the user's
+config: `user_config_path()` is.
 
 ## ConfigChainEntry
 

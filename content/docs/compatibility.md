@@ -30,10 +30,13 @@ their names, arguments and results, and the rows they return keep their shapes:
 
 ## Behaving like OpenMW
 
-The crate aims to read a chain exactly as OpenMW does, following the
+The crate aims to read a chain exactly as OpenMW does: discovery, `config=` traversal, `replace=`
+and tokens, as the
 [OpenMW paths documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html)
-for discovery, `config=` traversal, `replace=` and tokens. Where it differs from OpenMW, that is a
-bug: [report it](https://github.com/DreamWeave-MP/Openmw_Config/issues) with the files involved.
+describes them. Where that documentation and OpenMW's code disagree, the crate does what the code
+does: `config=` entries load depth first, as `ConfigurationManager::readConfiguration` walks them,
+not level by level. Where the crate differs from OpenMW, that is a bug:
+[report it](https://github.com/DreamWeave-MP/Openmw_Config/issues) with the files involved.
 
 ## What is tested
 

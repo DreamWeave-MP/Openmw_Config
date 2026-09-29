@@ -6,7 +6,7 @@
   "direction": "horizontal",
   "nodes": [
     { "id": "root", "kind": "source", "title": "Root openmw.cfg", "detail": "Beside the executable, or the platform's global config. A package's root usually ends with config=\"?userconfig?\"." },
-    { "id": "chain", "kind": "tool", "title": "The chain", "detail": "config= entries load level by level. replace= discards what came before, tokens resolve, relative paths anchor to their own file." },
+    { "id": "chain", "kind": "tool", "title": "The chain", "detail": "config= entries load depth first, as OpenMW's loader walks them. replace= discards what came before, tokens resolve, relative paths anchor to their own file." },
     { "id": "model", "kind": "result", "title": "OpenMWConfiguration", "detail": "Content files, data directories, archives, fallback settings and unknown keys, each tagged with its source file and comment." },
     { "id": "user", "kind": "source", "role": "support", "title": "User openmw.cfg", "detail": "The last file loaded: the one the launcher edits, and the one save_user() writes." },
     { "id": "lua", "kind": "service", "role": "support", "title": "Lua scripts", "detail": "A Rust host registers openmwConfig, and scripts get the same model through a camelCase API." }

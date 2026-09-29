@@ -10,7 +10,7 @@ use std::{
 
 use crate::{ConfigError, GameSetting};
 use error::bail_config;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 pub mod directorysetting;
 use directorysetting::DirectorySetting;
@@ -304,6 +304,9 @@ pub struct OpenMWConfiguration {
     /// because it never writes the parents' files and a reload would otherwise bring back what
     /// they said.
     user_replaces: Vec<ListOption>,
+    /// The directory of the last config the chain loaded after the root, which `OpenMW` takes
+    /// as the user's; `None` when the root is the only one.
+    user_config_dir: Option<PathBuf>,
 }
 
 /// A list option `replace=` can discard, which a user config may have to replace.
@@ -881,26 +884,24 @@ impl OpenMWConfiguration {
         }
     }
 
-    /// In order of priority, the list of all openmw.cfg files which were loaded by the configuration chain after the root.
-    /// If the root openmw.cfg is different than the user one, this list will contain the user openmw.cfg as its last element.
-    /// If the root and user openmw.cfg are the *same*, then this list will be empty and the root config should be considered the user config.
-    /// Otherwise, if one wishes to get the contents of the user configuration specifically, construct a new `OpenMWConfiguration` from the last `sub_config`.
+    /// The directory of the user's `openmw.cfg`: the last config the chain loaded, or the root's
+    /// directory when it loaded no other. That is the file `OpenMW` and its launcher write, and
+    /// the one [`Self::save_user`] writes; [`Self::user_config`] loads it on its own.
     ///
-    /// Openmw.cfg files are added in declaration order, traversing the `config=` chain level-by-level.
-    /// In a branching chain, sibling `config=` entries are processed before grandchildren.
+    /// `config=` entries load depth first, as `OpenMW`'s `readConfiguration` walks them: a file's
+    /// first `config=` and every file that one names load before its second. A root naming `a`
+    /// then `b`, where `a` names `c`, loads `root`, `a`, `c`, `b`, and `b` is the user's.
+    /// `OpenMW`'s paths documentation describes that example level by level (`root`, `a`, `b`,
+    /// `c`); this crate does what `OpenMW`'s code does.
     /// If `replace=config` appears in a file, any earlier settings and `config=` entries from that
     /// same parse scope are discarded before continuing, matching `OpenMW`'s reset semantics.
-    /// The highest-priority openmw.cfg loaded (the last one!) is considered the user openmw.cfg,
-    /// and will be the one which is modifiable by OpenMW-Launcher and `OpenMW` proper.
     ///
-    /// See <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources> for examples and further explanation of multiple config sources.
-    ///
-    /// Path to the highest-level configuration *directory*
+    /// See <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources>
+    /// for the configuration sources.
     #[must_use]
     pub fn user_config_path(&self) -> PathBuf {
-        self.sub_configs()
-            .map(|setting| setting.parsed().to_path_buf())
-            .last()
+        self.user_config_dir
+            .clone()
             .unwrap_or_else(|| self.root_config_dir())
     }
 
@@ -1445,7 +1446,9 @@ impl OpenMWConfiguration {
         failure.map_or(Ok(()), Err)
     }
 
-    /// Iterates all `config=` sub-configuration entries in effective definition order.
+    /// Iterates the `config=` entries whose directories hold an `openmw.cfg`, file by file in the
+    /// order the files loaded, each file's in its own order. The chain loads depth first, so the
+    /// last entry here need not be the user's config: [`Self::user_config_path`] is.
     ///
     /// `replace=config` clears prior `config=` entries in the current parse scope, so this iterator
     /// only exposes sub-configurations that remain in the effective chain.
@@ -1453,7 +1456,8 @@ impl OpenMWConfiguration {
         self.directories_at(&self.lists.sub_configs)
     }
 
-    /// Returns the observed configuration-chain traversal in parser order.
+    /// Returns the observed configuration-chain traversal in the order the loader tried each
+    /// file: the root, then depth first through the `config=` entries, as `OpenMW` walks them.
     ///
     /// Includes successfully loaded config files and `config=` targets that were skipped
     /// because no `openmw.cfg` exists in that directory.
@@ -1521,8 +1525,10 @@ impl OpenMWConfiguration {
 
     #[allow(clippy::too_many_lines)]
     fn load(&mut self, root_config: &Path) -> Result<(), ConfigError> {
-        let mut pending_configs = VecDeque::new();
-        pending_configs.push_back((root_config.to_path_buf(), 0usize));
+        // The config= entries still to load, the next on top. ConfigurationManager's
+        // readConfiguration walks them with a stack, so a file's first config= and everything it
+        // names load before its second.
+        let mut pending_configs = vec![(root_config.to_path_buf(), 0usize)];
 
         let mut seen_content: HashSet<String> = self
             .settings
@@ -1549,16 +1555,27 @@ impl OpenMWConfiguration {
             })
             .collect();
 
-        while let Some((config_dir, depth)) = pending_configs.pop_front() {
+        while let Some((config_dir, depth)) = pending_configs.pop() {
+            if !config_dir.exists() {
+                if depth == 0 {
+                    bail_config!(cannot_find, config_dir);
+                }
+                util::debug_log_lazy(|| {
+                    format!("Skipping {} as it does not exist!", config_dir.display())
+                });
+                self.chain.push(ConfigChainEntry {
+                    path: config_dir,
+                    depth,
+                    status: ConfigChainStatus::SkippedMissing,
+                });
+                continue;
+            }
+
             if depth > Self::MAX_CONFIG_DEPTH {
                 bail_config!(max_depth_exceeded, config_dir);
             }
 
             util::debug_log_lazy(|| format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
-
-            if !config_dir.exists() {
-                bail_config!(cannot_find, config_dir);
-            }
 
             let cfg_file_path = if config_dir.is_dir() {
                 config_dir.join("openmw.cfg")
@@ -1571,6 +1588,9 @@ impl OpenMWConfiguration {
                 depth,
                 status: ConfigChainStatus::Loaded,
             });
+            if depth > 0 {
+                self.user_config_dir = cfg_file_path.parent().map(Path::to_path_buf);
+            }
 
             let lines = read_to_string(&cfg_file_path)?;
 
@@ -1790,29 +1810,20 @@ impl OpenMWConfiguration {
                 }
             }
 
+            let mut children = Vec::with_capacity(sub_configs.len());
             for (subconfig_path, mut subconfig_comment) in sub_configs {
                 let mut comment = std::mem::take(&mut subconfig_comment);
                 let setting =
                     DirectorySetting::new(subconfig_path, cfg_file_path.clone(), &mut comment);
                 let subconfig_file = setting.parsed().join("openmw.cfg");
 
-                if std::fs::metadata(&subconfig_file).is_ok() {
+                if subconfig_file.exists() {
                     self.settings.push(SettingValue::SubConfiguration(setting));
-                    pending_configs.push_back((subconfig_file, depth + 1));
-                } else {
-                    self.chain.push(ConfigChainEntry {
-                        path: subconfig_file,
-                        depth: depth + 1,
-                        status: ConfigChainStatus::SkippedMissing,
-                    });
-                    util::debug_log_lazy(|| {
-                        format!(
-                            "Skipping parsing of {} as this directory does not actually contain an openmw.cfg!",
-                            setting.parsed().display(),
-                        )
-                    });
                 }
+                children.push((subconfig_file, depth + 1));
             }
+            // The first on top, as readConfiguration's addExtraConfigDirs pushes them.
+            pending_configs.extend(children.into_iter().rev());
 
             // Lines after the last setting have nothing to attach to; keep them as the file's
             // trailer, minus the stamp a previous serialization left.
@@ -3648,8 +3659,12 @@ mod tests {
         );
     }
 
+    // OpenMW's documentation (docs/source/reference/modding/paths.rst) says dir1 naming dir2
+    // then dir3, and dir2 naming dir4, loads dir1, dir2, dir3, dir4. Its code does not:
+    // ConfigurationManager::readConfiguration walks config= with a stack, so dir2 and all it
+    // names load before dir3: dir1, dir2, dir4, dir3. The code wins.
     #[test]
-    fn test_config_chain_priority_order_for_data_lists_matches_openmw_docs_example() {
+    fn test_config_chain_priority_order_for_data_lists_is_depth_first() {
         let dir1 = temp_dir();
         let dir2 = temp_dir();
         let dir3 = temp_dir();
@@ -3676,11 +3691,11 @@ mod tests {
             .map(|setting| setting.original().clone())
             .collect();
 
-        assert_eq!(actual, vec!["root-a", "branch-a", "sibling-a", "leaf-a"]);
+        assert_eq!(actual, vec!["root-a", "branch-a", "leaf-a", "sibling-a"]);
     }
 
     #[test]
-    fn test_replace_data_preserves_docs_priority_order_in_branching_chain() {
+    fn test_replace_data_keeps_the_depth_first_order_in_a_branching_chain() {
         let dir1 = temp_dir();
         let dir2 = temp_dir();
         let dir3 = temp_dir();
@@ -3707,11 +3722,11 @@ mod tests {
             .map(|setting| setting.original().clone())
             .collect();
 
-        assert_eq!(actual, vec!["branch-a", "sibling-a", "leaf-a"]);
+        assert_eq!(actual, vec!["branch-a", "leaf-a", "sibling-a"]);
     }
 
     #[test]
-    fn test_config_chain_priority_order_for_content_lists_matches_openmw_docs_example() {
+    fn test_config_chain_priority_order_for_content_lists_is_depth_first() {
         let dir1 = temp_dir();
         let dir2 = temp_dir();
         let dir3 = temp_dir();
@@ -3740,13 +3755,13 @@ mod tests {
 
         assert_eq!(
             actual,
-            vec!["Root.esm", "Branch.esm", "Sibling.esm", "Leaf.esm"],
-            "content= should follow the same chain priority order as documented for config= traversal"
+            vec!["Root.esm", "Branch.esm", "Leaf.esm", "Sibling.esm"],
+            "content= follows the order the chain loads in"
         );
     }
 
     #[test]
-    fn test_config_chain_priority_order_for_groundcover_lists_matches_openmw_docs_example() {
+    fn test_config_chain_priority_order_for_groundcover_lists_is_depth_first() {
         let dir1 = temp_dir();
         let dir2 = temp_dir();
         let dir3 = temp_dir();
@@ -3775,13 +3790,13 @@ mod tests {
 
         assert_eq!(
             actual,
-            vec!["Root.esp", "Branch.esp", "Sibling.esp", "Leaf.esp"],
-            "groundcover= should follow the same chain priority order as documented for config= traversal"
+            vec!["Root.esp", "Branch.esp", "Leaf.esp", "Sibling.esp"],
+            "groundcover= follows the order the chain loads in"
         );
     }
 
     #[test]
-    fn test_config_chain_priority_order_matches_openmw_docs_example() {
+    fn test_config_chain_priority_order_is_depth_first() {
         let dir1 = temp_dir();
         let dir2 = temp_dir();
         let dir3 = temp_dir();
@@ -3802,9 +3817,23 @@ mod tests {
 
         assert_eq!(
             config.encoding().unwrap().to_string().trim(),
-            "encoding=win1252"
+            "encoding=win1251"
         );
-        assert_eq!(config.user_config_path(), dir4);
+        assert_eq!(config.user_config_path(), dir3);
+
+        let chain: Vec<(PathBuf, usize)> = config
+            .config_chain()
+            .map(|entry| (entry.path().to_path_buf(), entry.depth()))
+            .collect();
+        assert_eq!(
+            chain,
+            [
+                (dir1.join("openmw.cfg"), 0),
+                (dir2.join("openmw.cfg"), 1),
+                (dir4.join("openmw.cfg"), 2),
+                (dir3.join("openmw.cfg"), 1),
+            ]
+        );
     }
 
     #[test]
@@ -3827,8 +3856,8 @@ mod tests {
 
         let config = OpenMWConfiguration::new(Some(dir1.clone())).unwrap();
 
-        assert_eq!(config.user_config_path(), dir4);
-        assert_eq!(config.userdata().unwrap().parsed(), dir4.as_path());
+        assert_eq!(config.user_config_path(), dir3);
+        assert_eq!(config.userdata().unwrap().parsed(), dir3.as_path());
     }
 
     // -----------------------------------------------------------------------

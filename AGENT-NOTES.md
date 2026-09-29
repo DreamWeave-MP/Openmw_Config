@@ -24,11 +24,6 @@ it puts `replace=` ahead of every entry of its list and spells the option in low
   file's own included; in the root file itself it does nothing (only `--replace=config` on the
   command line does). This crate discards everything loaded so far, the root included, every
   queued `config=`, and the file's own earlier `config=` lines.
-- **Traversal order.** OpenMW's code walks `config=` with a stack: `dir1` with `config=dir2` then
-  `config=dir3`, and `dir2` with `config=dir4`, loads `dir1, dir2, dir4, dir3`. Its documentation
-  (`docs/source/reference/modding/paths.rst`) says `dir1, dir2, dir3, dir4`, which is what this
-  crate does and what `test_config_chain_priority_order_*` assert. Which one to follow is a
-  question for upstream as much as for this crate.
 
 ## The site's Lua pages still describe `mlua`
 
@@ -73,3 +68,8 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
   - `replace=resources`, `replace=user-data`, `replace=data-local` and `replace=encoding` do
     nothing: `replace=` only reaches lists. They used to remove the latest definition, which
     could bring an older file's value back.
+  - `config=` entries load depth first, as `readConfiguration`'s stack walks them: `dir1` naming
+    `dir2` then `dir3`, and `dir2` naming `dir4`, loads `dir1, dir2, dir4, dir3`, not level by
+    level as OpenMW's paths documentation says. `config_chain()` lists a missing `config=` target
+    when the walk reaches it, and `user_config_path()` is the last config loaded, which is no
+    longer always the last entry of `sub_configs()`.
