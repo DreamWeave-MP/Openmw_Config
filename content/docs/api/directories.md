@@ -62,8 +62,9 @@ The config key is `user-data`; `?userdata?` is only a token, and there is no `us
 
 {{ api_signature(value="fn set_data_local_path(&mut self, path: impl AsRef<Path>)") }}
 
-Replaces the last definition in place, or adds one when there is none, attributed to the user's
-config.
+Sets the value in the user's config: replaces the user's definition in place when it is the last
+one, and otherwise adds one, which comes last and wins. A parent's definition stays, so clearing
+the user's value afterwards brings the parent's back, as a reload would.
 
 ### Clearing
 
@@ -84,8 +85,8 @@ in effect afterwards.
 
 {{ api_signature(value="fn set_data_local(&mut self, new: Option<DirectorySetting>)") }}
 
-The general form of the two above: `Some` replaces the last definition or adds one, `None` removes
-the last definition. The setting keeps the source you gave it in
+The general form of the two above: `Some` replaces the last definition when it belongs to the same
+file as the new one, and otherwise adds the new one after it; `None` removes the last definition. The setting keeps the source you gave it in
 [`DirectorySetting::new`](@/docs/api/types.md#directorysetting), and saving writes it to that file.
 
 Changing `resources=` or `data-local=` changes the data directories they add, as a reload would:

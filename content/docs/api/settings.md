@@ -45,7 +45,8 @@ The `encoding=` in effect, or `None`. OpenMW uses `win1252` when there is none.
 
 {{ api_signature(value="fn set_encoding(&mut self, new: Option<EncodingSetting>)") }}
 
-`Some` replaces the current definition or adds one; `None` removes the last. Build the setting
+`Some` replaces the current definition when it belongs to the same file as the new one, and
+otherwise adds the new one after it; `None` removes the last. Build the setting
 with `EncodingSetting::try_from`, which also decides the file it is saved to:
 
 ```rust

@@ -147,9 +147,10 @@ tools add keys over time, and a round trip must not lose them.
 `resources()`, `userdata()`, `data_local()` and `encoding()`, return the last definition, or
 `None`.
 
-- `set_resources_path(path)`, `set_user_data_path(path)` and `set_data_local_path(path)` replace
-  the last definition, attributed to the user's config, or add one if there is none. The path is
-  read like a value in the file.
+- `set_resources_path(path)`, `set_user_data_path(path)` and `set_data_local_path(path)` set the
+  value in the user's config: they replace its definition when it is the last one, and otherwise
+  add one, which wins. A parent's definition stays where it is. The path is read like a value in
+  the file.
 - `clear_resources()`, `clear_user_data()` and `clear_data_local()` remove the last definition
   only. If a parent config defined the setting too, its value takes over.
 - `set_encoding(Some(setting))` and `set_encoding(None)` do the same for `encoding=`. The

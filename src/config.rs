@@ -927,7 +927,9 @@ impl OpenMWConfiguration {
         )
     }
 
-    /// Replaces the singleton `data-local=` directory with a path attributed to the user config.
+    /// Sets the singleton `data-local=` directory to a path attributed to the user config: the user
+    /// config's definition is replaced when it is the last one, and a parent's stays, followed
+    /// by the new one.
     ///
     /// The value is parsed through [`DirectorySetting`] so quote, token, and relative-path handling
     /// remains centralized.
@@ -936,7 +938,9 @@ impl OpenMWConfiguration {
         self.set_data_local(Some(setting));
     }
 
-    /// Replaces the singleton `resources=` directory with a path attributed to the user config.
+    /// Sets the singleton `resources=` directory to a path attributed to the user config: the user
+    /// config's definition is replaced when it is the last one, and a parent's stays, followed
+    /// by the new one.
     ///
     /// The value is parsed through [`DirectorySetting`] so quote, token, and relative-path handling
     /// remains centralized.
@@ -945,7 +949,9 @@ impl OpenMWConfiguration {
         self.set_resources(Some(setting));
     }
 
-    /// Replaces the singleton `user-data=` directory with a path attributed to the user config.
+    /// Sets the singleton `user-data=` directory to a path attributed to the user config: the user
+    /// config's definition is replaced when it is the last one, and a parent's stays, followed
+    /// by the new one.
     ///
     /// The cfg key is `user-data`; `?userdata?` is only a token. There is no `userdata=` key here.
     pub fn set_user_data_path(&mut self, path: impl AsRef<Path>) {

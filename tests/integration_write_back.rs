@@ -350,3 +350,23 @@ fn the_data_directories_loading_adds_follow_resources_and_data_local() {
     assert_eq!(data_dirs(&config), [PathBuf::from("/mods/B")]);
     reloads_as_in_memory(&config);
 }
+
+#[test]
+fn setting_a_value_a_parent_defines_leaves_the_parents_definition_in_place() {
+    let (root_dir, _user_dir, mut config) = chain("singleton", "resources=/root/resources\n", "");
+    let resources =
+        |config: &OpenMWConfiguration| config.resources().map(|dir| dir.parsed().to_path_buf());
+
+    config.set_resources_path("/user/resources");
+    assert_eq!(resources(&config), Some(PathBuf::from("/user/resources")));
+    config.save_user().unwrap();
+    let reloaded = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    assert_eq!(resources(&reloaded), resources(&config));
+
+    // Clearing the user's value brings the root's back, in memory as on reload.
+    config.clear_resources();
+    assert_eq!(resources(&config), Some(PathBuf::from("/root/resources")));
+    config.save_user().unwrap();
+    let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    assert_eq!(resources(&reloaded), resources(&config));
+}

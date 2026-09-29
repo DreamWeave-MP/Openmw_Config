@@ -25,8 +25,18 @@ macro_rules! impl_singleton_setting {
                         .rposition(|setting| matches!(setting, SettingValue::$variant(_)));
 
                     match (index, new) {
-                        (Some(i), Some(value)) => self.settings[i] = SettingValue::$variant(value),
-                        (None, Some(value)) => self.settings.push(SettingValue::$variant(value)),
+                        // The last definition is replaced when the new value belongs to the same
+                        // file. Another file's stays, as it does in that file, and the new one
+                        // follows it and wins.
+                        (Some(i), Some(value))
+                            if util::paths_equivalent(
+                                self.settings[i].meta().source_config(),
+                                value.meta().source_config(),
+                            ) =>
+                        {
+                            self.settings[i] = SettingValue::$variant(value);
+                        }
+                        (_, Some(value)) => self.settings.push(SettingValue::$variant(value)),
                         (Some(i), None) => { self.settings.remove(i); }
                         (None, None) => return,
                     }
