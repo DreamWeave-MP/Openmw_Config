@@ -124,7 +124,14 @@ impl Shared {
     /// Runs a mutation and marks every outstanding row stale.
     fn mutate<R>(&self, body: impl FnOnce(&mut OpenMWConfiguration) -> R) -> R {
         let result = body(&mut self.inner.borrow_mut());
-        self.generation.set(self.generation.get().wrapping_add(1));
+        // A row is stale exactly when its generation differs from this one, so the counter must
+        // never wrap back to a value a row still holds; 2^64 mutations cannot happen.
+        let next = self
+            .generation
+            .get()
+            .checked_add(1)
+            .expect("the configuration's generation counter overflowed");
+        self.generation.set(next);
         result
     }
 }
