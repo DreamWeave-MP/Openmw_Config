@@ -236,3 +236,33 @@ known_issues = [
     "`save_user`, `save_subconfig` and `Display` drop `replace=` lines, so a saved user config merges its parents' entries back in on the next load. Fixed on the default branch.",
     "A config with `resources=` writes the injected `resources/vfs` directory back as a `data=` line, and each save and reload adds another copy. Fixed on the default branch.",
 ]
+
+[[releases]]
+version = "3.0.1"
+date = 2026-09-29
+summary = "The Luau bindings are an l3i extension with live views and typed rows, the loader reads config= chains exactly as OpenMW's engine does, and the site is built with the DreamWeave Mod Template."
+breaking = [
+    "The `luau` feature makes the crate an l3i extension, `openmw_config::luau::extension()`, providing the module `@dream/openmw-config`, with live views over the loaded configuration and typed rows. `create_lua_module`, the `mlua` types and the `standalone-lua` feature are gone.",
+    "Building with the `luau` feature needs l3i's toolchain: clang, lld and cross-language thin LTO. Rust 1.92.",
+    "The loader matches OpenMW's engine: `config=` entries load depth first, each `config=` directory is read once, a `config=` directory without an `openmw.cfg` stays in the chain, the user config directory is created on load, `replace=` applies per config over the configs loaded before it, `replace=config` keeps the root and the `config=` entries still to load, `replace=replace` discards the `replace=` lines of earlier configs, `replace=` values match option names exactly, and `resources=`, `user-data=`, `data-local=` and `encoding=` are left alone by `replace=`.",
+    "The crate's internal macros are no longer exported.",
+    "Built, released and documented with the DreamWeave Mod Template; the site replaces the rustdoc pages.",
+]
+added = [
+    "Typed game setting values and setting metadata, `SettingValue` exported so predicates can name what they are given, and the `meta()` and typed accessors every setting type has.",
+    "The views declare their element types, so strict scripts read them directly; items are pushed by value.",
+    "A Criterion benchmark for the Luau boundary.",
+]
+changed = [
+    "List positions are indexed, game settings iterate without cloning, settings are no longer formatted on load, and the lookup indexes hash with FxHash.",
+    "l3i 1.0.0 comes from crates.io.",
+]
+fixed = [
+    "`save_user`, `save_subconfig` and `Display` keep `replace=` lines; list replacements and removals persist through `replace=` lines in the user config, and a parent's entries stay in the parent's file when the user config replaces a list.",
+    "The injected `resources/vfs` data directory is no longer written back as a `data=` line on every save; the directories `resources=` and `data-local=` add stay in step with them.",
+    "Windows and macOS fall back to the user config; the `io::Error` behind `ConfigError::Io` is reachable through `source()`.",
+    "`add_archive_file` returns `CannotAddArchiveFile` on a duplicate; `replace=fallback-archive` is read and written under the option name OpenMW uses.",
+    "`set_game_setting` writes its comments as comment lines, and the comments and blank lines that end a config file survive the settings added after them.",
+    "The setting indexes are rebuilt when singleton settings change and after data directories are injected; a parent's relative data directory is written resolved when the user config copies it; a parent's `resources=`, `user-data=`, `data-local=` or `encoding=` stays in place when the user sets one.",
+    "The live-view generation counter advances without wrapping, so a stale row can never read as current again.",
+]
