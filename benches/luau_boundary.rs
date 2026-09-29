@@ -138,11 +138,8 @@ fn scenarios(n_content: usize, n_fallback: usize) -> (Runtime, Table) {
     // Exactly representable: a plain number, as the mlua harness set it.
     #[allow(clippy::cast_precision_loss)]
     runtime.set_global("ops", &(OPS as f64)).unwrap();
-    // `load_function` wants a chunk that returns a function; the frozen chunk returns the table.
-    let chunk = runtime
-        .load_function(&format!("return function()\n{SCENARIOS}\nend"))
-        .unwrap();
-    let table: Table = chunk.invoke(&runtime.stack(), ()).unwrap();
+    // The frozen chunk returns the scenario table; `eval` runs it and reads that result.
+    let table: Table = runtime.eval(SCENARIOS).unwrap();
     (runtime, table)
 }
 
