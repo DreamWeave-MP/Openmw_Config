@@ -282,9 +282,22 @@ pub struct OpenMWConfiguration {
     indexed_groundcover: HashSet<String>,
     indexed_archives: HashSet<String>,
     indexed_data_dirs: HashSet<PathBuf>,
+    lists: ListIndex,
     indexed_game_setting_last: RefCell<HashMap<String, usize>>,
     indexed_game_setting_order: RefCell<Vec<usize>>,
     game_setting_indexes_dirty: Cell<bool>,
+}
+
+/// Where the entries of each list kind sit in `settings`, in definition order, so the list
+/// iterators and indexed reads never scan the whole flat list. Rebuilt with the other indexes.
+#[derive(Debug, Default, Clone)]
+struct ListIndex {
+    content: Vec<usize>,
+    groundcover: Vec<usize>,
+    archives: Vec<usize>,
+    data_dirs: Vec<usize>,
+    sub_configs: Vec<usize>,
+    generic: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -323,26 +336,107 @@ impl OpenMWConfiguration {
         self.indexed_groundcover.clear();
         self.indexed_archives.clear();
         self.indexed_data_dirs.clear();
+        let lists = &mut self.lists;
+        lists.content.clear();
+        lists.groundcover.clear();
+        lists.archives.clear();
+        lists.data_dirs.clear();
+        lists.sub_configs.clear();
+        lists.generic.clear();
 
-        for setting in &self.settings {
+        for (index, setting) in self.settings.iter().enumerate() {
             match setting {
                 SettingValue::ContentFile(file) => {
+                    lists.content.push(index);
                     self.indexed_content.insert(file.value().clone());
                 }
                 SettingValue::Groundcover(file) => {
+                    lists.groundcover.push(index);
                     self.indexed_groundcover.insert(file.value().clone());
                 }
                 SettingValue::BethArchive(file) => {
+                    lists.archives.push(index);
                     self.indexed_archives.insert(file.value().clone());
                 }
                 SettingValue::DataDirectory(dir) => {
+                    lists.data_dirs.push(index);
                     self.indexed_data_dirs.insert(dir.parsed().to_path_buf());
                 }
+                SettingValue::SubConfiguration(_) => lists.sub_configs.push(index),
+                SettingValue::Generic(_) => lists.generic.push(index),
                 _ => {}
             }
         }
 
         self.mark_game_setting_indexes_dirty();
+    }
+
+    /// The `content=` entries, by their positions in `self.lists`.
+    fn files_at<'a>(&'a self, positions: &'a [usize]) -> impl Iterator<Item = &'a FileSetting> {
+        positions
+            .iter()
+            .filter_map(move |&index| match &self.settings[index] {
+                SettingValue::ContentFile(file)
+                | SettingValue::Groundcover(file)
+                | SettingValue::BethArchive(file) => Some(file),
+                _ => None,
+            })
+    }
+
+    /// The directory entries, by their positions in `self.lists`.
+    fn directories_at<'a>(
+        &'a self,
+        positions: &'a [usize],
+    ) -> impl Iterator<Item = &'a DirectorySetting> {
+        positions
+            .iter()
+            .filter_map(move |&index| match &self.settings[index] {
+                SettingValue::DataDirectory(dir) | SettingValue::SubConfiguration(dir) => Some(dir),
+                _ => None,
+            })
+    }
+
+    /// How many `content=` entries there are.
+    #[must_use]
+    pub fn content_file_count(&self) -> usize {
+        self.lists.content.len()
+    }
+
+    /// How many `groundcover=` entries there are.
+    #[must_use]
+    pub fn groundcover_file_count(&self) -> usize {
+        self.lists.groundcover.len()
+    }
+
+    /// How many `fallback-archive=` entries there are.
+    #[must_use]
+    pub fn archive_file_count(&self) -> usize {
+        self.lists.archives.len()
+    }
+
+    /// How many `data=` entries there are, the injected ones included.
+    #[must_use]
+    pub fn data_directory_count(&self) -> usize {
+        self.lists.data_dirs.len()
+    }
+
+    /// How many `config=` entries remain in the effective chain.
+    #[must_use]
+    pub fn sub_config_count(&self) -> usize {
+        self.lists.sub_configs.len()
+    }
+
+    /// How many preserved generic `key=value` entries there are.
+    #[must_use]
+    pub fn generic_setting_count(&self) -> usize {
+        self.lists.generic.len()
+    }
+
+    /// How many distinct `fallback=` keys there are (what [`Self::game_settings`] yields).
+    #[must_use]
+    pub fn game_setting_count(&self) -> usize {
+        self.ensure_game_setting_indexes();
+        self.indexed_game_setting_order.borrow().len()
     }
 
     fn mark_game_setting_indexes_dirty(&self) {
@@ -538,7 +632,7 @@ impl OpenMWConfiguration {
             // The injected directories are part of the effective list; index them too.
             config.rebuild_indexes();
 
-            util::debug_log(&format!("{:#?}", config.settings));
+            util::debug_log_lazy(|| format!("{:#?}", config.settings));
 
             Ok(config)
         }
@@ -780,17 +874,23 @@ impl OpenMWConfiguration {
     /// none is left), and inherited entries are re-attributed to the user config, so
     /// `save_user` writes the whole effective list and a reload yields exactly what is in
     /// memory instead of the parents' entries coming back.
-    fn take_over_list(&mut self, name: &str, is_kind: impl Fn(&SettingValue) -> bool) {
-        let user_cfg = self.user_cfg_file();
+    ///
+    /// Works on `settings` alone (the indexes may be stale here); the caller rebuilds them.
+    fn take_over_list(
+        &mut self,
+        name: &str,
+        is_kind: impl Fn(&SettingValue) -> bool,
+        user_cfg: &Path,
+    ) {
         for setting in self.settings.iter_mut().filter(|setting| is_kind(setting)) {
-            if Self::is_inherited(setting, &user_cfg) {
-                setting.meta_mut().set_source_config(user_cfg.clone());
+            if Self::is_inherited(setting, user_cfg) {
+                setting.meta_mut().set_source_config(user_cfg.to_path_buf());
             }
         }
         let replace = SettingValue::Replace(GenericSetting::new(
             "replace",
             name,
-            &user_cfg,
+            user_cfg,
             &mut String::default(),
         ));
         let first = self.settings.iter().position(is_kind);
@@ -841,7 +941,7 @@ impl OpenMWConfiguration {
         });
         self.clear_matching_internal(|setting| is_kind(setting) && remove(setting));
         if removes_inherited {
-            self.take_over_list(name, is_kind);
+            self.take_over_list(name, is_kind, &user_cfg);
         }
         self.rebuild_indexes();
     }
@@ -850,10 +950,7 @@ impl OpenMWConfiguration {
     /// These entries only refer to the names and ordering of content files.
     /// vfstool-lib should be used to derive paths
     pub fn content_files_iter(&self) -> impl Iterator<Item = &FileSetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::ContentFile(plugin) => Some(plugin),
-            _ => None,
-        })
+        self.files_at(&self.lists.content)
     }
 
     /// Returns `true` if the named plugin is present in the `content=` list.
@@ -880,12 +977,16 @@ impl OpenMWConfiguration {
     /// so the query does not need to use a specific separator style.
     #[must_use]
     pub fn has_data_dir(&self, file_name: &str) -> bool {
-        let query = if file_name.contains(['/', '\\']) {
-            PathBuf::from(file_name.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR))
+        let foreign = if std::path::MAIN_SEPARATOR == '/' {
+            '\\'
         } else {
-            PathBuf::from(file_name)
+            '/'
         };
-        self.indexed_data_dirs.contains(&query)
+        if file_name.contains(foreign) {
+            let query = file_name.replace(foreign, std::path::MAIN_SEPARATOR_STR);
+            return self.indexed_data_dirs.contains(Path::new(&query));
+        }
+        self.indexed_data_dirs.contains(Path::new(file_name))
     }
 
     /// # Errors
@@ -923,10 +1024,7 @@ impl OpenMWConfiguration {
 
     /// Iterates all `groundcover=` entries in definition order.
     pub fn groundcover_iter(&self) -> impl Iterator<Item = &FileSetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::Groundcover(grass) => Some(grass),
-            _ => None,
-        })
+        self.files_at(&self.lists.groundcover)
     }
 
     /// # Errors
@@ -1066,10 +1164,7 @@ impl OpenMWConfiguration {
 
     /// Iterates all `fallback-archive=` entries in definition order.
     pub fn fallback_archives_iter(&self) -> impl Iterator<Item = &FileSetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::BethArchive(archive) => Some(archive),
-            _ => None,
-        })
+        self.files_at(&self.lists.archives)
     }
 
     /// Replaces all `content=` entries with `plugins`, or clears them if `None`.
@@ -1118,10 +1213,13 @@ impl OpenMWConfiguration {
 
     /// Iterates all preserved generic `key=value` entries in definition order.
     pub fn generic_settings_iter(&self) -> impl Iterator<Item = &GenericSetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::Generic(generic) => Some(generic),
-            _ => None,
-        })
+        self.lists
+            .generic
+            .iter()
+            .filter_map(move |&index| match &self.settings[index] {
+                SettingValue::Generic(generic) => Some(generic),
+                _ => None,
+            })
     }
 
     /// Replaces all preserved generic `key=value` entries with `values`, or clears them if `None`.
@@ -1292,10 +1390,7 @@ impl OpenMWConfiguration {
     /// `replace=config` clears prior `config=` entries in the current parse scope, so this iterator
     /// only exposes sub-configurations that remain in the effective chain.
     pub fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::SubConfiguration(subconfig) => Some(subconfig),
-            _ => None,
-        })
+        self.directories_at(&self.lists.sub_configs)
     }
 
     /// Returns the observed configuration-chain traversal in parser order.
@@ -1324,13 +1419,13 @@ impl OpenMWConfiguration {
     /// ```
     pub fn game_settings(&self) -> impl Iterator<Item = &GameSettingType> {
         self.ensure_game_setting_indexes();
-        let order = self.indexed_game_setting_order.borrow().clone();
-        order
-            .into_iter()
-            .filter_map(move |index| match &self.settings[index] {
-                SettingValue::GameSetting(setting) => Some(setting),
-                _ => None,
-            })
+        // The iterator keeps the index borrowed; every mutation takes `&mut self`, so nothing
+        // can rebuild it underneath.
+        let order = self.indexed_game_setting_order.borrow();
+        (0..order.len()).filter_map(move |position| match &self.settings[order[position]] {
+            SettingValue::GameSetting(setting) => Some(setting),
+            _ => None,
+        })
     }
 
     /// Retrieves a gamesetting according to its name.
@@ -1357,10 +1452,7 @@ impl OpenMWConfiguration {
     /// There is not actually validation anywhere in the crate that `DirectorySettings` refer to a directory which actually exists.
     /// This is according to the openmw.cfg specification and doesn't technically break anything but should be considered when using these paths.
     pub fn data_directories_iter(&self) -> impl Iterator<Item = &DirectorySetting> {
-        self.settings.iter().filter_map(|setting| match setting {
-            SettingValue::DataDirectory(data_dir) => Some(data_dir),
-            _ => None,
-        })
+        self.directories_at(&self.lists.data_dirs)
     }
 
     const MAX_CONFIG_DEPTH: usize = 16;
@@ -2197,6 +2289,25 @@ mod tests {
         let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
         assert!(config.has_data_dir(&resources.join("vfs").to_string_lossy()));
         assert!(config.has_data_dir(&dir.join("Data Files").to_string_lossy()));
+    }
+
+    #[test]
+    fn test_list_counts_follow_the_lists() {
+        let mut config = load(
+            "content=A.esm\ncontent=B.esm\ngroundcover=G.esp\nfallback-archive=X.bsa\ndata=Data Files\nfallback=iA,1\nfallback=iA,2\nfallback=iB,3\nfoo=1\nfoo=2\n",
+        );
+        assert_eq!(config.content_file_count(), 2);
+        assert_eq!(config.groundcover_file_count(), 1);
+        assert_eq!(config.archive_file_count(), 1);
+        assert_eq!(config.data_directory_count(), 1);
+        assert_eq!(config.sub_config_count(), 0);
+        assert_eq!(config.game_setting_count(), 2, "distinct keys");
+        assert_eq!(config.generic_setting_count(), 2);
+        config.remove_content_file("A.esm");
+        config.set_generic_settings("foo", None);
+        assert_eq!(config.content_file_count(), 1);
+        assert_eq!(config.generic_setting_count(), 0);
+        assert_eq!(config.content_files_iter().count(), 1);
     }
 
     #[test]
