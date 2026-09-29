@@ -233,7 +233,10 @@ pub enum ConfigError {
     SubconfigNotLoaded(PathBuf),
     /// The `config=` chain exceeded the maximum nesting depth, likely due to a circular reference.
     MaxDepthExceeded(PathBuf),
-    /// Could not resolve a platform default path via `dirs`.
+    /// A platform default path could not be determined, because the environment or the
+    /// operating system gave none: `HOME` unset or empty, no Documents known folder, or a
+    /// platform `OpenMW` has no such path on. The string names the path: `home`, `documents`,
+    /// `config`, `userdata`, `local`, `global` or `global_config`.
     PlatformPathUnavailable(&'static str),
 }
 
