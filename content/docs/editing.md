@@ -45,9 +45,11 @@ file writes them back to it. So a change to an intermediate config in the chain 
 instead, or as well.
 
 Two kinds of change are not carried over this way. `clear_resources()` and the other `clear_*`
-methods remove the last definition, which lets a parent's value take effect again.
-`clear_matching()` removes settings in memory only: a parent's setting it removes is back on the
-next load.
+methods remove the last definition, which lets a parent's value take effect again. When that last
+definition is itself a parent's, `save_user()` cannot undo it: `replace=` works on lists only, and
+OpenMW has no way for a later file to unset a single value. Saving the parent's own file with
+`save_subconfig()` can. `clear_matching()` removes settings in memory only: a parent's setting it
+removes is back on the next load.
 
 ## Content files, groundcover and archives
 

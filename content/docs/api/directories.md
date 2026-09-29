@@ -75,7 +75,8 @@ the user's value afterwards brings the parent's back, as a reload would.
 {{ api_signature(value="fn clear_data_local(&mut self)") }}
 
 Removes the last definition. When a parent config defined the setting as well, its value is the one
-in effect afterwards.
+in effect afterwards. When the last definition is a parent's, only saving that parent's file with
+`save_subconfig` makes the removal last: a user config cannot unset a value its parent sets.
 
 ### Setting a DirectorySetting
 

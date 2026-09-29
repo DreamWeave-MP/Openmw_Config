@@ -969,17 +969,23 @@ impl OpenMWConfiguration {
         self.set_userdata(Some(setting));
     }
 
-    /// Clears the singleton `data-local=` directory setting.
+    /// Removes the last `data-local=` definition, which lets an earlier one, such as a parent's,
+    /// take effect. [`Self::save_user`] persists removing the user config's own; a parent's can
+    /// only be removed from its file, with [`Self::save_subconfig`].
     pub fn clear_data_local(&mut self) {
         self.set_data_local(None);
     }
 
-    /// Clears the singleton `resources=` directory setting.
+    /// Removes the last `resources=` definition, which lets an earlier one, such as a parent's,
+    /// take effect. [`Self::save_user`] persists removing the user config's own; a parent's can
+    /// only be removed from its file, with [`Self::save_subconfig`].
     pub fn clear_resources(&mut self) {
         self.set_resources(None);
     }
 
-    /// Clears the singleton `user-data=` directory setting.
+    /// Removes the last `user-data=` definition, which lets an earlier one, such as a parent's,
+    /// take effect. [`Self::save_user`] persists removing the user config's own; a parent's can
+    /// only be removed from its file, with [`Self::save_subconfig`].
     pub fn clear_user_data(&mut self) {
         self.set_userdata(None);
     }
