@@ -17,11 +17,45 @@ fn test_replace_fallback_clears_prior_game_settings() {
 }
 
 #[test]
-fn test_replace_fallback_archives_clears_prior_archives() {
+fn test_replace_fallback_archive_clears_prior_archives() {
     let config =
-        load("fallback-archive=Old.bsa\nreplace=fallback-archives\nfallback-archive=New.bsa\n");
+        load("fallback-archive=Old.bsa\nreplace=fallback-archive\nfallback-archive=New.bsa\n");
     assert!(!config.has_archive_file("Old.bsa"));
     assert!(config.has_archive_file("New.bsa"));
+}
+
+/// A root config holding `Root.bsa` that chains to a user config with `user`'s contents; the
+/// archives the chain loads.
+fn archives_after_user_config(tag: &str, user: &str) -> Vec<String> {
+    let root_dir = temp_dir(&format!("{tag}_root"));
+    let user_dir = temp_dir(&format!("{tag}_user"));
+    write_cfg(&user_dir, user);
+    write_cfg(
+        &root_dir,
+        &format!("fallback-archive=Root.bsa\nconfig={}\n", user_dir.display()),
+    );
+    OpenMWConfiguration::new(Some(root_dir))
+        .unwrap()
+        .fallback_archives_iter()
+        .map(|archive| archive.value().clone())
+        .collect()
+}
+
+#[test]
+fn test_replace_names_the_archive_option_as_openmw_does() {
+    // `replace=` takes an option name, and OpenMW's is `fallback-archive`.
+    let archives = archives_after_user_config(
+        "replace_archive_option",
+        "replace=fallback-archive\nfallback-archive=User.bsa\n",
+    );
+    assert_eq!(archives, ["User.bsa"]);
+
+    // No option is called `fallback-archives`, so OpenMW keeps the parent's archives.
+    let archives = archives_after_user_config(
+        "replace_archive_plural",
+        "replace=fallback-archives\nfallback-archive=User.bsa\n",
+    );
+    assert_eq!(archives, ["Root.bsa", "User.bsa"]);
 }
 
 #[test]

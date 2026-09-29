@@ -112,7 +112,7 @@ fn every_list_setter_and_remover_takes_the_parent_list_over() {
 
     let saved = user_file(&user_dir);
     for line in [
-        "replace=fallback-archives\nfallback-archive=User.bsa\n",
+        "replace=fallback-archive\nfallback-archive=User.bsa\n",
         "replace=groundcover\n",
         "replace=data\ndata=/user/data\n",
         "replace=fallback\nfallback=iUser,3\n",
@@ -158,7 +158,7 @@ fn remove_data_directory_and_archive_of_a_parent_persist() {
     config.save_user().unwrap();
     assert_eq!(
         user_file(&user_dir),
-        "replace=data\ndata=/root/b\nreplace=fallback-archives\nfallback-archive=A.bsa\n"
+        "replace=data\ndata=/root/b\nreplace=fallback-archive\nfallback-archive=A.bsa\n"
     );
     let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
     let dirs: Vec<_> = reloaded

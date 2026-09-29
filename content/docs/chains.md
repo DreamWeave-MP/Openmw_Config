@@ -89,13 +89,15 @@ Names compare exactly: `Morrowind.esm` and `morrowind.esm` are different plugins
 ## replace=
 
 `replace=` discards what the chain has loaded so far, for one kind of setting, and then reading
-carries on. The value is not case-sensitive.
+carries on. The value is the setting's key, which is OpenMW's name for the option, and is not
+case-sensitive. The archives' key is `fallback-archive`, singular: OpenMW has no
+`fallback-archives` option, so `replace=fallback-archives` leaves the archives alone.
 
 | Line | Discards |
 |---|---|
 | `replace=content` | Every `content=` entry |
 | `replace=groundcover` | Every `groundcover=` entry |
-| `replace=fallback-archives` | Every `fallback-archive=` entry |
+| `replace=fallback-archive` | Every `fallback-archive=` entry |
 | `replace=data` | Every `data=` entry |
 | `replace=fallback` | Every `fallback=` entry |
 | `replace=resources`, `replace=user-data`, `replace=data-local` | The latest definition of that setting |

@@ -178,7 +178,7 @@ proptest! {
         for item in &pre_archives {
             writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
         }
-        cfg.push_str("replace=fallback-archives\n");
+        cfg.push_str("replace=fallback-archive\n");
         for item in &post_archives {
             writeln!(&mut cfg, "fallback-archive={item}").expect("writing to String cannot fail");
         }

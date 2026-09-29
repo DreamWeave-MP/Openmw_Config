@@ -1143,10 +1143,10 @@ impl OpenMWConfiguration {
     }
 
     /// Removes all `fallback-archive=` entries matching `file_name`; a parent's entry is taken
-    /// over as in [`Self::remove_content_file`] (`replace=fallback-archives`).
+    /// over as in [`Self::remove_content_file`] (`replace=fallback-archive`).
     pub fn remove_archive_file(&mut self, file_name: &str) {
         self.remove_from_list(
-            "fallback-archives",
+            "fallback-archive",
             |setting| matches!(setting, SettingValue::BethArchive(_)),
             |setting| match setting {
                 SettingValue::BethArchive(existing_file) => existing_file == file_name,
@@ -1245,7 +1245,7 @@ impl OpenMWConfiguration {
     /// Replaces all `fallback-archive=` entries with `archives`, or clears them if `None`.
     ///
     /// Entries are attributed to the user config path. No duplicate checking is performed.
-    /// Parent-defined entries are replaced through `replace=fallback-archives` as in
+    /// Parent-defined entries are replaced through `replace=fallback-archive` as in
     /// [`Self::set_content_files`].
     pub fn set_fallback_archives(&mut self, archives: Option<Vec<String>>) {
         let cfg_path = self.user_cfg_file();
@@ -1258,7 +1258,7 @@ impl OpenMWConfiguration {
             })
             .collect();
         self.replace_list(
-            "fallback-archives",
+            "fallback-archive",
             |setting| matches!(setting, SettingValue::BethArchive(_)),
             entries,
         );
@@ -1731,7 +1731,7 @@ impl OpenMWConfiguration {
                                     matches!(s, SettingValue::GameSetting(_))
                                 });
                             }
-                            "fallback-archives" => {
+                            "fallback-archive" => {
                                 self.clear_matching_internal(|s| {
                                     matches!(s, SettingValue::BethArchive(_))
                                 });
@@ -3960,7 +3960,7 @@ groundcover=GrassRoot.esp\n\
 replace=groundcover\n\
 groundcover=GrassAfter.esp\n\
 fallback-archive=Root.bsa\n\
-replace=fallback-archives\n\
+replace=fallback-archive\n\
 fallback-archive=After.bsa\n\
 fallback=iFoo,1\n\
 replace=fallback\n\

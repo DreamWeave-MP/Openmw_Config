@@ -73,11 +73,11 @@ listed.
 
 {{ api_signature(value="fn remove_archive_file(&mut self, file_name: &str)") }}
 
-Removes every entry with that name, taking the list over with `replace=fallback-archives` when one
+Removes every entry with that name, taking the list over with `replace=fallback-archive` when one
 was a parent's.
 
 {{ api_signature(value="fn set_fallback_archives(&mut self, archives: Option<Vec<String>>)") }}
 
 Removes every `fallback-archive=` entry and adds `archives` in order, attributed to the user's
-config, behind `replace=fallback-archives` when a parent had contributed. `None` leaves none. Does
+config, behind `replace=fallback-archive` when a parent had contributed. `None` leaves none. Does
 not check for duplicates.
