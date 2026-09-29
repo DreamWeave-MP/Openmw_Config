@@ -6,11 +6,11 @@ holds the running notes between agents; read it first, append to it when you lea
 
 ## Building
 
-The `luau` feature depends on [l3i](https://github.com/DreamWeave-MP/dream-binder), which builds
+The `luau` feature depends on [l3i](https://github.com/DreamWeave-MP/l3i), which builds
 Luau with clang++, lld, and cross-language thin LTO and refuses any other toolchain. This
 repository's `.cargo/config.toml` is a copy of l3i's and sets that policy; on a host without
 clang, build inside the `l3i-tools44` toolbox: `toolbox run -c l3i-tools44 cargo test
---all-features`. During the migration campaign l3i is a path dependency (`../dream-binder`).
+--all-features`. l3i comes from crates.io.
 Keep builds small: cap jobs (`CARGO_BUILD_JOBS=2`), one cargo command at a time, `cargo clean`
 after a bench session.
 
