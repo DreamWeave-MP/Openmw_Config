@@ -535,6 +535,9 @@ impl OpenMWConfiguration {
                     .insert(0, SettingValue::DataDirectory(engine_vfs));
             }
 
+            // The injected directories are part of the effective list; index them too.
+            config.rebuild_indexes();
+
             util::debug_log(&format!("{:#?}", config.settings));
 
             Ok(config)
@@ -2160,6 +2163,40 @@ mod tests {
             only.starts_with("# nothing here\n# OpenMW-Config"),
             "{only}"
         );
+    }
+
+    #[test]
+    fn test_singleton_changes_keep_the_game_setting_index_valid() {
+        // The lookup index holds positions; removing the encoding entry ahead of the game
+        // settings shifts them, so the index must follow.
+        let mut config =
+            load("encoding=win1252\nfallback=iFirst,1\nfallback=iSecond,2\nno-sound=1\n");
+        assert_eq!(config.get_game_setting("iSecond").unwrap().value(), "2");
+        config.set_encoding(None);
+        assert_eq!(config.get_game_setting("iFirst").unwrap().value(), "1");
+        assert_eq!(config.get_game_setting("iSecond").unwrap().value(), "2");
+        let keys: Vec<_> = config
+            .game_settings()
+            .map(GameSettingType::key_str)
+            .collect();
+        assert_eq!(keys, ["iSecond", "iFirst"]);
+
+        config.set_user_data_path("/tmp/user");
+        config.clear_user_data();
+        assert_eq!(config.get_game_setting("iFirst").unwrap().value(), "1");
+    }
+
+    #[test]
+    fn test_injected_data_directories_are_indexed() {
+        let dir = temp_dir();
+        let resources = dir.join("res");
+        write_cfg(
+            &dir,
+            &format!("resources={}\ndata=Data Files\n", resources.display()),
+        );
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+        assert!(config.has_data_dir(&resources.join("vfs").to_string_lossy()));
+        assert!(config.has_data_dir(&dir.join("Data Files").to_string_lossy()));
     }
 
     #[test]

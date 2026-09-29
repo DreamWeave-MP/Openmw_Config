@@ -28,8 +28,10 @@ macro_rules! impl_singleton_setting {
                         (Some(i), Some(value)) => self.settings[i] = SettingValue::$variant(value),
                         (None, Some(value)) => self.settings.push(SettingValue::$variant(value)),
                         (Some(i), None) => { self.settings.remove(i); }
-                        (None, None) => {}
+                        (None, None) => return,
                     }
+                    // Positions in the indexes shift with the list.
+                    self.rebuild_indexes();
                 }
             )*
     };
