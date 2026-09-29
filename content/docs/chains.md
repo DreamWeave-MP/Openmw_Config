@@ -113,14 +113,21 @@ option, so `replace=fallback-archives` leaves the archives alone.
 | `replace=data` | Every `data=` entry |
 | `replace=fallback` | Every `fallback=` entry |
 | `replace=resources`, `replace=user-data`, `replace=data-local`, `replace=encoding` | Nothing: these hold one value, and OpenMW's `replace=` only reaches lists. The last file that sets one still wins |
-| `replace=config` | Every setting loaded so far, from every file, and every `config=` entry read so far that has not loaded yet |
+| `replace=config` | In a file after the root, every config loaded before it except the root, with all their settings. In the root, nothing |
 | `replace=<key>`, for any other key | Every unknown-key entry with exactly that key |
 
 The line itself is kept, and written back where it was, so a saved file still means what it did.
 
-`replace=config` is the reset button: the file that contains it starts the configuration over.
-`sub_configs()` stops listing the configs it discarded, but `config_chain()` still records them,
-because they were read.
+`replace=config` starts the chain over from the root, as OpenMW's `readConfiguration` does. The
+root stays, and so does everything in the file that says it, whichever line it is on: its
+`config=` entries load, those above the `replace=` included. So does every `config=` entry still
+waiting to load, from the files it dropped too. A directory it dropped has been tried, so it is not
+read again when a later `config=` names it. In the root file, `replace=config` does nothing; what
+stops the root's `config=` entries in OpenMW is `--replace=config` on its command line, which this
+crate does not read.
+
+`sub_configs()` leaves out the entries naming a config it dropped, but `config_chain()` still
+records the configs, because they were read.
 
 ## Paths in values
 

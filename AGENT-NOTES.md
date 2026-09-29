@@ -19,11 +19,6 @@ it puts `replace=` ahead of every entry of its list and spells the option in low
   crate applies it at its line, so `content=A.esp` then `replace=content` in one file drops
   `A.esp`, which OpenMW keeps. Most single-file tests in `tests/integration_chain_replace.rs`,
   `tests/proptest_replace.rs` and the `config.rs` unit tests encode the per-line reading.
-- **`replace=config`.** OpenMW discards the configs parsed so far except the root (local or global)
-  one, keeps the root's settings, and still follows every `config=` not yet read, the replacing
-  file's own included; in the root file itself it does nothing (only `--replace=config` on the
-  command line does). This crate discards everything loaded so far, the root included, every
-  queued `config=`, and the file's own earlier `config=` lines.
 
 ## The site's Lua pages still describe `mlua`
 
@@ -79,3 +74,8 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
     with `Path`'s equality, which ignores `.` components and trailing separators where
     `std::filesystem::path::compare` counts them: `config=.` is the file's own directory here, and
     to OpenMW's set a new directory each time (read from the code, not run).
+  - `replace=config` in a file after the root drops the configs loaded before it except the root,
+    and the chain still loads every `config=` entry waiting on the stack and all of the file's own,
+    those above the `replace=` included; a dropped directory is not read again. In the root it
+    does nothing. It used to drop everything loaded so far, the root included, every queued
+    `config=`, and the file's own earlier lines.

@@ -355,6 +355,20 @@ impl ListOption {
     }
 }
 
+/// The names `settings` lists for `list`, one of the lists that holds file names.
+fn listed_names(settings: &[SettingValue], list: &ListOption) -> HashSet<String> {
+    settings
+        .iter()
+        .filter(|setting| list.holds(setting))
+        .filter_map(|setting| match setting {
+            SettingValue::ContentFile(file)
+            | SettingValue::Groundcover(file)
+            | SettingValue::BethArchive(file) => Some(file.value().clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Where the entries of each list kind sit in `settings`, in definition order, so the list
 /// iterators and indexed reads never scan the whole flat list. Rebuilt with the other indexes.
 #[derive(Debug, Default, Clone)]
@@ -893,8 +907,8 @@ impl OpenMWConfiguration {
     /// then `b`, where `a` names `c`, loads `root`, `a`, `c`, `b`, and `b` is the user's.
     /// `OpenMW`'s paths documentation describes that example level by level (`root`, `a`, `b`,
     /// `c`); this crate does what `OpenMW`'s code does.
-    /// If `replace=config` appears in a file, any earlier settings and `config=` entries from that
-    /// same parse scope are discarded before continuing, matching `OpenMW`'s reset semantics.
+    /// A `replace=config` in a file after the root drops the configs loaded before it except the
+    /// root, as `OpenMW` does; the chain carries on through every `config=` still to load.
     ///
     /// See <https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources>
     /// for the configuration sources.
@@ -1450,8 +1464,8 @@ impl OpenMWConfiguration {
     /// order the files loaded, each file's in its own order. The chain loads depth first, so the
     /// last entry here need not be the user's config: [`Self::user_config_path`] is.
     ///
-    /// `replace=config` clears prior `config=` entries in the current parse scope, so this iterator
-    /// only exposes sub-configurations that remain in the effective chain.
+    /// An entry naming a config a `replace=config` dropped is left out, so
+    /// [`Self::save_subconfig`] cannot write over that file.
     pub fn sub_configs(&self) -> impl Iterator<Item = &DirectorySetting> {
         self.directories_at(&self.lists.sub_configs)
     }
@@ -1530,36 +1544,19 @@ impl OpenMWConfiguration {
         // names load before its second.
         let mut pending_configs = vec![(root_config.to_path_buf(), 0usize)];
 
-        let mut seen_content: HashSet<String> = self
-            .settings
-            .iter()
-            .filter_map(|setting| match setting {
-                SettingValue::ContentFile(file) => Some(file.value().clone()),
-                _ => None,
-            })
-            .collect();
-        let mut seen_groundcover: HashSet<String> = self
-            .settings
-            .iter()
-            .filter_map(|setting| match setting {
-                SettingValue::Groundcover(file) => Some(file.value().clone()),
-                _ => None,
-            })
-            .collect();
-        let mut seen_archives: HashSet<String> = self
-            .settings
-            .iter()
-            .filter_map(|setting| match setting {
-                SettingValue::BethArchive(file) => Some(file.value().clone()),
-                _ => None,
-            })
-            .collect();
+        let mut seen_content = listed_names(&self.settings, &ListOption::Content);
+        let mut seen_groundcover = listed_names(&self.settings, &ListOption::Groundcover);
+        let mut seen_archives = listed_names(&self.settings, &ListOption::FallbackArchive);
 
         // Every directory the walk has tried, the root's first: readConfiguration skips a
         // config= directory it has already tried ("Repeated config dir"), so a chain that loops
         // or branches into the same directory twice reads each once. Paths compare as written
         // once resolved, not canonicalized.
         let mut tried_dirs: FxHashSet<PathBuf> = FxHashSet::default();
+        // The directories of the configs the chain keeps, in load order, and the root's file:
+        // what readConfiguration's parsedConfigs holds.
+        let mut loaded_dirs: Vec<PathBuf> = Vec::new();
+        let mut root_cfg_file = PathBuf::new();
 
         while let Some((config_path, depth)) = pending_configs.pop() {
             let cfg_file_path = if config_path.is_dir() {
@@ -1571,7 +1568,7 @@ impl OpenMWConfiguration {
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_default();
-            if !tried_dirs.insert(config_dir) {
+            if !tried_dirs.insert(config_dir.clone()) {
                 util::debug_log_lazy(|| {
                     format!(
                         "Skipping {} as the chain already tried it!",
@@ -1607,9 +1604,12 @@ impl OpenMWConfiguration {
                 depth,
                 status: ConfigChainStatus::Loaded,
             });
-            if depth > 0 {
-                self.user_config_dir = cfg_file_path.parent().map(Path::to_path_buf);
+            if depth == 0 {
+                root_cfg_file.clone_from(&cfg_file_path);
+            } else {
+                self.user_config_dir = Some(config_dir.clone());
             }
+            loaded_dirs.push(config_dir);
 
             let lines = read_to_string(&cfg_file_path)?;
 
@@ -1792,17 +1792,27 @@ impl OpenMWConfiguration {
                                 });
                                 seen_groundcover.clear();
                             }
-                            // Single values: mergeComposingVariables only merges the lists,
-                            // so replace= leaves these to the last file that sets them.
-                            "resources" | "user-data" | "data-local" | "encoding" => {}
-                            "config" => {
-                                self.settings.clear();
-                                seen_content.clear();
-                                seen_groundcover.clear();
-                                seen_archives.clear();
-                                sub_configs.clear();
-                                pending_configs.clear();
+                            // readConfiguration: a config after the root that says
+                            // replace=config drops the configs read before it except the root.
+                            // Its own lines stay, config= entries included, and so does every
+                            // config= entry still to load.
+                            "config" if depth > 0 => {
+                                self.settings.retain(|setting| {
+                                    let source = setting.meta().source_config();
+                                    source == root_cfg_file || source == cfg_file_path
+                                });
+                                let this_config = loaded_dirs.len() - 1;
+                                loaded_dirs.drain(1..this_config);
+                                seen_content = listed_names(&self.settings, &ListOption::Content);
+                                seen_groundcover =
+                                    listed_names(&self.settings, &ListOption::Groundcover);
+                                seen_archives =
+                                    listed_names(&self.settings, &ListOption::FallbackArchive);
                             }
+                            // Single values: mergeComposingVariables only merges the lists,
+                            // so replace= leaves these to the last file that sets them. And
+                            // replace=config in the root does nothing.
+                            "resources" | "user-data" | "data-local" | "encoding" | "config" => {}
                             // Any other option name: the preserved generic entries of that
                             // key accumulated so far are discarded, as OpenMW does.
                             _ => {
@@ -1860,6 +1870,15 @@ impl OpenMWConfiguration {
                     }));
             }
         }
+
+        // The config= entries naming a config replace=config dropped are no longer in effect,
+        // so save_subconfig cannot write an empty file over one.
+        self.settings.retain(|setting| match setting {
+            SettingValue::SubConfiguration(dir) => {
+                loaded_dirs.iter().any(|loaded| loaded == dir.parsed())
+            }
+            _ => true,
+        });
 
         self.rebuild_indexes();
 

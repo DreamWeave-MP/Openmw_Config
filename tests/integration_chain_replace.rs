@@ -160,22 +160,26 @@ fn test_replace_of_a_single_value_keeps_the_files_own() {
 }
 
 #[test]
-fn test_replace_config_clears_prior_settings() {
+fn test_replace_config_in_the_root_does_nothing() {
+    // readConfiguration checks replace=config in the files after the root, and on the command
+    // line; the root's own follows its config= entries and keeps its settings.
     let config = load(
         "content=Old.esm\nfallback-archive=Old.bsa\nencoding=win1252\nreplace=config\ncontent=New.esm\n",
     );
 
-    assert!(config.has_content_file("New.esm"));
-    assert!(!config.has_content_file("Old.esm"));
-    assert!(!config.has_archive_file("Old.bsa"));
-    assert!(config.encoding().is_none());
+    assert_eq!(content(&config), ["Old.esm", "New.esm"]);
+    assert!(config.has_archive_file("Old.bsa"));
+    assert_eq!(
+        config.encoding().unwrap().to_string().trim(),
+        "encoding=win1252"
+    );
 }
 
 #[test]
-fn test_replace_config_clears_queued_subconfigs_in_same_file() {
-    let root_dir = temp_dir("replace_config_queue_root");
-    let a_dir = temp_dir("replace_config_queue_a");
-    let b_dir = temp_dir("replace_config_queue_b");
+fn test_replace_config_in_the_root_follows_every_config_entry() {
+    let root_dir = temp_dir("replace_config_root_root");
+    let a_dir = temp_dir("replace_config_root_a");
+    let b_dir = temp_dir("replace_config_root_b");
 
     write_cfg(&a_dir, "content=A.esm\n");
     write_cfg(&b_dir, "content=B.esm\n");
@@ -190,14 +194,119 @@ fn test_replace_config_clears_queued_subconfigs_in_same_file() {
 
     let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
 
-    assert!(config.has_content_file("B.esm"));
-    assert!(!config.has_content_file("A.esm"));
-
+    assert_eq!(content(&config), ["Root.esm", "A.esm", "B.esm"]);
     let sub_paths: Vec<_> = config
         .sub_configs()
         .map(|setting| setting.parsed().to_path_buf())
         .collect();
-    assert_eq!(sub_paths, vec![b_dir.clone()]);
+    assert_eq!(sub_paths, [a_dir, b_dir.clone()]);
+    assert_eq!(config.user_config_path(), b_dir);
+}
+
+#[test]
+fn test_replace_config_keeps_the_root_and_the_config_entries_still_to_load() {
+    // readConfiguration: a file after the root that says replace=config drops the configs read
+    // before it except the root, then follows its own config= entries, those before the
+    // replace= line included, and every one still on the stack.
+    let root_dir = temp_dir("replace_config_keep_root");
+    let a_dir = temp_dir("replace_config_keep_a");
+    let b_dir = temp_dir("replace_config_keep_b");
+    let b_child_dir = temp_dir("replace_config_keep_b_child");
+    let c_dir = temp_dir("replace_config_keep_c");
+
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Root.esm\nconfig={}\nconfig={}\nconfig={}\n",
+            a_dir.display(),
+            b_dir.display(),
+            c_dir.display()
+        ),
+    );
+    write_cfg(&a_dir, "content=A.esm\nfallback-archive=A.bsa\n");
+    write_cfg(
+        &b_dir,
+        &format!(
+            "content=B1.esp\nconfig={}\nreplace=config\ncontent=B2.esp\n",
+            b_child_dir.display()
+        ),
+    );
+    write_cfg(&b_child_dir, "content=BChild.esp\n");
+    write_cfg(&c_dir, "content=C.esp\n");
+
+    let config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+
+    assert_eq!(
+        content(&config),
+        ["Root.esm", "B1.esp", "B2.esp", "BChild.esp", "C.esp"]
+    );
+    assert!(!config.has_archive_file("A.bsa"));
+    assert_eq!(config.user_config_path(), c_dir);
+
+    // The configs the chain dropped are no config= entries in effect; the chain still lists
+    // every file it read.
+    let sub_paths: Vec<_> = config
+        .sub_configs()
+        .map(|setting| setting.parsed().to_path_buf())
+        .collect();
+    assert_eq!(
+        sub_paths,
+        [b_dir.clone(), c_dir.clone(), b_child_dir.clone()]
+    );
+    let chain: Vec<_> = config
+        .config_chain()
+        .map(|entry| entry.path().to_path_buf())
+        .collect();
+    assert_eq!(
+        chain,
+        [
+            root_dir.join("openmw.cfg"),
+            a_dir.join("openmw.cfg"),
+            b_dir.join("openmw.cfg"),
+            b_child_dir.join("openmw.cfg"),
+            c_dir.join("openmw.cfg"),
+        ]
+    );
+}
+
+#[test]
+fn test_replace_config_right_after_the_root_drops_nothing() {
+    let (_, config) = linear_chain(
+        "replace_config_first",
+        &["content=Root.esm\n", "replace=config\ncontent=User.esp\n"],
+    );
+
+    assert_eq!(content(&config), ["Root.esm", "User.esp"]);
+}
+
+#[test]
+fn test_a_config_replace_config_dropped_is_not_read_again() {
+    // readConfiguration's set of directories it has tried outlives replace=config.
+    let root_dir = temp_dir("replace_config_again_root");
+    let a_dir = temp_dir("replace_config_again_a");
+    let b_dir = temp_dir("replace_config_again_b");
+
+    write_cfg(
+        &root_dir,
+        &format!("config={}\nconfig={}\n", a_dir.display(), b_dir.display()),
+    );
+    write_cfg(&a_dir, "content=A.esm\n");
+    write_cfg(
+        &b_dir,
+        &format!(
+            "replace=config\ncontent=B.esm\nconfig={}\n",
+            a_dir.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+
+    assert_eq!(content(&config), ["B.esm"]);
+    let sub_paths: Vec<_> = config
+        .sub_configs()
+        .map(|setting| setting.parsed().to_path_buf())
+        .collect();
+    assert_eq!(sub_paths, std::slice::from_ref(&b_dir));
     assert_eq!(config.user_config_path(), b_dir);
 }
 
