@@ -1969,7 +1969,8 @@ impl OpenMWConfiguration {
     }
 
     /// Writes the entries of `list` that files other than `cfg_path` define, as lines of
-    /// `cfg_path`. Their comments stay in their own files.
+    /// `cfg_path`. Their comments stay in their own files, and a data directory whose text
+    /// would resolve to another directory from `cfg_path`, a relative path, is written resolved.
     fn write_inherited_entries(&self, text: &mut String, list: &ListOption, cfg_path: &Path) {
         for setting in self
             .settings
@@ -1978,6 +1979,20 @@ impl OpenMWConfiguration {
         {
             let mut entry = setting.clone();
             entry.meta_mut().comment.clear();
+            if let SettingValue::DataDirectory(dir) = &entry {
+                let original_here = DirectorySetting::new(
+                    dir.original(),
+                    cfg_path.to_path_buf(),
+                    &mut String::new(),
+                );
+                if original_here.parsed() != dir.parsed() {
+                    entry = SettingValue::DataDirectory(DirectorySetting::new(
+                        dir.parsed().to_string_lossy(),
+                        cfg_path.to_path_buf(),
+                        &mut String::new(),
+                    ));
+                }
+            }
             text.push_str(&entry.to_string());
         }
     }

@@ -84,8 +84,10 @@ exist; OpenMW does not either.
   entries loading added. `None` leaves none.
 
 Replacing the data directories in the user's config copies every one the parents listed into the
-user's file, the package's own included. That is what makes the result reload correctly, and it is
-why a tool that only adds directories should use `add_data_directory`.
+user's file, the package's own included. A relative path is copied resolved, because in the user's
+file it would be read against the user's directory; tokens and absolute paths are copied as
+written. That is what makes the result reload correctly, and it is why a tool that only adds
+directories should use `add_data_directory`.
 
 ## Fallback settings
 

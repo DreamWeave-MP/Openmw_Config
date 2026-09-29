@@ -33,7 +33,7 @@ Appends a data directory, attributed to the user's config. Does not check for du
 
 Removes every data directory whose resolved path equals `data_dir`, or whose text as written equals
 it. Removing a parent's makes the user's config replace the list with `replace=data` when saved,
-copying the remaining parent directories into it.
+copying the remaining parent directories into it, relative ones as their resolved paths.
 
 {{ api_signature(value="fn set_data_directories(&mut self, dirs: Option<Vec<PathBuf>>)") }}
 

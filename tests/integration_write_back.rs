@@ -255,3 +255,42 @@ fn removing_a_parent_entry_leaves_the_parents_other_entries_in_its_file() {
     let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
     assert_eq!(content(&reloaded), ["B.esm", "User.esp"]);
 }
+
+#[test]
+fn a_parents_relative_data_directory_keeps_its_meaning_in_the_user_config() {
+    // OpenMW's own local openmw.cfg lists `data=./resources/vfs-mw`, relative to its directory.
+    let (root_dir, user_dir, mut config) = chain(
+        "relative_data",
+        "data=./resources/vfs-mw\ndata=?userdata?data\ndata=Data Files\n",
+        "",
+    );
+    let vfs_mw = config
+        .data_directories_iter()
+        .next()
+        .unwrap()
+        .parsed()
+        .to_path_buf();
+    let userdata = config
+        .data_directories_iter()
+        .nth(1)
+        .unwrap()
+        .parsed()
+        .to_path_buf();
+    config.remove_data_directory(&root_dir.join("Data Files"));
+    config.save_user().unwrap();
+
+    assert_eq!(
+        user_file(&user_dir),
+        format!(
+            "replace=data\ndata={}\ndata=?userdata?data\n",
+            vfs_mw.display()
+        ),
+        "a relative path is written resolved, a token as written"
+    );
+    let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    let dirs: Vec<_> = reloaded
+        .data_directories_iter()
+        .map(|dir| dir.parsed().to_path_buf())
+        .collect();
+    assert_eq!(dirs, [vfs_mw, userdata]);
+}
