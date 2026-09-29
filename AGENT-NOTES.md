@@ -139,3 +139,42 @@ n=50/500/2000 → 0.21/0.22/0.18 µs; missing 159 → 94 ns; hasContentFile hit 
 1.6 µs → 0.23 µs per row; `fromEnv` load (500 plugins, 500 fallbacks) 3.86 ms → 0.48 ms.
 Measured with four agents building (load 40+); a later `nice -n 19` run under load read about
 twice these figures across the board, contention, not code.
+
+## Stage 1 l3i cleanup (2026-09-28, the binder agent, version 3.0.1)
+
+l3i at `9563658` shipped what the migration asked for; this pass adopts it. Committed on `main`:
+
+- `f3a2f3b` FEAT: the views declare their element type (`d.sequence::<S>(key).item_type(..)`:
+  `string` for `dream.openmw.Strings`, `dream_openmw_GameSetting`, `dream_openmw_GenericSetting`,
+  `dream_openmw_ChainEntry` for the row views), so the generated definitions carry `__len`, a
+  `[number]: T?` indexer, `__iter`, and a typed `toTable`; the `decl().members` patch that rewrote
+  `toTable`'s signature is gone. The strict script in
+  `tests/integration_luau_bindings.rs` now exercises `#view`, `view[i]`, and `for i, x in view`
+  on the string, game setting, and chain views without `:toTable()`, asserts the typed
+  declarations are in the `.d.luau`, and still runs `plan.check_definitions()`. `StringItem`
+  implements `l3i::sequence::SequenceItem` (items push by value) instead of `Push`;
+  `GameSetting`, `GenericSetting`, and `ChainEntry` lost the `Clone` derives that existed only so
+  a sequence could serve them. `Config` keeps `Clone`: `Push for Owned<T>` needs it, and a host
+  pushes `Owned(Config::new(..))` through `set_global`.
+- `b3b1e8a` CLEANUP: `benches/luau_boundary.rs` runs the frozen chunk through `Runtime::eval`
+  instead of wrapping it in `return function() .. end` for `load_function`. Scripts unchanged.
+- `1bc25b7` CLEANUP: version 3.0.1.
+- Not changed: `strings()` in `src/luau.rs` wraps the read error as `list entry N: <cause>`;
+  the cause is already l3i's `ValueView::type_error` wording, so there was no hand-written type
+  error to replace. No option tables, so `Options::required_str` and friends are unused here.
+  `Frame::check` is unneeded (nothing pushes in bulk). Plain `cargo test` and `--features luau`
+  resolve l3i to `default` only; `luau-analysis` (on under `--all-features`) is what builds the
+  analysis frontend.
+
+### Boundary numbers (`luau_boundary`, l3i `9563658`, one throttled run, load 9 to 15)
+
+Per operation, against the 3.0.0 figures above (which were read at load 40+): getGameSetting
+found 0.21/0.22/0.18 µs → 0.16/0.17/0.16 µs at n=50/500/2000; missing 94 → 73 ns;
+hasContentFile hit 94 → 90 ns, miss 99 → 83 ns; contentFiles 500 entries: `:toTable()` 86 →
+72 ns/entry, `[i]` loop 130 → 100 ns/entry (l3i now reads the receiver and key from the value
+layout), `for` 125 → 95 to 138 ns/entry across two runs; fromEnv 0.48 → 0.38 ms. gameSettings
+`for` over 500 rows read 0.44 and 0.55 µs per row in two runs with 10 to 20 percent wide
+intervals, against 0.23 µs recorded for 3.0.0; the machine never got under load 5 during this
+pass, so that figure is unresolved: remeasure it quietly before treating it as a regression, and
+if it holds, the by-value `Owned<T>` iterator path in l3i is the place to look. README numbers
+were left alone for the same reason.
