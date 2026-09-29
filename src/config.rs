@@ -1555,16 +1555,41 @@ impl OpenMWConfiguration {
             })
             .collect();
 
-        while let Some((config_dir, depth)) = pending_configs.pop() {
-            if !config_dir.exists() {
+        // Every directory the walk has tried, the root's first: readConfiguration skips a
+        // config= directory it has already tried ("Repeated config dir"), so a chain that loops
+        // or branches into the same directory twice reads each once. Paths compare as written
+        // once resolved, not canonicalized.
+        let mut tried_dirs: FxHashSet<PathBuf> = FxHashSet::default();
+
+        while let Some((config_path, depth)) = pending_configs.pop() {
+            let cfg_file_path = if config_path.is_dir() {
+                config_path.join("openmw.cfg")
+            } else {
+                config_path
+            };
+            let config_dir = cfg_file_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
+            if !tried_dirs.insert(config_dir) {
+                util::debug_log_lazy(|| {
+                    format!(
+                        "Skipping {} as the chain already tried it!",
+                        cfg_file_path.display()
+                    )
+                });
+                continue;
+            }
+
+            if !cfg_file_path.exists() {
                 if depth == 0 {
-                    bail_config!(cannot_find, config_dir);
+                    bail_config!(cannot_find, cfg_file_path);
                 }
                 util::debug_log_lazy(|| {
-                    format!("Skipping {} as it does not exist!", config_dir.display())
+                    format!("Skipping {} as it does not exist!", cfg_file_path.display())
                 });
                 self.chain.push(ConfigChainEntry {
-                    path: config_dir,
+                    path: cfg_file_path,
                     depth,
                     status: ConfigChainStatus::SkippedMissing,
                 });
@@ -1572,16 +1597,10 @@ impl OpenMWConfiguration {
             }
 
             if depth > Self::MAX_CONFIG_DEPTH {
-                bail_config!(max_depth_exceeded, config_dir);
+                bail_config!(max_depth_exceeded, cfg_file_path);
             }
 
-            util::debug_log_lazy(|| format!("BEGIN CONFIG PARSING: {}", config_dir.display()));
-
-            let cfg_file_path = if config_dir.is_dir() {
-                config_dir.join("openmw.cfg")
-            } else {
-                config_dir
-            };
+            util::debug_log_lazy(|| format!("BEGIN CONFIG PARSING: {}", cfg_file_path.display()));
 
             self.chain.push(ConfigChainEntry {
                 path: cfg_file_path.clone(),
@@ -3577,23 +3596,48 @@ mod tests {
 
     #[test]
     fn test_error_max_depth_exceeded() {
-        // Build a self-referencing config chain that will hit the depth limit
-        let dir = temp_dir();
-        write_cfg(&dir, &format!("config={}\n", dir.display()));
-        let result = OpenMWConfiguration::new(Some(dir));
+        // Seventeen levels of distinct directories below the root.
+        let dirs: Vec<PathBuf> = (0..18).map(|_| temp_dir()).collect();
+        for pair in dirs.windows(2) {
+            write_cfg(&pair[0], &format!("config={}\n", pair[1].display()));
+        }
+        write_cfg(&dirs[17], "");
+        let result = OpenMWConfiguration::new(Some(dirs[0].clone()));
         assert!(matches!(result, Err(ConfigError::MaxDepthExceeded(_))));
     }
 
     #[test]
-    fn test_error_max_depth_exceeded_for_circular_chain() {
+    fn test_a_config_that_names_itself_loads_once() {
+        // readConfiguration skips a config= directory it has already read ("Repeated config
+        // dir"), the root's included.
+        let dir = temp_dir();
+        write_cfg(
+            &dir,
+            &format!("content=Self.esm\nconfig={}\n", dir.display()),
+        );
+        let config = OpenMWConfiguration::new(Some(dir.clone())).unwrap();
+
+        assert_eq!(config.config_chain().count(), 1);
+        assert_eq!(config.content_file_count(), 1);
+        assert_eq!(config.user_config_path(), dir);
+    }
+
+    #[test]
+    fn test_a_circular_chain_loads_each_config_once() {
         let a = temp_dir();
         let b = temp_dir();
 
-        write_cfg(&a, &format!("config={}\n", b.display()));
-        write_cfg(&b, &format!("config={}\n", a.display()));
+        write_cfg(&a, &format!("content=A.esm\nconfig={}\n", b.display()));
+        write_cfg(&b, &format!("content=B.esm\nconfig={}\n", a.display()));
 
-        let result = OpenMWConfiguration::new(Some(a));
-        assert!(matches!(result, Err(ConfigError::MaxDepthExceeded(_))));
+        let config = OpenMWConfiguration::new(Some(a.clone())).unwrap();
+        let chain: Vec<PathBuf> = config
+            .config_chain()
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+        assert_eq!(chain, [a.join("openmw.cfg"), b.join("openmw.cfg")]);
+        assert_eq!(config.content_file_count(), 2);
+        assert_eq!(config.user_config_path(), b);
     }
 
     #[cfg(unix)]

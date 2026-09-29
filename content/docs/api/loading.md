@@ -132,7 +132,7 @@ one, the line:
 | `BadEncoding` | An `encoding=` other than `win1250`, `win1251` or `win1252` |
 | `DuplicateContentFile`, `DuplicateGroundcoverFile`, `DuplicateArchiveFile` | The same name twice in the chain, without a `replace=` between |
 | `CannotFind` | A file in the chain disappeared while loading |
-| `MaxDepthExceeded` | More than 16 levels of `config=` |
+| `MaxDepthExceeded` | More than 16 levels of `config=` below the root |
 | `Io` | The operating system refused to read a file |
 
 [ConfigError](@/docs/api/errors.md) lists every variant's fields and messages.

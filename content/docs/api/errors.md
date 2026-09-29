@@ -25,7 +25,7 @@ match with a `_` arm.
 | `DuplicateContentFile { file, config_path, line }` | A `content=` name the chain already listed. `config_path` and `line` are the second occurrence |
 | `DuplicateGroundcoverFile { file, config_path, line }` | The same, for `groundcover=` |
 | `DuplicateArchiveFile { file, config_path, line }` | The same, for `fallback-archive=` |
-| `MaxDepthExceeded(PathBuf)` | More than 16 levels of `config=`, usually a chain that loops |
+| `MaxDepthExceeded(PathBuf)` | More than 16 levels of `config=` below the root. A chain that loops loads each directory once instead |
 
 ## Finding a config
 

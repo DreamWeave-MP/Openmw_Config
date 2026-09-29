@@ -358,6 +358,58 @@ fn test_config_chain_reports_loaded_and_missing_entries() {
 }
 
 #[test]
+fn test_a_config_two_files_name_loads_once() {
+    // readConfiguration remembers every directory it has tried and skips a repeated one, so
+    // the second config= naming `shared` loads nothing.
+    let root_dir = temp_dir("repeated_root");
+    let first_dir = temp_dir("repeated_first");
+    let second_dir = temp_dir("repeated_second");
+    let shared_dir = temp_dir("repeated_shared");
+    let missing_dir = temp_dir("repeated_missing");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "config={}\nconfig={}\nconfig={}\n",
+            first_dir.display(),
+            second_dir.display(),
+            missing_dir.display()
+        ),
+    );
+    write_cfg(
+        &first_dir,
+        &format!(
+            "content=First.esp\nconfig={}\nconfig={}\n",
+            shared_dir.display(),
+            missing_dir.display()
+        ),
+    );
+    write_cfg(
+        &second_dir,
+        &format!("content=Second.esp\nconfig={}\n", shared_dir.display()),
+    );
+    write_cfg(&shared_dir, "content=Shared.esp\n");
+
+    let config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+
+    assert_eq!(content(&config), ["First.esp", "Shared.esp", "Second.esp"]);
+    let chain: Vec<_> = config
+        .config_chain()
+        .map(|entry| entry.path().to_path_buf())
+        .collect();
+    assert_eq!(
+        chain,
+        [
+            root_dir.join("openmw.cfg"),
+            first_dir.join("openmw.cfg"),
+            shared_dir.join("openmw.cfg"),
+            missing_dir.join("openmw.cfg"),
+            second_dir.join("openmw.cfg"),
+        ]
+    );
+    assert_eq!(config.user_config_path(), second_dir);
+}
+
+#[test]
 fn test_config_entries_load_depth_first() {
     // readConfiguration pushes a file's config= entries on a stack, first on top, so the first
     // one and everything it names load before the second.

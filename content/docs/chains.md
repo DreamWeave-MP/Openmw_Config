@@ -36,8 +36,12 @@ does what OpenMW's code does.
 
 - A `config=` directory without an `openmw.cfg` is skipped, not an error. The chain records it as
   skipped.
-- A chain deeper than 16 levels fails with `ConfigError::MaxDepthExceeded`. A config that names
-  itself, directly or through others, hits this limit.
+- A directory the chain has already tried is skipped, as OpenMW skips it: a config that names
+  itself, directly or through others, loads once, and a directory two files name loads where the
+  walk first reaches it. Directories compare by their resolved paths, not canonicalized, so a
+  symlink and its target are two directories.
+- More than 16 levels of `config=` below the root fails with `ConfigError::MaxDepthExceeded`.
+  OpenMW sets no such limit.
 
 Three files, laid out side by side:
 

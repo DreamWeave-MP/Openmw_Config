@@ -73,3 +73,9 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
     level as OpenMW's paths documentation says. `config_chain()` lists a missing `config=` target
     when the walk reaches it, and `user_config_path()` is the last config loaded, which is no
     longer always the last entry of `sub_configs()`.
+  - a `config=` directory the chain already tried is skipped, as `readConfiguration` skips a
+    "Repeated config dir": a config that names itself, or a loop, loads each file once instead of
+    failing with `MaxDepthExceeded`, and a directory two files name loads once. Paths compare
+    with `Path`'s equality, which ignores `.` components and trailing separators where
+    `std::filesystem::path::compare` counts them: `config=.` is the file's own directory here, and
+    to OpenMW's set a new directory each time (read from the code, not run).

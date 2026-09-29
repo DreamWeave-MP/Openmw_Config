@@ -231,7 +231,8 @@ pub enum ConfigError {
     /// [`OpenMWConfiguration::save_subconfig`](crate::OpenMWConfiguration::save_subconfig)
     /// was called with a path that is not part of the loaded configuration chain.
     SubconfigNotLoaded(PathBuf),
-    /// The `config=` chain exceeded the maximum nesting depth, likely due to a circular reference.
+    /// The `config=` chain nests more than 16 levels below the root. A chain that loops does not
+    /// get here: a directory the chain already tried is skipped, as `OpenMW` skips it.
     MaxDepthExceeded(PathBuf),
     /// A platform default path could not be determined, because the environment or the
     /// operating system gave none: `HOME` unset or empty, no Documents known folder, or a
