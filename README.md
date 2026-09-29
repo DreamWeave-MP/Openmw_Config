@@ -1,88 +1,40 @@
-# openmw_config
+# openmw-config
 
-**openmw_config** is a lightweight Rust crate that provides a simple, idiomatic API for reading,
-composing, and writing [OpenMW](https://openmw.org/) configuration files. It closely matches
-OpenMW's own configuration parser, supporting configuration chains, directory tokens, and value
-replacement semantics. For comprehensive VFS coverage, combine with
-[vfstool_lib](https://crates.io/crates/vfstool_lib).
+Read, compose and write [OpenMW](https://openmw.org/)'s `openmw.cfg` configuration chains from
+Rust, or from Lua embedded in a Rust program.
 
-- [Why Use It](#why-use-it)
-- [Features](#features)
-- [Rust Quick Start](#rust-quick-start)
-- [Lua Quick Start](#lua-quick-start)
-- [Rust Usage](#rust-usage)
-- [Lua Bindings (`mlua`)](#lua-bindings-mlua)
-- [Advanced Behavior](#advanced-behavior)
-- [Quality & Testing](#quality--testing)
-- [Manual Diagnostics](#manual-diagnostics)
-- [Compatibility Guarantees](#compatibility-guarantees)
-- [Known Limitations](#known-limitations)
+OpenMW does not read one `openmw.cfg`. It reads a chain: a root config, which points with `config=`
+at the user's, which may point further, each file adding to or `replace=`-ing what came before.
+openmw-config reads that chain the way OpenMW does and hands you the result as one configuration.
+Every setting remembers the file it came from and the comments above it, so saving writes each
+change back to the file that owns it.
 
-## Why Use It
+**Documentation, including the full Rust and Lua API reference:
+<https://dreamweave-mp.github.io/Openmw_Config/>**
 
-- **OpenMW-accurate semantics** - models `config=` traversal, `replace=*` behavior, and token
-  expansion (`?local?`, `?global?`, `?userdata?`, `?userconfig?`) to match real parser behavior.
-- **Safe persistence model** - `save_user()`, `save_subconfig()`, `save_to_path()`, and
-  `save_resolved_to_path()` use atomic write semantics to avoid partial writes.
-- **Integration-friendly API** - ergonomic Rust API plus embedded Lua host bindings via `mlua`,
-  with a camelCase-only Lua surface.
-- **Diagnostics and predictability** - line-aware parse errors, explicit chain introspection, and
-  deterministic roundtrip serialization.
+## Quick start
 
-## Features
-
-- **Accurate parsing** - mirrors OpenMW's config resolution, including `config=`, `replace=`, and
-  tokens like `?local?`, `?global?`, `?userdata?`, and `?userconfig?`.
-- **Multi-file chains** - multiple `openmw.cfg` files are merged according to OpenMW's rules;
-  last-defined wins.
-- **Explicit serialization contracts** - `Display` preserves user-authored path spelling for
-  round-trips; `to_resolved_string()` emits relocation-safe flattened output for importers.
-- **Dependency-light core** - Unix/macOS path resolution and env expansion are implemented with
-  `std`; Windows default paths use Known Folder APIs via `windows-sys` (Windows-only target dep).
-  Lua support is optional via the `lua` feature.
-
-## Rust Quick Start
-
-Load the active config chain, inspect values, mutate, and save in a few lines:
-
-```toml
-[dependencies]
-openmw-config = "1"
+```sh
+cargo add openmw-config
 ```
 
-```rust,no_run
-use openmw_config::OpenMWConfiguration;
+```rust
+use openmw_config::{ConfigError, OpenMWConfiguration};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load the active config chain using OpenMW-style root config discovery
-    let config = OpenMWConfiguration::from_env()?;
+fn main() -> Result<(), ConfigError> {
+    // OpenMW's root config discovery, falling back to the user's openmw.cfg.
+    let mut config = OpenMWConfiguration::from_env_or_user_config()?;
 
     for plugin in config.content_files_iter() {
         println!("{}", plugin.value());
     }
 
-    for dir in config.data_directories_iter() {
-        println!("{}", dir.parsed().display());
-    }
-
-    // Mutate and persist to the user config with atomic write behavior
-    let mut config = config;
-    config.add_content_file("Extra.esp")?;
-    config.save_user()?;
-
-    // Or write a relocation-safe flattened export to an explicit path
-    config.save_resolved_to_path("/tmp/openmw.cfg")?;
-
-    Ok(())
+    config.add_content_file("Better Balmora.esp")?;
+    config.save_user()
 }
 ```
 
-See [Rust Usage](#rust-usage) and [API Overview](#api-overview) for more patterns.
-
-## Lua Quick Start
-
-Embed `openmwConfig` into a host-created Luau state. The `lua` feature doesn't pick a Lua
-runtime; the host application selects one through its own `mlua` dependency:
+With the `lua` feature, a Rust host can give scripts the same configuration:
 
 ```toml
 [dependencies]
@@ -90,390 +42,42 @@ openmw-config = { version = "2", features = ["lua"] }
 mlua = { version = "0.12", default-features = false, features = ["luau"] }
 ```
 
-```rust,ignore
-use mlua::Lua;
-use openmw_config::create_lua_module;
-
-fn main() -> Result<(), mlua::Error> {
-    let lua = Lua::new();
-    let openmw = create_lua_module(&lua)?;
-    lua.globals().set("openmwConfig", openmw)?;
-
-    lua.load(r#"
-      local cfg = openmwConfig.fromEnv()
-      cfg:addContentFile("MyPlugin.esp")
-      cfg:saveUser()
-    "#).exec()?;
-
-    Ok(())
-}
-```
-
-This is embedded-host integration, not a standalone Lua module. To make `require("@openmwConfig")`
-work, register the table with `lua.register_module("@openmwConfig", openmw)?`.
-See [Lua Bindings (`mlua`)](#lua-bindings-mlua) for the full Lua API surface.
-
-## Rust Usage
-
-### Loading a specific config
-
-`new()` accepts either a directory containing `openmw.cfg` or a direct path to the file:
-
-```rust,no_run
-use std::path::PathBuf;
-use openmw_config::OpenMWConfiguration;
-
-// From a directory
-let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw")))?;
-
-// From a file path
-let config = OpenMWConfiguration::new(Some(PathBuf::from("/home/user/.config/openmw/openmw.cfg")))?;
-
-// With None, load the platform/user config default (?userconfig?/openmw.cfg).
-// This is intentionally different from from_env().
-let user_config = OpenMWConfiguration::new(None)?;
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-Importer-style tools can start from an empty config directory or treat a missing input as empty
-without fabricating an `openmw.cfg` model locally:
-
-```rust,no_run
-use std::path::PathBuf;
-use openmw_config::OpenMWConfiguration;
-
-// Does not read from disk and does not require the directory to exist.
-let empty = OpenMWConfiguration::new_empty(PathBuf::from("/home/user/.config/openmw"))?;
-
-// Existing inputs load normally; missing `openmw.cfg` starts empty from its parent directory.
-let optional = OpenMWConfiguration::load_optional(PathBuf::from("/tmp/import/openmw.cfg"))?;
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-`OpenMWConfiguration::from_env()` is the API for tools that want to behave like OpenMW startup:
-
-1. `OPENMW_CONFIG` points directly to an `openmw.cfg` file and wins.
-2. `OPENMW_CONFIG_DIR` is searched as a path list for the first directory containing `openmw.cfg`.
-3. Without explicit environment overrides, discovery tries an `openmw.cfg` adjacent to the running
-   executable. For external tools, that means the tool executable, not some guessed OpenMW binary.
-4. If no local root config exists, discovery tries the platform global OpenMW config
-   (`/etc/openmw/openmw.cfg` on normal Linux package installs).
-5. If neither root exists, loading fails. There is no silent user-config fallback.
-
-Packaged OpenMW installs usually load user overrides because the global root config contains a chain
-entry such as `config="?userconfig?"`. Starting directly from the user config skips the package
-baseline. That is not equivalent, even if it looks fine on the machine that wrote the bug. Ask how
-we know.
-
-External tools that should prefer OpenMW startup semantics but still work on installs with only a
-user config should use `OpenMWConfiguration::from_env_or_user_config()`:
-
-```rust,no_run
-use openmw_config::OpenMWConfiguration;
-
-let config = OpenMWConfiguration::from_env_or_user_config()?;
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-This first honors `from_env()` behavior. If no executable-adjacent or global root `openmw.cfg` is
-found, it falls back to the default user config (`?userconfig?/openmw.cfg`). Explicit bad paths are
-still errors; the fallback is not a shovel for burying mistakes.
-
-### Modifying and saving
-
-```rust,no_run
-use std::path::PathBuf;
-use openmw_config::OpenMWConfiguration;
-
-let mut config = OpenMWConfiguration::new(None)?;
-
-// Replace all content files
-config.set_content_files(Some(vec!["MyMod.esp".into(), "Another.esp".into()]));
-
-// Add a single plugin (errors if already present)
-config.add_content_file("Extra.esp")?;
-
-// Replace all data directories
-config.set_data_directories(Some(vec![PathBuf::from("/path/to/Data Files")]));
-
-// Replace all fallback archives
-config.set_fallback_archives(Some(vec!["Morrowind.bsa".into()]));
-
-// Write the user config back to disk
-config.save_user()?;
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-### Serialization
-
-`OpenMWConfiguration` has two deliberately separate serialization contracts. `Display` / `toString`
-are preservation-oriented: directory-valued settings keep their original spelling, including
-relative paths and tokens, so user-authored config text can round-trip:
-
-```rust,no_run
-use openmw_config::OpenMWConfiguration;
-
-let config = OpenMWConfiguration::new(None)?;
-println!("{config}");
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-For importer/export output that may be written somewhere else, use resolved serialization instead.
-It emits directory-valued settings from resolved paths and excludes `config=` / `replace=` chain
-control entries because the output is already flattened:
-
-```rust,no_run
-use openmw_config::OpenMWConfiguration;
-
-let config = OpenMWConfiguration::load_optional("/tmp/import/openmw.cfg")?;
-println!("{}", config.to_resolved_string());
-config.save_resolved_to_path("/tmp/export/openmw.cfg")?;
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-## API Overview
-
-| Core Rust API | Description |
-|---|---|
-| `OpenMWConfiguration::from_env()` / `OpenMWConfiguration::new(path)` | Load via OpenMW-style env/root discovery or explicit file/directory path |
-| `OpenMWConfiguration::new_empty(dir)` / `OpenMWConfiguration::load_optional(path)` | Start from an empty user config directory or load if present |
-| `root_config_file()` / `root_config_dir()` | Root config file and parent directory |
-| `user_config_ref()` / `user_config_path()` | Resolve highest-priority user config |
-| `sub_configs()` / `config_chain()` | Traverse effective subconfigs and parser-order chain events |
-| `content_files_iter()` / `groundcover_iter()` / `fallback_archives_iter()` | Read loaded file collections |
-| `data_directories_iter()` / `game_settings()` / `get_game_setting(key)` | Read resolved directories and `fallback=` settings |
-| `generic_settings_iter()` | Read preserved generic `key=value` entries |
-| `add_*` / `remove_*` / `set_*` methods | Mutate loaded values |
-| `add_generic_setting()` / `set_generic_settings()` | Mutate preserved generic entries |
-| `save_user()` / `save_subconfig(path)` / `save_to_path(path)` | Persist preservation-oriented output using atomic writes |
-| `to_resolved_string()` / `save_resolved_to_path(path)` | Flattened relocation-safe importer/export serialization |
-| `default_*` and `try_default_*` free functions | Resolve default user, root, local, global config, data-token paths (panic or fallible variants) |
-| `create_lua_module(lua)` *(with `lua` feature)* | Build a Lua table for embedded host integration |
-
-For the complete API surface (including helper structs and all methods), see
-[`docs.rs/openmw-config`](https://docs.rs/openmw-config).
-
-Task-oriented map:
-
-- **Load config state** - `OpenMWConfiguration::from_env()`, `OpenMWConfiguration::new(path)`,
-  `OpenMWConfiguration::new_empty(dir)`, `OpenMWConfiguration::load_optional(path)`
-- **Inspect chain resolution** - `sub_configs()`, `config_chain()`, `user_config_path()`
-- **Edit plugin/data lists** - `add_*`, `remove_*`, `set_*` method families
-- **Read/write settings** - `game_settings()`, `get_game_setting(key)`, `generic_settings_iter()`, `set_game_setting(...)`
-- **Persist safely** - `save_user()`, `save_subconfig(path)`, `save_to_path(path)`,
-  `save_resolved_to_path(path)`
-
-## Advanced Behavior
-
-- **Config chains** - `sub_configs()` walks the `config=` entries that were loaded. The last entry
-  is the user config; everything above it is read-only from OpenMW's perspective.
-- **Replace semantics** - `replace=content`, `replace=data`, etc. are honoured during load, exactly
-  as OpenMW handles them. `replace=config` resets earlier settings and queued `config=` entries
-  from the same parse scope before continuing.
-- **Token expansion** - `?local?`, `?global?`, `?userdata?`, and `?userconfig?` in `data=` paths
-  are expanded to platform-correct directories at load time.
-- **Root discovery vs user config** - `from_env()` follows OpenMW startup semantics: explicit env
-  overrides, then local root config, then global root config. `OpenMWConfiguration::new(None)` loads
-  the platform/user config default (`?userconfig?/openmw.cfg`) for callers that explicitly want the
-  user-owned config.
-- **Path names are not synonyms** - `try_default_config_path()` resolves `?userconfig?`,
-  `try_default_global_config_path()` resolves the global config directory such as `/etc/openmw`, and
-  `try_default_global_path()` resolves the `?global?` data-token path such as `/usr/share/games`.
-  Conflating those is how distro installs become archaeology projects.
-
-Flatpak and token-resolution controls:
-
-- `OPENMW_CONFIG_USING_FLATPAK` - if set to any value, Flatpak path mode is enabled.
-- Auto-detection also enables Flatpak mode when `FLATPAK_ID` is set or `/.flatpak-info` exists.
-- `OPENMW_FLATPAK_ID` - optional app-id override (falls back to `FLATPAK_ID`, then `org.openmw.OpenMW`).
-- `OPENMW_GLOBAL_PATH` - optional override for the `?global?` token target.
-- `OPENMW_GLOBAL_CONFIG_PATH` - crate/tool override for the global config directory used by root
-  discovery. This is not claimed to be an OpenMW engine environment variable.
-- In Flatpak mode, `?userconfig?` and `?userdata?` resolve to `~/.var/app/<app-id>/config/openmw`
-  and `~/.var/app/<app-id>/data/openmw` respectively.
-
-`config_chain()` provides parser-order traversal details, including skipped missing subconfigs:
-
-```rust,no_run
-use openmw_config::{ConfigChainStatus, OpenMWConfiguration};
-
-let config = OpenMWConfiguration::new(None)?;
-
-for entry in config.config_chain() {
-    let status = match entry.status() {
-        ConfigChainStatus::Loaded => "loaded",
-        ConfigChainStatus::SkippedMissing => "skipped-missing",
-    };
-    println!("[{status}] depth={} {}", entry.depth(), entry.path().display());
-}
-# Ok::<(), openmw_config::ConfigError>(())
-```
-
-## Lua Bindings (`mlua`)
-
-- Public Lua methods/functions are intentionally **camelCase only**.
-- `lua` feature: builds the bindings against `mlua` 0.12 without choosing a runtime; the embedding
-  application selects one. `DreamWeave` hosts run [Luau](https://luau.org), and the bindings are
-  tested against it.
-- `standalone-lua` feature: `lua` plus `mlua`'s Luau backend, for this crate's tests and docs.
-- Version 2.0.0 moved the bindings from vendored `LuaJIT` to Luau; the Lua API itself is unchanged.
-
-Module exports (`openmwConfig`):
-
-| Lua function | Returns | Notes |
-|---|---|---|
-| `fromEnv()` | `config` userdata | Loads using `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR` semantics |
-| `fromEnvOrUserConfig()` | `config` userdata | `fromEnv()` plus default user-config fallback when no root config exists |
-| `new(pathOrNil)` | `config` userdata | `pathOrNil` may be file path, dir path, or `nil` |
-| `newEmpty(userConfigDir)` | `config` userdata | Starts empty from a config directory without reading disk |
-| `loadOptional(path)` | `config` userdata | Loads if present; missing paths start empty with matching config context |
-| `defaultConfigPath()` | `string` | Platform default config dir |
-| `defaultUserConfigFile()` | `string` | Platform default user `openmw.cfg` file |
-| `defaultUserDataPath()` | `string` | Platform default userdata dir |
-| `defaultDataLocalPath()` | `string` | Platform default data-local dir |
-| `defaultLocalPath()` | `string` | Path backing the `?local?` token |
-| `defaultGlobalPath()` | `string` | Path backing the `?global?` token (throws on unsupported platforms) |
-| `tryDefaultConfigPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `tryDefaultUserConfigFile()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
-| `tryDefaultRootOrUserConfigPath()` | `(string\|nil, string\|nil)` | Tuple-style success/error |
-| `tryDefaultUserDataPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `tryDefaultLocalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `tryDefaultGlobalPath()` | `(string|nil, string|nil)` | Tuple-style success/error |
-| `version` | `string` field | Crate version string |
-
-`config` userdata methods:
-
-| Lua method | Returns | Notes |
-|---|---|---|
-| `rootConfigFile()` / `rootConfigDir()` | `string` | Resolved root file/path |
-| `isUserConfig()` | `boolean` | Whether root is already highest-priority config |
-| `userConfigPath()` | `string` | Highest-priority config directory |
-| `userConfig()` | `config` userdata | Returns a user-config-focused clone |
-| `toString()` | `string` | Preservation-oriented serialized `openmw.cfg` output |
-| `toResolvedString()` | `string` | Flattened relocation-safe output; omits `config=` / `replace=` |
-| `subConfigs()` | `string[]` | Effective loaded `config=` directories |
-| `configChain()` | `table[]` | Rows: `{ path, depth, status }`, status is `loaded` or `skippedMissing` |
-| `contentFiles()` / `groundcoverFiles()` / `fallbackArchives()` | `string[]` | Collection snapshots |
-| `dataDirectories()` | `string[]` | Resolved `data=` directories |
-| `gameSettings()` | `table[]` | Rows: `{ key, value, kind, source, comment }` |
-| `genericSettings()` | `table[]` | Rows: `{ key, value, source, comment }` |
-| `getGameSetting(key)` | `table|nil` | Single row with `{ key, value, kind, source, comment }` |
-| `userData()` / `resources()` / `dataLocal()` / `encoding()` | `string|nil` | Singleton getters |
-| `hasContentFile(name)` / `hasGroundcoverFile(name)` / `hasArchiveFile(name)` / `hasDataDir(path)` | `boolean` | Presence checks |
-| `addContentFile(name)` / `addGroundcoverFile(name)` / `addArchiveFile(name)` / `addDataDirectory(path)` | `nil` | Mutating append operations |
-| `removeContentFile(name)` / `removeGroundcoverFile(name)` / `removeArchiveFile(name)` / `removeDataDirectory(path)` | `nil` | Mutating remove operations |
-| `setContentFiles(listOrNil)` / `setFallbackArchives(listOrNil)` / `setDataDirectories(listOrNil)` | `nil` | Replaces full collection, `nil` clears |
-| `setGenericSettings(key, listOrNil)` / `addGenericSetting(key, value)` | `nil` | Manage preserved generic entries |
-| `setGameSetting(value, sourcePathOrNil, commentOrNil)` / `setGameSettings(listOrNil)` | `nil` | Fallback setters |
-| `setUserData(pathOrNil)` / `setResources(pathOrNil)` / `setDataLocal(pathOrNil)` / `setEncoding(valueOrNil)` | `nil` | Singleton setters, `nil` clears |
-| `saveUser()` / `saveSubconfig(path)` / `saveToPath(path)` | `nil` | Write preservation-oriented output |
-| `saveResolvedToPath(path)` | `nil` | Write flattened relocation-safe output |
-
-### Host Integration (Embedded Lua)
-
-This crate's Lua support is host-embedded: your Rust application creates a Lua state and injects
-the `openmwConfig` table for scripts to consume. For setup and registration, use
-[Lua Quick Start](#lua-quick-start).
-
-Typical mutation and persistence flow from Lua:
-
 ```lua
-local cfg = openmwConfig.new(nil)
+local cfg = openmwConfig.fromEnvOrUserConfig()
 cfg:addContentFile("MyPlugin.esp")
-cfg:setDataDirectories({"/path/to/data"})
-cfg:setGameSetting("fJumpHeight,1.0", nil, nil)
 cfg:saveUser()
 ```
 
-#### Notes
+## What it does
 
-- Lua API naming is `camelCase` only.
-- Most method failures throw Lua runtime errors (`pcall`-friendly).
-- `tryDefaultConfigPath()`, `tryDefaultUserDataPath()`, `tryDefaultLocalPath()`, and
-  `tryDefaultGlobalPath()` return `(value, err)` tuples instead of throwing.
-- This is not a standalone Lua module distribution (`require("openmw_config")`); integration is via Rust host registration.
+- Root discovery through `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, the executable's directory and the
+  global config; `config=` level by level; every `replace=` form; the `?local?`, `?global?`,
+  `?userdata?` and `?userconfig?` tokens, Flatpak included.
+- Round trips that keep comments, unknown keys and each value's spelling, written through a
+  temporary file.
+- A flattened export with resolved paths, for importers.
+- Parse errors with file and line, and a record of every file the chain loaded or skipped.
 
-### Lua Stability Contract
+## Where to read next
 
-- Across 1.x releases, the documented `openmwConfig.*` constructors/default-path helpers and
-  `cfg:*` read, mutate, and save method families are intended to remain stable.
-- Table shapes are stable:
-  - `configChain()` rows: `{ path, depth, status }`
-  - `gameSettings()` / `getGameSetting()` rows: `{ key, value, kind, source, comment }`
-  - `genericSettings()` rows: `{ key, value, source, comment }`
-- `status` is one of `loaded` or `skippedMissing`.
-- `kind` is one of `Color`, `String`, `Float`, or `Int`.
-- `nil` inputs are used to clear optional settings in setter methods.
+- [Start here](https://dreamweave-mp.github.io/Openmw_Config/docs/start-here/)
+- [Loading](https://dreamweave-mp.github.io/Openmw_Config/docs/loading/): which constructor your
+  tool wants
+- [Rust API](https://dreamweave-mp.github.io/Openmw_Config/docs/api/) and
+  [Lua API](https://dreamweave-mp.github.io/Openmw_Config/docs/lua/)
+- [Changelog](https://dreamweave-mp.github.io/Openmw_Config/home/changelog/)
 
-## Quality & Testing
-
-- Unit and integration tests cover parser behavior across config chains, including
-  `replace=config` queue semantics and missing subconfig traversal outcomes.
-- Roundtrip behavior is validated to preserve comments and fallback lexical forms where relevant.
-- Parse diagnostics include line context on malformed input variants for easier debugging.
-- CI/local lint posture is strict: `cargo clippy --all-targets --features lua -- -W clippy::pedantic -D warnings`.
-- Lua integration tests validate module exports, mutation flows, persistence, and error behavior.
-
-## Manual Diagnostics
-
-The repository includes an ignored integration test that dumps the resolved real-world config
-chain to a local file for inspection.
-
-- Test: `dump_real_config_chain_to_repo_local_file`
-- Source: `tests/integration_manual_chain_dump.rs`
-- Output file: `real_config_chain_paths.txt` (repo root)
-- Purpose: verify chain resolution against your actual platform/user setup
-
-Run it manually:
-
-```bash
-cargo test --test integration_manual_chain_dump -- --ignored --exact dump_real_config_chain_to_repo_local_file
-```
-
-Notes:
-
-- Run this when validating chain resolution on an actual machine/profile setup.
-- This test is intentionally ignored in normal test runs and CI.
-- Output format is one absolute `openmw.cfg` path per line, in traversal order.
-- It writes a local artifact intended for debugging and verification.
-
-## Compatibility Guarantees
-
-- Public APIs follow semver: breaking changes land only in a new major version.
-- MSRV is declared in `Cargo.toml` and may change only in a semver-compatible release with notes.
-- `openmw.cfg` behavior aims to match OpenMW docs for chain traversal and replace semantics.
-- Unknown keys are preserved during parse/serialize roundtrips.
-
-## Known Limitations
-
-- `settings.cfg` handling is intentionally deferred to a post-1.0 release.
-- This crate models `openmw.cfg` behavior only; it does not implement the entire OpenMW config stack.
-
-## Reference
-
-[OpenMW configuration documentation](https://openmw.readthedocs.io/en/latest/reference/modding/paths.html#configuration-sources)
-
----
-
-See [CHANGELOG.md](CHANGELOG.md) for release history.
-
----
-
-openmw-config is not affiliated with the OpenMW project.
+openmw-config handles `openmw.cfg` only; `settings.cfg` is not supported yet. It is not affiliated
+with the OpenMW project.
 
 ## Support
 
-Has `openmw-config` been useful to you?
-
-If so, please consider [amplifying the signal](https://ko-fi.com/magicaldave) through my ko-fi. 
-
-Thank you for using `openmw-config`.
+Has openmw-config been useful to you? Consider
+[amplifying the signal](https://ko-fi.com/magicaldave) through ko-fi.
 
 ## License
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project is dual licensed as `MIT OR Apache-2.0`, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+this project is dual licensed as `MIT OR Apache-2.0`, without any additional terms or conditions.
