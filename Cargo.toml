@@ -19,7 +19,7 @@ rust-version = "1.88"
 [dependencies]
 # The Luau bindings are an l3i extension; a path dependency for the migration campaign, the
 # crates.io version at release.
-l3i = { version = "0.1.0", path = "../dream-binder", optional = true }
+l3i = { version = "1.0.0", path = "../dream-binder", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
