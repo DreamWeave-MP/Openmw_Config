@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{ConfigError, GameSetting, bail_config};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 pub mod directorysetting;
 use directorysetting::DirectorySetting;
@@ -28,6 +28,8 @@ use encodingsetting::EncodingSetting;
 
 #[macro_use]
 pub mod error;
+mod hash;
+use hash::{FxHashMap, FxHashSet};
 #[macro_use]
 mod singletonsetting;
 mod strings;
@@ -278,12 +280,12 @@ pub struct OpenMWConfiguration {
     root_config: PathBuf,
     settings: Vec<SettingValue>,
     chain: Vec<ConfigChainEntry>,
-    indexed_content: HashSet<String>,
-    indexed_groundcover: HashSet<String>,
-    indexed_archives: HashSet<String>,
-    indexed_data_dirs: HashSet<PathBuf>,
+    indexed_content: FxHashSet<String>,
+    indexed_groundcover: FxHashSet<String>,
+    indexed_archives: FxHashSet<String>,
+    indexed_data_dirs: FxHashSet<PathBuf>,
     lists: ListIndex,
-    indexed_game_setting_last: RefCell<HashMap<String, usize>>,
+    indexed_game_setting_last: RefCell<FxHashMap<String, usize>>,
     indexed_game_setting_order: RefCell<Vec<usize>>,
     game_setting_indexes_dirty: Cell<bool>,
 }
@@ -501,7 +503,7 @@ impl OpenMWConfiguration {
             return;
         }
 
-        let mut last = HashMap::new();
+        let mut last = FxHashMap::default();
         for (index, setting) in self.settings.iter().enumerate() {
             if let SettingValue::GameSetting(game_setting) = setting {
                 last.insert(game_setting.key().clone(), index);
@@ -3782,11 +3784,11 @@ mod tests {
     }
 
     fn assert_indexes_consistent(config: &OpenMWConfiguration) {
-        use std::collections::{HashMap, HashSet};
+        use std::collections::HashSet;
 
         config.ensure_game_setting_indexes();
 
-        let scanned_content: HashSet<String> = config
+        let scanned_content: FxHashSet<String> = config
             .settings
             .iter()
             .filter_map(|setting| match setting {
@@ -3794,7 +3796,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let scanned_groundcover: HashSet<String> = config
+        let scanned_groundcover: FxHashSet<String> = config
             .settings
             .iter()
             .filter_map(|setting| match setting {
@@ -3802,7 +3804,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let scanned_archives: HashSet<String> = config
+        let scanned_archives: FxHashSet<String> = config
             .settings
             .iter()
             .filter_map(|setting| match setting {
@@ -3810,7 +3812,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let scanned_data_dirs: HashSet<PathBuf> = config
+        let scanned_data_dirs: FxHashSet<PathBuf> = config
             .settings
             .iter()
             .filter_map(|setting| match setting {
@@ -3819,7 +3821,7 @@ mod tests {
             })
             .collect();
 
-        let mut scanned_game_setting_last = HashMap::new();
+        let mut scanned_game_setting_last = FxHashMap::default();
         for (index, setting) in config.settings.iter().enumerate() {
             if let SettingValue::GameSetting(game_setting) = setting {
                 scanned_game_setting_last.insert(game_setting.key().clone(), index);
