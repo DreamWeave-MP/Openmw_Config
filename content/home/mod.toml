@@ -1,0 +1,244 @@
+# openmw-config. Structured facts only: the name and summary are `title` and `description` in
+# index.md. Every key is explained at
+# https://dreamweave-mp.github.io/DreamWeave-Mod-Template/guide/mod-toml/
+
+# Permanent identity. Never changes, whatever the crate is called or wherever it is hosted.
+id = "3aaf4fe0-616f-41a3-b520-306eda9347b0"
+
+slug = "openmw_config"
+type = "library"
+license = "MIT OR Apache-2.0"
+
+[[maintainers]]
+name = "DreamWeave"
+url = "https://github.com/DreamWeave-MP"
+
+[links]
+documentation = "@/docs/_index.md"
+support = "https://github.com/DreamWeave-MP/Openmw_Config/discussions"
+donate = "https://ko-fi.com/magicaldave"
+
+# A Rust library. StroggForge's library workflow tests it on every push; pushing a bare version
+# tag, like 2.0.1, publishes that version to crates.io.
+[package]
+format = "crate"
+crate = "openmw-config"
+
+[build]
+# S3lightfixes reads openmw.cfg through this crate: each release opens an issue there.
+dependents = ["DreamWeave-MP/S3lightfixes"]
+# cargo bench on every release, attached to its GitHub release as BENCHMARKS.md.
+benchmarks = true
+
+[[recommends]]
+name = "vfstool_lib"
+url = "https://crates.io/crates/vfstool_lib"
+reason = "Builds OpenMW's virtual file system from the data directories this crate resolves."
+
+[[credits]]
+name = "Benjamin Winger"
+role = "Made the encoding value public"
+url = "https://github.com/benjaminwinger"
+
+# Every version on crates.io, oldest first. To release, add the next one here with the day you
+# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 2.0.2.
+
+[[releases]]
+version = "0.1.0"
+date = 2025-06-17
+summary = "First release: read an openmw.cfg chain into one configuration."
+
+[[releases]]
+version = "0.1.1"
+date = 2025-06-17
+summary = "Comments, unknown keys and groundcover survive a round trip."
+added = [
+    "`groundcover=` entries.",
+    "Unknown `key=value` lines are kept as generic settings and written back.",
+    "Comments are kept with the setting that follows them and written back.",
+    "Typed `fallback=` settings, with `set_game_setting` taking the line's text.",
+    "`root_config_file`, `root_config_dir` and `user_config`, and presence helpers for content files and archives.",
+    "`ConfigError`, one error type for the whole crate.",
+]
+fixed = [
+    "The key is `user-data`, not `userdata`.",
+    "Content files added at runtime are attributed to the user's `openmw.cfg`, not its directory.",
+    "Singleton settings read their last definition.",
+    "Symlinked configs no longer fail to load.",
+]
+
+[[releases]]
+version = "0.1.2"
+date = 2025-06-17
+fixed = [
+    "The Windows user config is `Documents/My Games/openmw`.",
+    "Data directories and `config=` entries no longer keep `openmw.cfg` in their paths.",
+]
+
+[[releases]]
+version = "0.1.3"
+date = 2025-06-24
+added = ["`OPENMW_CONFIG` and `OPENMW_CONFIG_DIR` choose the root config."]
+
+[[releases]]
+version = "0.1.4"
+date = 2025-07-02
+changed = [
+    "The setting types are public.",
+    "`resources=` and `data-local=` add their directories to the data directories.",
+]
+
+[[releases]]
+version = "0.1.5"
+date = 2025-07-03
+fixed = ["Serializing a configuration wrote it onto a single line."]
+
+[[releases]]
+version = "0.1.7"
+date = 2025-07-18
+changed = ["New repository URL, and the license stated explicitly."]
+
+[[releases]]
+version = "0.1.8"
+date = 2025-09-02
+added = ["Android's config and userdata directories."]
+
+[[releases]]
+version = "0.1.9"
+date = 2025-09-02
+fixed = ["Android paths."]
+
+[[releases]]
+version = "0.1.91"
+date = 2025-09-04
+fixed = ["Android paths, again."]
+
+[[releases]]
+version = "0.1.92"
+date = 2025-10-03
+fixed = [
+    "`?userconfig?` resolves correctly.",
+    "`resources=` no longer adds `vfs-mw`: the local or global config lists it itself.",
+]
+
+[[releases]]
+version = "0.1.93"
+date = 2026-04-06
+added = ["`EncodingSetting::value` returns the encoding."]
+fixed = [
+    "Relative config paths are made absolute, and empty ones are refused, including from the environment.",
+    "Config paths are validated through symlinks.",
+    "Paths keep their `.` and `..` components instead of losing parts of the path.",
+]
+
+[[releases]]
+version = "1.0.0"
+date = 2026-04-19
+summary = "The 1.0 release, published under MIT OR Apache-2.0."
+yanked = "Yanked on crates.io."
+replacement = "1.0.1"
+
+[[releases]]
+version = "1.0.1"
+date = 2026-04-19
+summary = "First stable release: parsing that matches OpenMW's, Lua bindings, and Flatpak paths."
+highlights = """
+openmw-config 1.0 reads a config chain the way OpenMW does: `config=` entries level by level,
+`replace=` applied as it is read, and line numbers in every parse error. It adds embedded Lua
+bindings with a camelCase API and resolves tokens correctly inside Flatpak.
+"""
+added = [
+    "Lua bindings through `mlua`, behind the `lua` feature: `create_lua_module` and a camelCase API.",
+    "Flatpak-aware `?userconfig?` and `?userdata?`, and `OPENMW_FLATPAK_ID`.",
+    "`default_local_path` and `default_global_path`, for `?local?` and `?global?`, with fallible `try_` variants.",
+    "`user_config_ref`, which leaves the configuration in place, and `&str` views of setting values.",
+    "`config_chain`, the parser-order record of loaded and skipped configs.",
+    "Parse errors carry the line they came from.",
+]
+changed = [
+    "Relicensed under GPL-3.0-or-later.",
+    "`dirs` and `shellexpand` are replaced by the standard library. On Windows, the Documents folder comes from the Known Folder API.",
+    "Queries on content files, archives, data directories and game settings are indexed.",
+]
+breaking = ["Methods that built a `Vec` are gone; collect the iterators instead."]
+fixed = [
+    "`config=` entries load level by level, siblings before their children, as OpenMW loads them.",
+    "`replace=config` discards earlier settings and queued `config=` entries.",
+    "`fallback=` values keep their exact spelling through a round trip.",
+    "Game settings are deduplicated by key.",
+    "Path comparisons normalize separators.",
+]
+
+[[releases]]
+version = "1.0.2"
+date = 2026-04-24
+added = [
+    "`set_generic_settings`, `add_generic_setting` and `save_to_path`.",
+    "In Lua: `genericSettings`, `setGenericSettings`, `addGenericSetting` and `saveToPath`. Setting rows carry `source` and `comment`.",
+]
+fixed = [
+    "Saving over a read-only file on Windows.",
+    "`save_to_path` checks that the destination directory is writable.",
+]
+
+[[releases]]
+version = "1.0.3"
+date = 2026-05-01
+fixed = [
+    "Saving no longer writes the injected `data-local` directory back as a `data=` line.",
+    "`encoding=` no longer gains a blank line on every save.",
+]
+
+[[releases]]
+version = "1.0.4"
+date = 2026-05-04
+changed = [
+    "`from_env` uses OpenMW's own root discovery: `OPENMW_CONFIG`, `OPENMW_CONFIG_DIR`, then an `openmw.cfg` beside the executable, then the global config. It no longer falls back to the user config.",
+]
+added = ["The root config helpers `try_default_root_config_path` and `try_default_global_config_path`, and `OPENMW_GLOBAL_CONFIG_PATH`."]
+
+[[releases]]
+version = "1.0.5"
+date = 2026-05-07
+summary = "APIs for importers: start empty, load if present, export flattened."
+added = [
+    "`new_empty` and `load_optional`, which start from an empty configuration without inventing an `openmw.cfg`.",
+    "`to_resolved_string` and `save_resolved_to_path`: a flattened export with resolved paths and no `config=` or `replace=` entries.",
+    "The same four in Lua: `newEmpty`, `loadOptional`, `toResolvedString`, `saveResolvedToPath`.",
+]
+
+[[releases]]
+version = "1.1.0"
+date = 2026-06-04
+summary = "Discovery for external tools."
+added = [
+    "`from_env_or_user_config`: OpenMW's root discovery, then the user config when there is no root config. `fromEnvOrUserConfig` in Lua.",
+    "`try_default_root_or_user_config_path` and `default_user_config_file`.",
+]
+fixed = ["A config loaded through a symlink keeps the path it was loaded from."]
+
+[[releases]]
+version = "2.0.0"
+date = 2026-09-26
+summary = "The Lua bindings run on Luau."
+breaking = [
+    "The bindings build against `mlua` 0.12 and the `lua` feature no longer selects a Lua runtime: the host application picks one through its own `mlua` dependency. `standalone-lua` selects Luau for this crate's tests and docs. The Lua API itself is unchanged.",
+]
+migration = """
+Add `mlua` to your own dependencies with the runtime you embed, and keep `features = ["lua"]` on
+this crate:
+
+```toml
+openmw-config = { version = "2", features = ["lua"] }
+mlua = { version = "0.12", default-features = false, features = ["luau"] }
+```
+"""
+
+[[releases]]
+version = "2.0.1"
+date = 2026-09-27
+changed = ["Relicensed under MIT OR Apache-2.0."]
+known_issues = [
+    "`save_user`, `save_subconfig` and `Display` drop `replace=` lines, so a saved user config merges its parents' entries back in on the next load. Fixed on the default branch.",
+    "A config with `resources=` writes the injected `resources/vfs` directory back as a `data=` line, and each save and reload adds another copy. Fixed on the default branch.",
+]

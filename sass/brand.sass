@@ -1,0 +1,30 @@
+// openmw-config. This file belongs to openmw-config: the template never changes it, and it loads last.
+// The moss palette does the heavy lifting; this adds the one thing the crate is about.
+
+// The hero's empty right column shows a config chain, set like two files in an editor: a package's
+// root openmw.cfg handing over to the user's. It is decoration, so its alternative text is empty.
+.dw-hero
+  overflow: hidden
+  isolation: isolate
+
+  &::after
+    content: "# /etc/openmw/openmw.cfg\A resources=/usr/share/games/openmw/resources\A config=\"?userconfig?\"\A\A # ~/.config/openmw/openmw.cfg\A data=\"/games/Morrowind/Data Files\"\A content=Morrowind.esm\A content=Tribunal.esm\A content=Bloodmoon.esm\A fallback=Weather_Clear_Sky_Sunrise_Color,117,141,164" / ""
+    position: absolute
+    z-index: -1
+    top: 50%
+    right: max(2rem, calc((100vw - var(--dw-width-page)) / 2 + 2rem))
+    transform: translateY(-50%)
+    border-left: 2px solid color-mix(in oklab, var(--dw-accent) 45%, transparent)
+    padding: .9rem 0 .9rem 1.2rem
+    color: var(--dw-text-faint)
+    font-family: var(--dw-font-mono)
+    font-size: .78rem
+    line-height: 1.75
+    white-space: pre
+    opacity: .6
+    pointer-events: none
+    mask-image: linear-gradient(90deg, #000 55%, transparent 98%)
+
+  @media (max-width: 1180px)
+    &::after
+      display: none
