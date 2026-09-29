@@ -1,0 +1,890 @@
+{
+  "schema_version": "2",
+  "document": "lock",
+  "project": "3aaf4fe0-616f-41a3-b520-306eda9347b0",
+  "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
+  "releases": [
+    {
+      "version": "0.1.0",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.0.crate",
+          "media_type": "application/gzip",
+          "size": 18802,
+          "digests": {
+            "sha256": "f35029ee5377add4ffd8b94234af55e1471c541966f3e5bd9b0af689a588e27a"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.1",
+      "locked_from": "67558979890f9760efd7b3e89ae580cc461b5532",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.1.crate",
+          "media_type": "application/gzip",
+          "size": 18800,
+          "digests": {
+            "sha256": "b6884cc1a49423e0990cd5034d29af2aa35cffb9e94f6167bf0ac831cc08ac3e"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.2",
+      "locked_from": "8ae8253f7373eae012c26e27faf887f24a1f5326",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.2.crate",
+          "media_type": "application/gzip",
+          "size": 18894,
+          "digests": {
+            "sha256": "dcf0230b1f44e975283a24835e30732b0433a7aa58de921cd86c875199f9bb7d"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.3",
+      "locked_from": "63d568b5d7ffefee83d98946face3a411e65c5e1",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.3.crate",
+          "media_type": "application/gzip",
+          "size": 19145,
+          "digests": {
+            "sha256": "a9df34491dbc6ca4d7e0152674a12b85399e449b567868effd6564c14a794d9d"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.4",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.4.crate",
+          "media_type": "application/gzip",
+          "size": 19261,
+          "digests": {
+            "sha256": "6e28de3d112e0c343cf476dbf5677b1dd017ce739447cb1bda86eb9642076e26"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.5",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.5.crate",
+          "media_type": "application/gzip",
+          "size": 19268,
+          "digests": {
+            "sha256": "f086d63f455fcbc01cc95ded51b3ce11841e510a4819f1c427771c5428068dae"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.7",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.7.crate",
+          "media_type": "application/gzip",
+          "size": 19958,
+          "digests": {
+            "sha256": "6155ad321e929da5708b61ff719fca69401124528ce14b305528ec068f4a0029"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.8",
+      "locked_from": "2fa2fd5b69f9d827882c8b84514499d0497b4c48",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.8.crate",
+          "media_type": "application/gzip",
+          "size": 20086,
+          "digests": {
+            "sha256": "e73fee1c56170c13c175af35a2390b3df503815f7f4980771aef34cbed59df17"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.9",
+      "locked_from": "7faa483017cbbf6d06c258b708636b012c7b2791",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.9.crate",
+          "media_type": "application/gzip",
+          "size": 20067,
+          "digests": {
+            "sha256": "cda8d6691d1a8597aa5cd38bdaab3d24718583a2493197c7dc19f45690070f64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.91",
+      "locked_from": "a5f323483a2ce74a246b8036a94ee9fcb47489af",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.91.crate",
+          "media_type": "application/gzip",
+          "size": 20071,
+          "digests": {
+            "sha256": "4648a14e4425ca329558c85efb73f61bea54cde65ae09260734b28125b30a970"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.92",
+      "locked_from": "79abc964481650125f01689cbc08d4e004bf689e",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.92.crate",
+          "media_type": "application/gzip",
+          "size": 20045,
+          "digests": {
+            "sha256": "8de9c067ddaff3a71a77f26ff8fa5e120d2dc3e0feed10fbeb65a789a217dd54"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.1.93",
+      "locked_from": "1994d84a490201e57a96153971a6bd2386ed55de",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-0.1.93.crate",
+          "media_type": "application/gzip",
+          "size": 21003,
+          "digests": {
+            "sha256": "28d5864a0c7959014015231f01c702e6c08e3bfda747c34926c071956431a5e9"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.0",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.0.crate",
+          "media_type": "application/gzip",
+          "size": 75263,
+          "digests": {
+            "sha256": "adda9e405739d0d273ba3884332b88d7213919fce0c697b2dae67e053aa1099b"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.1",
+      "locked_from": "0927f5b6b3611cc179024c3ee1c16e49c0627666",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.1.crate",
+          "media_type": "application/gzip",
+          "size": 83027,
+          "digests": {
+            "sha256": "6d1de5672309e01372dd9c68234c8672995688daf035711f21445e38d38e8da3"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.2",
+      "locked_from": "098dc4059a3e06f4015d37877f194d4544698331",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.2.crate",
+          "media_type": "application/gzip",
+          "size": 84906,
+          "digests": {
+            "sha256": "8f83558df90a23207feb3d4b9cb19438ef2d98a1a04809d119127d9c72a1e955"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.3",
+      "locked_from": "977bf593ba3754ee9fe334484b4621df08a9a5d4",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.3.crate",
+          "media_type": "application/gzip",
+          "size": 85918,
+          "digests": {
+            "sha256": "6b22195131785a261ccbb11699e594fc35e1b5d46edaacde3878ecb566df9fbb"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.4",
+      "locked_from": "9c01c85295265fea52cc4d96551018dd7c414fc8",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.4.crate",
+          "media_type": "application/gzip",
+          "size": 88968,
+          "digests": {
+            "sha256": "45a9c9a4cb5226802c1bfa1a3417c3efea795ae7bf91b38b4514d2c00a63141d"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.0.5",
+      "locked_from": "69e5390afd54cf239de6d96cd4f08f8524bc72a4",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.0.5.crate",
+          "media_type": "application/gzip",
+          "size": 92621,
+          "digests": {
+            "sha256": "ba29c2402a093283f70200f571ef4d485a91a133ef5372469ef8464e62f53bf7"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "1.1.0",
+      "locked_from": "d71116c60e9a8125c83a832a5b447b672109b8ac",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-1.1.0.crate",
+          "media_type": "application/gzip",
+          "size": 95679,
+          "digests": {
+            "sha256": "016350068cba3d4d4f93c85448c1ad9d1d34934a56c11bd2813dcb57f88dd849"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "2.0.0",
+      "locked_from": "5174a11b245b78a347c296eb798ab484e0125457",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-2.0.0.crate",
+          "media_type": "application/gzip",
+          "size": 94464,
+          "digests": {
+            "sha256": "1a51b248273e07a85c592dd370b74e6449f0c36fb338e1e0d01e4f614f4ace08"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "2.0.1",
+      "locked_from": "e3be59d64d23767ddd0016577069101af694e97c",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "openmw-config-2.0.1.crate",
+          "media_type": "application/gzip",
+          "size": 86762,
+          "digests": {
+            "sha256": "b0413b8898c3277e267c033b95d5b343d9c1ebb692d17f99a4af25232bee2f33"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [
+        {
+          "kind": "recommends",
+          "name": "vfstool_lib",
+          "url": "https://crates.io/crates/vfstool_lib",
+          "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
+        }
+      ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    }
+  ]
+}
