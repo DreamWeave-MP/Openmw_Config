@@ -38,8 +38,10 @@ does what OpenMW's code does.
   chain records it as skipped, but it stays in the chain, as it does in OpenMW's
   `readConfiguration`: its `config=` entry stays in memory and in every save, and when it is the
   last directory it is the user's config directory. On a fresh install, where the root's
-  `config="?userconfig?"` names a directory with no `openmw.cfg` yet, `save_user()` creates the
-  directory and the file there, as OpenMW's launcher does on its first save.
+  `config="?userconfig?"` names a directory with no `openmw.cfg` yet, loading creates that
+  directory, as OpenMW's engine does at every start, but no `openmw.cfg` in it; `save_user()`
+  writes that, as OpenMW's launcher does on its first save. When the directory cannot be created,
+  loading fails with `ConfigError::NotWritable`, where OpenMW stops with a fatal error.
 - A directory the chain has already tried is skipped, as OpenMW skips it: a config that names
   itself, directly or through others, loads once, and a directory two files name loads where the
   walk first reaches it. Directories compare by their resolved paths, not canonicalized, so a

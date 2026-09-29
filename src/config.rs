@@ -865,8 +865,13 @@ impl OpenMWConfiguration {
         }
     }
 
+    /// Loading creates the user config directory, [`Self::user_config_path`], when it is
+    /// missing, as `OpenMW`'s engine does at every start; it writes no `openmw.cfg` there.
+    ///
     /// # Errors
     /// Returns [`ConfigError`] if the path does not exist, is not a valid config, or if loading the config chain fails.
+    /// Returns [`ConfigError::NotWritable`] if the user config directory is missing and cannot
+    /// be created, where `OpenMW` stops with a fatal error.
     ///
     /// # Example
     /// ```no_run
@@ -1050,7 +1055,8 @@ impl OpenMWConfiguration {
     /// A `config=` directory without an `openmw.cfg` counts: `readConfiguration` adds every
     /// directory it reaches to its active config paths, loaded or not. So on a fresh install,
     /// where the root's `config="?userconfig?"` names a directory with no `openmw.cfg` yet, this is
-    /// that directory, and [`Self::save_user`] creates it.
+    /// that directory. Loading creates it, as `OpenMW`'s engine does, and [`Self::save_user`]
+    /// writes its `openmw.cfg`.
     ///
     /// `config=` entries load depth first, as `OpenMW`'s `readConfiguration` walks them: a file's
     /// first `config=` and every file that one names load before its second. A root naming `a`
@@ -1773,6 +1779,15 @@ impl OpenMWConfiguration {
             loaded.push(file);
         }
 
+        // readConfiguration ends by creating the user config directory, the last of the chain,
+        // with std::filesystem::create_directories, which throws when it cannot: OpenMW stops
+        // with a fatal error. It writes no openmw.cfg there.
+        if let Some(user_dir) = active_dirs.last()
+            && std::fs::create_dir_all(user_dir).is_err()
+        {
+            bail_config!(not_writable, user_dir);
+        }
+
         self.merge(loaded, &active_dirs)?;
         if active_dirs.len() > 1 {
             self.user_config_dir = active_dirs.pop();
@@ -2066,8 +2081,9 @@ impl OpenMWConfiguration {
     /// followed by the entries the parents still contribute, then its own. So what this writes
     /// loads back as what was in memory.
     ///
-    /// On a fresh install the user's directory and its `openmw.cfg` do not exist yet; this
-    /// creates both, as `OpenMW`'s launcher does when it first saves.
+    /// On a fresh install the user's `openmw.cfg` does not exist yet; this writes it, as
+    /// `OpenMW`'s launcher does when it first saves, and creates its directory again if it has
+    /// gone since loading created it.
     ///
     /// # Errors
     /// Returns [`ConfigError::NotWritable`] if the target path is not writable.

@@ -7,7 +7,7 @@
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::{ConfigChainStatus, OpenMWConfiguration};
+use openmw_config::{ConfigChainStatus, ConfigError, OpenMWConfiguration};
 use std::path::{Path, PathBuf};
 
 fn content(config: &OpenMWConfiguration) -> Vec<String> {
@@ -205,4 +205,57 @@ fn saving_the_file_that_names_a_missing_directory_keeps_the_line() {
 
     config.save_subconfig(&modlist_dir).unwrap();
     assert_eq!(read(&modlist_dir), modlist_text);
+}
+
+#[test]
+fn loading_creates_the_user_config_directory_as_the_engine_does() {
+    // readConfiguration ends with create_directories(getUserConfigPath()): the last directory
+    // of the chain, with the directories above it. It writes no openmw.cfg there.
+    let root_dir = temp_dir("create_user_root");
+    let middle = missing_dir("create_user_middle");
+    let user_dir = missing_dir("create_user").join("nested");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "config={}\nconfig={}\n",
+            middle.display(),
+            user_dir.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+
+    assert_eq!(config.user_config_path(), user_dir);
+    assert!(user_dir.is_dir());
+    assert!(!user_dir.join("openmw.cfg").exists());
+    assert!(
+        !middle.exists(),
+        "only the user config directory is created"
+    );
+    assert_eq!(
+        statuses(&config),
+        [
+            ConfigChainStatus::Loaded,
+            ConfigChainStatus::SkippedMissing,
+            ConfigChainStatus::SkippedMissing
+        ]
+    );
+}
+
+#[test]
+fn loading_fails_when_the_user_config_directory_cannot_be_created() {
+    // std::filesystem::create_directories throws there, and OpenMW stops with a fatal error.
+    let root_dir = temp_dir("create_user_fails_root");
+    let blocker = temp_dir("create_user_fails").join("a-file");
+    std::fs::write(&blocker, "").unwrap();
+    let user_dir = blocker.join("user");
+    write_cfg(
+        &root_dir,
+        &format!("content=Morrowind.esm\nconfig={}\n", user_dir.display()),
+    );
+
+    match OpenMWConfiguration::new(Some(root_dir)) {
+        Err(ConfigError::NotWritable(path)) => assert_eq!(path, user_dir),
+        other => panic!("expected NotWritable, got {other:?}"),
+    }
 }

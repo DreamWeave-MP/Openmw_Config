@@ -97,8 +97,8 @@ constructor produces.
 
 The directory of the user's config: the last `config=` directory in effect, whether or not it holds
 an `openmw.cfg` yet, or `root_config_dir()` when nothing chained. `save_user()` writes `openmw.cfg`
-here, creating the directory on a fresh install, and every entry the editing methods add is
-attributed to it.
+here, and every entry the editing methods add is attributed to it. Loading creates the directory
+when it is missing, as OpenMW's engine does, but writes no `openmw.cfg` in it.
 
 ## is_user_config
 
@@ -135,6 +135,7 @@ one, the line:
 | `DuplicateContentFile`, `DuplicateGroundcoverFile`, `DuplicateArchiveFile` | The same name twice in what the chain keeps once each `replace=` has discarded the lists of the configs before its own |
 | `CannotFind` | A file in the chain disappeared while loading |
 | `MaxDepthExceeded` | More than 16 levels of `config=` below the root |
+| `NotWritable` | The user config directory, the last of the chain, is missing and cannot be created |
 | `Io` | The operating system refused to read a file |
 
 [ConfigError](@/docs/api/errors.md) lists every variant's fields and messages.

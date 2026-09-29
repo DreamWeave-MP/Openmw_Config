@@ -49,7 +49,7 @@ match with a `_` arm.
 
 | Variant | When |
 |---|---|
-| `NotWritable(PathBuf)` | The destination file or directory cannot be written |
+| `NotWritable(PathBuf)` | The destination file or directory cannot be written; while loading, the user config directory is missing and cannot be created |
 | `SubconfigNotLoaded(PathBuf)` | `save_subconfig` with a directory that is not a `config=` entry in effect |
 | `Io(std::io::Error)` | The operating system refused a read or write |
 

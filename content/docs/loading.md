@@ -112,7 +112,9 @@ The `openmw.cfg` in the last directory of the chain is the user's: the one the l
 the one `save_user()` writes, creating it on a fresh install.
 
 - `user_config_path()` is its directory: the last `config=` directory the chain reached, whether or
-  not it holds an `openmw.cfg` yet, or the root's own directory when nothing chained.
+  not it holds an `openmw.cfg` yet, or the root's own directory when nothing chained. Loading
+  creates it when it is missing, as OpenMW's engine does at every start, and fails with
+  `NotWritable` when it cannot, as OpenMW stops there. It writes no `openmw.cfg` in it.
 - `is_user_config()` is true when the root config is that file.
 - `user_config()` and `user_config_ref()` load a new configuration starting from that directory,
   empty when its `openmw.cfg` does not exist yet.
