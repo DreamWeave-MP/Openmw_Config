@@ -19,8 +19,6 @@ it puts `replace=` ahead of every entry of its list and spells the option in low
   crate applies it at its line, so `content=A.esp` then `replace=content` in one file drops
   `A.esp`, which OpenMW keeps. Most single-file tests in `tests/integration_chain_replace.rs`,
   `tests/proptest_replace.rs` and the `config.rs` unit tests encode the per-line reading.
-- **Case.** OpenMW matches `replace=` values against option names exactly; `replace=Content` does
-  nothing there. This crate ignores case.
 - **Single values.** `replace=` only affects list options in OpenMW (`mergeComposingVariables`
   skips the rest), so `replace=resources`, `user-data`, `data-local` and `encoding` do nothing
   there. Here they remove the latest definition, which can bring an older file's value back.
@@ -71,3 +69,7 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
 - added: `SettingValue` and `TrailingComment` are exported; typed game setting values and `meta()`
   on every setting type.
 - breaking: `config_err!`, `bail_config!` and `impl_singleton_setting!` are no longer exported.
+- breaking, loading as OpenMW's code does (`components/files/configurationmanager.cpp`), which
+  wins where OpenMW's documentation disagrees:
+  - `replace=` values match option names exactly: `replace=Content` discards nothing, and
+    `replace=Config` resets nothing.

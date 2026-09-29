@@ -2,11 +2,71 @@ mod common;
 
 use common::{temp_dir, write_cfg};
 use openmw_config::{ConfigChainStatus, EncodingSetting, OpenMWConfiguration};
+use std::fmt::Write as _;
+use std::path::PathBuf;
 
 fn load(contents: &str) -> OpenMWConfiguration {
     let dir = temp_dir("replace");
     write_cfg(&dir, contents);
     OpenMWConfiguration::new(Some(dir)).unwrap()
+}
+
+/// A chain of files, root first, each ending in a `config=` line that names the next; returns
+/// their directories and the loaded chain.
+fn linear_chain(tag: &str, files: &[&str]) -> (Vec<PathBuf>, OpenMWConfiguration) {
+    let dirs: Vec<PathBuf> = (0..files.len())
+        .map(|index| temp_dir(&format!("{tag}_{index}")))
+        .collect();
+    for (index, text) in files.iter().enumerate() {
+        let mut text = (*text).to_owned();
+        if let Some(next) = dirs.get(index + 1) {
+            writeln!(text, "config={}", next.display()).unwrap();
+        }
+        write_cfg(&dirs[index], &text);
+    }
+    let config = OpenMWConfiguration::new(Some(dirs[0].clone())).unwrap();
+    (dirs, config)
+}
+
+fn content(config: &OpenMWConfiguration) -> Vec<String> {
+    config
+        .content_files_iter()
+        .map(|file| file.value().clone())
+        .collect()
+}
+
+#[test]
+fn test_replace_matches_option_names_exactly() {
+    // mergeComposingVariables (components/files/configurationmanager.cpp) looks each option's
+    // name up in the replace= values as written: in another case they name no option.
+    let (_, config) = linear_chain(
+        "replace_case",
+        &[
+            "content=Root.esm\ngroundcover=Root.esp\nfallback-archive=Root.bsa\ndata=/root/data\nfallback=iRoot,1\n",
+            "replace=Content\nreplace=GROUNDCOVER\nreplace=Fallback-Archive\nreplace=Data\nreplace=FALLBACK\ncontent=User.esp\n",
+        ],
+    );
+
+    assert_eq!(content(&config), ["Root.esm", "User.esp"]);
+    assert!(config.has_groundcover_file("Root.esp"));
+    assert!(config.has_archive_file("Root.bsa"));
+    assert!(config.has_data_dir("/root/data"));
+    assert_eq!(config.get_game_setting("iRoot").unwrap().value(), "1");
+}
+
+#[test]
+fn test_replace_config_matches_exactly() {
+    // hasReplaceConfig (configurationmanager.cpp) compares each replace= value with "config".
+    let (_, config) = linear_chain(
+        "replace_config_case",
+        &[
+            "content=Root.esm\n",
+            "content=Mid.esm\n",
+            "replace=Config\nreplace=CONFIG\ncontent=User.esp\n",
+        ],
+    );
+
+    assert_eq!(content(&config), ["Root.esm", "Mid.esm", "User.esp"]);
 }
 
 #[test]

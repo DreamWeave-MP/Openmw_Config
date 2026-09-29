@@ -183,6 +183,27 @@ fn a_second_set_reuses_the_replace_line() {
 }
 
 #[test]
+fn a_replace_line_in_another_case_does_not_serve_as_the_users() {
+    // OpenMW matches replace= values exactly, so `replace=Content` discards nothing and taking
+    // the list over needs a `replace=content` of its own.
+    let (root_dir, user_dir, mut config) = chain(
+        "replace_case",
+        "content=A.esm\ncontent=B.esm\n",
+        "replace=Content\ncontent=User.esp\n",
+    );
+    assert_eq!(content(&config), ["A.esm", "B.esm", "User.esp"]);
+
+    config.remove_content_file("A.esm");
+    config.save_user().unwrap();
+    assert_eq!(
+        user_file(&user_dir),
+        "replace=Content\nreplace=content\ncontent=B.esm\ncontent=User.esp\n"
+    );
+    let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    assert_eq!(content(&reloaded), content(&config));
+}
+
+#[test]
 fn replace_of_a_generic_key_is_honoured_on_load() {
     let dir = temp_dir("wb_generic_replace");
     write_cfg(

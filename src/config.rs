@@ -345,12 +345,10 @@ impl ListOption {
         }
     }
 
-    /// Whether `replace` is a `replace=` line for this list, compared as loading compares it.
+    /// Whether `replace` is a `replace=` line for this list: its value is the option's name,
+    /// exactly, as `OpenMW` compares it.
     fn is_replaced_by(&self, replace: &GenericSetting) -> bool {
-        match self {
-            ListOption::Generic(key) => replace.value() == key,
-            _ => replace.value().eq_ignore_ascii_case(self.name()),
-        }
+        replace.value() == self.name()
     }
 }
 
@@ -1725,7 +1723,8 @@ impl OpenMWConfiguration {
                         );
                     }
                     "replace" => {
-                        match value.to_ascii_lowercase().as_str() {
+                        // OpenMW names options case included: `replace=Content` names none.
+                        match value {
                             "content" => {
                                 self.clear_matching_internal(|s| {
                                     matches!(s, SettingValue::ContentFile(_))
