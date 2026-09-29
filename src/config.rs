@@ -1462,7 +1462,9 @@ impl OpenMWConfiguration {
     /// weather, lighting behaviors, UI colors, and levelup messages.
     ///
     /// Returns each key exactly once — when a key appears multiple times in the config chain, the
-    /// last-defined value wins.
+    /// last-defined value wins. Keys come in reverse order of their effective definitions, most
+    /// recently defined first, so the user config's settings lead: `A,1 B,2 C,3 A,4` yields
+    /// `A=4`, `C=3`, `B=2`.
     ///
     /// # Example
     /// ```no_run
