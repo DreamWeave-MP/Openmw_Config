@@ -344,9 +344,10 @@ impl ListOption {
 }
 
 /// The option name `replace=` gives the list `setting` is an entry of, if it is one: `OpenMW`'s
-/// composing options, and for unknown keys the key.
+/// composing options, `replace` among them, and for unknown keys the key.
 fn list_name(setting: &SettingValue) -> Option<&str> {
     match setting {
+        SettingValue::Replace(_) => Some("replace"),
         SettingValue::ContentFile(_) => Some("content"),
         SettingValue::Groundcover(_) => Some("groundcover"),
         SettingValue::BethArchive(_) => Some("fallback-archive"),
@@ -1785,9 +1786,11 @@ impl OpenMWConfiguration {
     /// `mergeComposingVariables` merges them: from the last config to the first, an entry of a
     /// list stays unless a config after its own names that list in `replace=`, exactly as
     /// written. So a config's `replace=` discards what the configs before it said, and none of
-    /// its own entries, wherever it sits. Single values, `replace=` lines and comments are no
-    /// lists; a `config=` entry stays while its directory is one of `active_dirs`, whether or
-    /// not it holds an `openmw.cfg`.
+    /// its own entries, wherever it sits. The `replace=` lines are a list too, as in `OpenMW`'s
+    /// engine: a config's `replace=replace` discards the `replace=` lines of the configs before
+    /// it, which then no longer reach the configs before those. Single values and comments are
+    /// no lists; a `config=` entry stays while its directory is one of `active_dirs`, whether
+    /// or not it holds an `openmw.cfg`.
     ///
     /// # Errors
     /// Fails on a `content=`, `groundcover=` or `fallback-archive=` name that stays twice, at
@@ -1810,7 +1813,12 @@ impl OpenMWConfiguration {
                     _ => list_name(setting).is_none_or(|list| !replaced.contains(list)),
                 })
                 .collect();
-            replaced.extend(file.replaces);
+            // The replace= values the configs before this one merge under: its own, unless a
+            // config after it discarded them with replace=replace.
+            replaced.extend(kept.iter().filter_map(|(setting, _)| match setting {
+                SettingValue::Replace(replace) => Some(replace.value().to_owned()),
+                _ => None,
+            }));
             kept_per_config.push(kept);
         }
 

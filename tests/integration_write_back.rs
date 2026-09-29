@@ -204,6 +204,51 @@ fn a_replace_line_in_another_case_does_not_serve_as_the_users() {
 }
 
 #[test]
+fn a_user_config_with_replace_replace_saves_and_reloads_as_it_was() {
+    // The modlist's replace=content no longer reaches the root once the user's config says
+    // replace=replace; taking the list over still needs the user's own replace=content.
+    let root_dir = temp_dir("wb_replace_replace_root");
+    let modlist_dir = temp_dir("wb_replace_replace_modlist");
+    let user_dir = temp_dir("wb_replace_replace_user");
+    let user_text = "replace=replace\ncontent=User.esp\n";
+    write_cfg(&user_dir, user_text);
+    write_cfg(
+        &modlist_dir,
+        &format!(
+            "replace=content\ncontent=Modlist.esp\nconfig={}\n",
+            user_dir.display()
+        ),
+    );
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Morrowind.esm\ncontent=Tribunal.esm\nconfig={}\n",
+            modlist_dir.display()
+        ),
+    );
+
+    // Saved with nothing taken over, the user's file is as it was.
+    let mut config = OpenMWConfiguration::new(Some(root_dir.clone())).unwrap();
+    assert_eq!(
+        content(&config),
+        ["Morrowind.esm", "Tribunal.esm", "Modlist.esp", "User.esp"]
+    );
+    config.save_user().unwrap();
+    assert_eq!(user_file(&user_dir), user_text);
+
+    config.remove_content_file("Tribunal.esm");
+    config.add_content_file("Added.esp").unwrap();
+    config.save_user().unwrap();
+
+    assert_eq!(
+        user_file(&user_dir),
+        "replace=replace\nreplace=content\ncontent=Morrowind.esm\ncontent=Modlist.esp\ncontent=User.esp\ncontent=Added.esp\n"
+    );
+    let reloaded = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+    assert_eq!(content(&reloaded), content(&config));
+}
+
+#[test]
 fn a_user_config_with_replace_config_saves_and_reloads_as_it_was() {
     // The root stays under a replace=config in the user's config, so its entries are a
     // parent's the user config can take over; the dropped modlist's are gone.

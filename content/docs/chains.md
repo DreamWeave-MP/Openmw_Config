@@ -135,6 +135,7 @@ key is `fallback-archive`, singular: OpenMW has no `fallback-archives` option, s
 | `replace=fallback` | Every `fallback=` entry |
 | `replace=resources`, `replace=user-data`, `replace=data-local`, `replace=encoding` | Nothing: these hold one value, and OpenMW's `replace=` only reaches lists. The last file that sets one still wins |
 | `replace=config` | In a config after the root, every config loaded before it except the root, with all their settings. In the root, nothing |
+| `replace=replace` | Every `replace=` line, so those configs' `replace=` lines no longer reach the configs before them. `replace` is one of the lists in OpenMW's engine; its launcher applies each `replace=` as it reads it, and there `replace=replace` does nothing. The crate follows the engine. It cannot bring back a config a `replace=config` dropped: that happened while loading |
 | `replace=<key>`, for any other key | Every unknown-key entry with exactly that key. OpenMW ignores keys it does not know; the crate keeps them as lists, and discards them as it does OpenMW's |
 
 The line itself is kept, and written back where it was, so a saved file still means what it did.

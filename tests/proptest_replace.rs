@@ -2,7 +2,8 @@
 //! own reading: `ConfigurationManager::readConfiguration` drops the configs before a
 //! `replace=config` except the root, then `mergeComposingVariables` merges the files from the
 //! last to the first, each list entry kept unless a file after its own names the list in
-//! `replace=`, exactly as written.
+//! `replace=`, exactly as written. `replace` is one of those lists: a file's `replace=replace`
+//! drops the `replace=` values of the files before it.
 
 mod common;
 
@@ -24,8 +25,8 @@ const LISTS: [&str; 6] = [
 ];
 
 /// What a `replace=` line names: every list, lists in another case or misspelled, single
-/// values, and `config`.
-const REPLACED: [&str; 12] = [
+/// values, `config` and `replace`.
+const REPLACED: [&str; 13] = [
     "content",
     "groundcover",
     "fallback-archive",
@@ -38,6 +39,7 @@ const REPLACED: [&str; 12] = [
     "resources",
     "encoding",
     "config",
+    "replace",
 ];
 
 #[derive(Debug, Clone)]
@@ -122,7 +124,8 @@ fn model(files: &[Vec<Line>]) -> Vec<Vec<String>> {
         loaded.push(file);
     }
 
-    // mergeComposingVariables, from the last file to the first.
+    // mergeComposingVariables, from the last file to the first. The replace= values are a list
+    // too: once a file above says replace=replace, a file's own replace= values are dropped.
     let mut replaced: HashSet<&str> = HashSet::new();
     let mut kept_per_file = Vec::new();
     for &file in loaded.iter().rev() {
@@ -138,7 +141,9 @@ fn model(files: &[Vec<Line>]) -> Vec<Vec<String>> {
             })
             .collect();
         kept_per_file.push(kept);
-        replaced.extend(replace_lines(file));
+        if !replaced.contains("replace") {
+            replaced.extend(replace_lines(file));
+        }
     }
 
     let mut lists = vec![Vec::new(); LISTS.len()];

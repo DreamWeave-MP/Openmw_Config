@@ -1,7 +1,9 @@
 mod common;
 
 use common::{temp_dir, write_cfg};
-use openmw_config::{ConfigChainStatus, ConfigError, EncodingSetting, OpenMWConfiguration};
+use openmw_config::{
+    ConfigChainStatus, ConfigError, EncodingSetting, OpenMWConfiguration, SettingValue,
+};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -154,6 +156,94 @@ fn test_replace_discards_the_lists_of_every_file_before_it() {
         .map(|setting| setting.value().to_owned())
         .collect();
     assert_eq!(custom, ["user"]);
+}
+
+/// The `replace=` lines the chain keeps in memory, as `file:value`, the file by its index.
+fn replace_lines(dirs: &[PathBuf], config: &OpenMWConfiguration) -> Vec<String> {
+    config
+        .settings_matching(|setting| matches!(setting, SettingValue::Replace(_)))
+        .map(|setting| {
+            let file = dirs
+                .iter()
+                .position(|dir| setting.meta().source_config() == dir.join("openmw.cfg"))
+                .unwrap();
+            match setting {
+                SettingValue::Replace(replace) => format!("{file}:{}", replace.value()),
+                _ => unreachable!(),
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn test_replace_replace_cancels_the_replace_lines_of_the_configs_before_it() {
+    // In the engine, replace is itself a composing option: mergeComposingVariables replaces a
+    // lower config's replace= values when a config above it says replace=replace, so the lower
+    // config's replace=content no longer reaches the configs below it.
+    let (dirs, config) = linear_chain(
+        "replace_replace",
+        &[
+            "content=Root.esm\n",
+            "replace=content\ncontent=Mid.esm\n",
+            "replace=replace\ncontent=User.esp\n",
+        ],
+    );
+
+    assert_eq!(content(&config), ["Root.esm", "Mid.esm", "User.esp"]);
+    // The cancelled line is an entry of the replace list the user's config discarded.
+    assert_eq!(replace_lines(&dirs, &config), ["2:replace"]);
+}
+
+#[test]
+fn test_replace_replace_leaves_the_configs_own_replace_lines() {
+    // A config's replace= values join the list below it; its own replace=replace does not
+    // discard them.
+    let (_, config) = linear_chain(
+        "replace_replace_own",
+        &[
+            "content=Root.esm\n",
+            "content=Mid.esm\n",
+            "replace=replace\nreplace=content\ncontent=User.esp\n",
+        ],
+    );
+    assert_eq!(content(&config), ["User.esp"]);
+
+    // replace=replace in the middle: the user's own replace=content still reaches the root.
+    let (_, config) = linear_chain(
+        "replace_replace_middle",
+        &[
+            "content=Root.esm\n",
+            "replace=replace\ncontent=Mid.esm\n",
+            "replace=content\ncontent=User.esp\n",
+        ],
+    );
+    assert_eq!(content(&config), ["User.esp"]);
+}
+
+#[test]
+fn test_replace_replace_does_not_bring_back_a_config_replace_config_dropped() {
+    // replace=config drops configs while readConfiguration loads them; replace=replace only
+    // changes the merge after.
+    let root_dir = temp_dir("replace_replace_config_root");
+    let dropped = temp_dir("replace_replace_config_dropped");
+    let replacing = temp_dir("replace_replace_config_replacing");
+    let user_dir = temp_dir("replace_replace_config_user");
+    write_cfg(&dropped, "content=Dropped.esp\n");
+    write_cfg(&replacing, "replace=config\ncontent=Replacing.esp\n");
+    write_cfg(&user_dir, "replace=replace\ncontent=User.esp\n");
+    write_cfg(
+        &root_dir,
+        &format!(
+            "content=Root.esm\nconfig={}\nconfig={}\nconfig={}\n",
+            dropped.display(),
+            replacing.display(),
+            user_dir.display()
+        ),
+    );
+
+    let config = OpenMWConfiguration::new(Some(root_dir)).unwrap();
+
+    assert_eq!(content(&config), ["Root.esm", "Replacing.esp", "User.esp"]);
 }
 
 #[test]
