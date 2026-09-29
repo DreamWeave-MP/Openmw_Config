@@ -126,14 +126,37 @@ fn test_replace_groundcover_clears_prior_groundcover() {
 }
 
 #[test]
-fn test_replace_singletons_clears_previous_values() {
-    let config = load(
-        "user-data=/old/user\nreplace=user-data\nuser-data=/new/user\nresources=/old/res\nreplace=resources\nresources=/new/res\ndata-local=/old/local\nreplace=data-local\ndata-local=/new/local\n",
+fn test_replace_leaves_single_values_alone() {
+    // mergeComposingVariables (configurationmanager.cpp) only merges the composing options,
+    // the lists: resources=, user-data=, data-local= and encoding= take the last file's value
+    // whatever replace= says.
+    let (_, config) = linear_chain(
+        "replace_single_chain",
+        &[
+            "resources=/root/res\nuser-data=/root/user\ndata-local=/root/local\nencoding=win1250\n",
+            "resources=/mid/res\nuser-data=/mid/user\ndata-local=/mid/local\nencoding=win1251\n",
+            "replace=resources\nreplace=user-data\nreplace=data-local\nreplace=encoding\n",
+        ],
     );
 
-    assert_eq!(config.userdata().unwrap().original(), "/new/user");
-    assert_eq!(config.resources().unwrap().original(), "/new/res");
-    assert_eq!(config.data_local().unwrap().original(), "/new/local");
+    assert_eq!(config.resources().unwrap().original(), "/mid/res");
+    assert_eq!(config.userdata().unwrap().original(), "/mid/user");
+    assert_eq!(config.data_local().unwrap().original(), "/mid/local");
+    assert_eq!(
+        config.encoding().unwrap().to_string().trim(),
+        "encoding=win1251"
+    );
+}
+
+#[test]
+fn test_replace_of_a_single_value_keeps_the_files_own() {
+    let config = load(
+        "user-data=/old/user\nreplace=user-data\nresources=/old/res\nreplace=resources\ndata-local=/old/local\nreplace=data-local\n",
+    );
+
+    assert_eq!(config.userdata().unwrap().original(), "/old/user");
+    assert_eq!(config.resources().unwrap().original(), "/old/res");
+    assert_eq!(config.data_local().unwrap().original(), "/old/local");
 }
 
 #[test]

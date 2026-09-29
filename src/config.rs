@@ -1753,9 +1753,9 @@ impl OpenMWConfiguration {
                                 });
                                 seen_groundcover.clear();
                             }
-                            "data-local" => self.set_data_local(None),
-                            "resources" => self.set_resources(None),
-                            "user-data" => self.set_userdata(None),
+                            // Single values: mergeComposingVariables only merges the lists,
+                            // so replace= leaves these to the last file that sets them.
+                            "resources" | "user-data" | "data-local" | "encoding" => {}
                             "config" => {
                                 self.settings.clear();
                                 seen_content.clear();

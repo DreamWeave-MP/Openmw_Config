@@ -19,9 +19,6 @@ it puts `replace=` ahead of every entry of its list and spells the option in low
   crate applies it at its line, so `content=A.esp` then `replace=content` in one file drops
   `A.esp`, which OpenMW keeps. Most single-file tests in `tests/integration_chain_replace.rs`,
   `tests/proptest_replace.rs` and the `config.rs` unit tests encode the per-line reading.
-- **Single values.** `replace=` only affects list options in OpenMW (`mergeComposingVariables`
-  skips the rest), so `replace=resources`, `user-data`, `data-local` and `encoding` do nothing
-  there. Here they remove the latest definition, which can bring an older file's value back.
 - **`replace=config`.** OpenMW discards the configs parsed so far except the root (local or global)
   one, keeps the root's settings, and still follows every `config=` not yet read, the replacing
   file's own included; in the root file itself it does nothing (only `--replace=config` on the
@@ -73,3 +70,6 @@ When 3.x is declared, its notes need the l3i breaks (`498fa6f`) and, from the bu
   wins where OpenMW's documentation disagrees:
   - `replace=` values match option names exactly: `replace=Content` discards nothing, and
     `replace=Config` resets nothing.
+  - `replace=resources`, `replace=user-data`, `replace=data-local` and `replace=encoding` do
+    nothing: `replace=` only reaches lists. They used to remove the latest definition, which
+    could bring an older file's value back.

@@ -101,7 +101,7 @@ option, so `replace=fallback-archives` leaves the archives alone.
 | `replace=fallback-archive` | Every `fallback-archive=` entry |
 | `replace=data` | Every `data=` entry |
 | `replace=fallback` | Every `fallback=` entry |
-| `replace=resources`, `replace=user-data`, `replace=data-local` | The latest definition of that setting |
+| `replace=resources`, `replace=user-data`, `replace=data-local`, `replace=encoding` | Nothing: these hold one value, and OpenMW's `replace=` only reaches lists. The last file that sets one still wins |
 | `replace=config` | Every setting loaded so far, from every file, and every `config=` entry read so far that has not loaded yet |
 | `replace=<key>`, for any other key | Every unknown-key entry with exactly that key |
 
