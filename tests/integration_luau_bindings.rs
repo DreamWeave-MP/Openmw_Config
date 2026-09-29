@@ -7,6 +7,7 @@
 use l3i::Runtime;
 use l3i::extension::{RuntimePlan, RuntimePolicy};
 use openmw_config::luau::{self, MODULE};
+#[cfg(not(windows))]
 use openmw_config::try_default_config_path;
 use std::path::Path;
 use std::rc::Rc;
@@ -37,6 +38,7 @@ unsafe fn clear_config_env() {
     }
 }
 
+#[cfg(not(windows))]
 fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
     // SAFETY: callers hold ENV_LOCK, so process-global environment mutation is serialized.
     unsafe {
