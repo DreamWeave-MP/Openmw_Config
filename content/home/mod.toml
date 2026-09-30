@@ -266,3 +266,11 @@ fixed = [
     "The setting indexes are rebuilt when singleton settings change and after data directories are injected; a parent's relative data directory is written resolved when the user config copies it; a parent's `resources=`, `user-data=`, `data-local=` or `encoding=` stays in place when the user sets one.",
     "The live-view generation counter advances without wrapping, so a stale row can never read as current again.",
 ]
+
+[[releases]]
+version = "3.0.2"
+date = 2026-09-30
+summary = "Built on l3i 1.1.0."
+changed = [
+    "l3i 1.1.0 comes from crates.io; the `@dream/openmw-config` module is unchanged.",
+]
