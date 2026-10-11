@@ -50,7 +50,7 @@ local Methods = {}
 
 local function stateOf(config: Config): State
   local state = states[config]
-  assert(state, 'dreamwind.openmw-config: invalid configuration receiver')
+  assert(state, 'openmw-config: invalid configuration receiver')
   return state
 end
 
@@ -64,15 +64,15 @@ end
 local function options(given: Options?): Tokens
   local selected: Options = given or {}
   for name in (selected :: unknown) :: { [string]: unknown } do
-    assert(name == 'tokens', `dreamwind.openmw-config: unknown option '{name}'`)
+    assert(name == 'tokens', `openmw-config: unknown option '{name}'`)
   end
 
   local input: Tokens = selected.tokens or {}
   local tokens = table.clone(input)
   for name, value in (tokens :: unknown) :: { [string]: unknown } do
     assert(name == 'localPath' or name == 'globalPath' or name == 'userConfig' or name == 'userData',
-      `dreamwind.openmw-config: unknown path token '{name}'`)
-    assert(type(value) == 'string', `dreamwind.openmw-config: token '{name}' needs a path string`)
+      `openmw-config: unknown path token '{name}'`)
+    assert(type(value) == 'string', `openmw-config: token '{name}' needs a path string`)
   end
 
   return tokens
@@ -96,7 +96,7 @@ end
 
 local function empty(directory: string, tokens: Tokens): Config
   assert(directory ~= '' and jess.fs.fileName(directory) ~= 'openmw.cfg',
-    'dreamwind.openmw-config: newEmpty needs a configuration directory')
+    'openmw-config: newEmpty needs a configuration directory')
   local file = jess.fs.join(paths.absolute(directory), 'openmw.cfg')
   return handle {
     entries = {}, chain = {}, originals = {}, owned = { [file] = true }, root = file, user = file,
@@ -105,7 +105,7 @@ local function empty(directory: string, tokens: Tokens): Config
 end
 
 local function load(path: string, tokens: Tokens): Config
-  assert(path ~= '', 'dreamwind.openmw-config: configuration path is empty')
+  assert(path ~= '', 'openmw-config: configuration path is empty')
   local root = paths.absolute(path)
   local rootInfo = stat(root)
   if rootInfo and rootInfo.isDir then root = jess.fs.join(root, 'openmw.cfg') end
@@ -241,7 +241,7 @@ local function new(path: string, given: Options?): Config return load(path, opti
 local function newEmpty(directory: string, given: Options?): Config return empty(directory, options(given)) end
 
 local function loadOptional(path: string, given: Options?): Config
-  assert(path ~= '', 'dreamwind.openmw-config: configuration path is empty')
+  assert(path ~= '', 'openmw-config: configuration path is empty')
   local tokens = options(given)
   local absolute = paths.absolute(path)
   local info = stat(absolute)
@@ -273,7 +273,7 @@ function Methods.last(self: Config, key: string): string?
 end
 
 function Methods.path(self: Config, key: string): string?
-  assert(text.DirectoryKeys[key], `dreamwind.openmw-config: '{key}' is not a directory setting`)
+  assert(text.DirectoryKeys[key], `openmw-config: '{key}' is not a directory setting`)
   local entries = stateOf(self).entries
   for index = #entries, 1, -1 do
     if entries[index].key == key then return entries[index].resolved end
@@ -319,7 +319,7 @@ function Methods.generation(self: Config): number return stateOf(self).generatio
 
 local function composing(key: string)
   assert(not text.SingletonKeys[key] and key ~= 'config' and key ~= 'replace',
-    `dreamwind.openmw-config: '{key}' is not an editable composing list`)
+    `openmw-config: '{key}' is not an editable composing list`)
 end
 
 local function replacement(state: State, key: string)
@@ -336,7 +336,7 @@ function Methods.append(self: Config, key: string, value: string)
   local state = stateOf(self)
   local entry = entryFor(state, key, value)
   if text.UniqueKeys[key] then
-    assert(not table.find(self:values(key), value), `dreamwind.openmw-config: duplicate {key} '{value}'`)
+    assert(not table.find(self:values(key), value), `openmw-config: duplicate {key} '{value}'`)
   end
 
   table.insert(state.entries, entry)
@@ -392,8 +392,8 @@ function Methods.replace(self: Config, key: string, values: { string }?)
 end
 
 function Methods.set(self: Config, key: string, value: string?)
-  assert(text.SingletonKeys[key], `dreamwind.openmw-config: '{key}' is not a singleton setting`)
-  assert(value == nil or type(value) == 'string', 'dreamwind.openmw-config: a singleton needs a string or nil')
+  assert(text.SingletonKeys[key], `openmw-config: '{key}' is not a singleton setting`)
+  assert(value == nil or type(value) == 'string', 'openmw-config: a singleton needs a string or nil')
   local state = stateOf(self)
   local addition = if value then entryFor(state, key, value) else nil
   for index = #state.entries, 1, -1 do
@@ -502,18 +502,18 @@ end
 
 function Methods.saveUser(self: Config, options: { backup: boolean? }?): Written
   local state = stateOf(self)
-  assert(state.ownsUserFile, `dreamwind.openmw-config: refusing to save unmodeled user file '{state.user}'`)
+  assert(state.ownsUserFile, `openmw-config: refusing to save unmodeled user file '{state.user}'`)
   local selected: { backup: boolean? } = options or {}
   for name in (selected :: unknown) :: { [string]: unknown } do
-    assert(name == 'backup', `dreamwind.openmw-config: unknown save option '{name}'`)
+    assert(name == 'backup', `openmw-config: unknown save option '{name}'`)
   end
 
-  assert(selected.backup == nil or type(selected.backup) == 'boolean', 'dreamwind.openmw-config: backup needs a boolean')
+  assert(selected.backup == nil or type(selected.backup) == 'boolean', 'openmw-config: backup needs a boolean')
   local current, problem, kind = fs.readFileString(state.user)
   if not current and kind ~= 'notFound' then error(problem, 0) end
 
   assert(current == state.originals[state.user],
-    `dreamwind.openmw-config: user file '{state.user}' changed since it was loaded; reload before saving`)
+    `openmw-config: user file '{state.user}' changed since it was loaded; reload before saving`)
   local output = self:renderUser()
   local created, message = fs.mkdir(jess.fs.parent(state.user) :: string, { recursive = true })
   assert(created, message)

@@ -71,7 +71,7 @@ local function resolve(value: string, source: string, tokens: Tokens): string
     if string.sub(path, 1, #token) ~= token then continue end
 
     local root = ((tokens :: unknown) :: { [string]: string? })[field]
-    assert(root, `dreamwind.openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
+    assert(root, `openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
     local suffix = string.gsub(string.sub(path, #token + 1), '^[/\\]+', '')
     path = jess.fs.join(root, suffix)
     break

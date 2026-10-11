@@ -80,7 +80,7 @@ local function trim(value: string): string
 end
 
 local function fail(source: string, line: number, reason: string): never
-  return error(`dreamwind.openmw-config: {source}:{line}: {reason}`, 0)
+  return error(`openmw-config: {source}:{line}: {reason}`, 0)
 end
 
 local function validate(key: string, value: string, source: string, line: number)
@@ -109,7 +109,7 @@ end
 
 local function encodeDirectory(value: string): string
   assert(utf8.len(value) and not string.find(value, '[\r\n%z]'),
-    'dreamwind.openmw-config: directory paths must be single-line UTF-8 for export')
+    'openmw-config: directory paths must be single-line UTF-8 for export')
   if trim(value) == value and string.sub(value, 1, 1) ~= '"' then return value end
 
   return '"' .. string.gsub(value, '[&"]', function(character: string): string
