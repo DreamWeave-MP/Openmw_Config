@@ -1,0 +1,22 @@
+manifest_version = 1
+
+[package]
+id = "org.dreamweave.openmw-config"
+version = "0.1.0"
+jess_api = "1"
+include = ["src"]
+
+[modules]
+"@openmw-config" = "src/init.luau"
+# Exported for openmw, whose Context validates content names with the grammar and compares folders
+# by the chain's path key, and for openmw-import-morrowind, which validates, resolves, and quotes
+# the settings it writes. They are not the configuration API.
+"@openmw-config/text" = "src/text.luau"
+"@openmw-config/paths" = "src/paths.luau"
+
+# Every module here is inert API: it does nothing until something requires it, and runs with the
+# authority of whatever calls it.
+
+[[layer]]
+id = "openmw-config.core"
+exports = ["@openmw-config", "@openmw-config/text", "@openmw-config/paths"]
