@@ -83,6 +83,14 @@ local function fail(source: string, line: number, reason: string): never
   return error(`openmw-config: {source}:{line}: {reason}`, 0)
 end
 
+--- Whether `value` holds a carriage return, a line feed or a NUL, which nothing kept on one line of
+--- a configuration can.
+local function broken(value: string): boolean
+  return string.find(value, '\r', 1, true) ~= nil
+    or string.find(value, '\n', 1, true) ~= nil
+    or string.find(value, '\0', 1, true) ~= nil
+end
+
 local function validate(key: string, value: string, source: string, line: number)
   if type(key) ~= 'string' or type(value) ~= 'string' then
     fail(source, line, 'settings need string keys and values')
@@ -90,7 +98,7 @@ local function validate(key: string, value: string, source: string, line: number
 
   if not utf8.len(key) or not utf8.len(value) then fail(source, line, 'settings must be UTF-8') end
 
-  if key == '' or string.sub(key, 1, 1) == '#' or string.find(key, '[=\r\n%z]') or string.find(value, '[\r\n%z]') then
+  if key == '' or string.sub(key, 1, 1) == '#' or string.find(key, '=', 1, true) or broken(key) or broken(value) then
     fail(source, line, 'a setting must fit on one key=value line without NUL bytes')
   end
 
@@ -108,7 +116,7 @@ local function validate(key: string, value: string, source: string, line: number
 end
 
 local function encodeDirectory(value: string): string
-  assert(utf8.len(value) and not string.find(value, '[\r\n%z]'),
+  assert(utf8.len(value) and not broken(value),
     'openmw-config: directory paths must be single-line UTF-8 for export')
   if trim(value) == value and string.sub(value, 1, 1) ~= '"' then return value end
 
