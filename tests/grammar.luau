@@ -421,6 +421,25 @@ suite.describe('the grammar', function()
     expect(#cases).toBe(42 * 42 * 14 + 42 * 42 + 8)
     expect(disagreement(cases, quoted, parsed(Oracle.parse), parsed(text.parse))).toBe ''
   end)
+
+  suite.it('refuses every short run of bytes that is not UTF-8, at the same byte', function()
+    -- Lead bytes of every length, the continuation bytes that make them overlong, a surrogate or
+    -- past the last code point, and the ones that do not.
+    local alphabet = { 'a', '\x80', '\x8F', '\x90', '\x9F', '\xA0', '\xBF', '\xC0', '\xC2', '\xE0', '\xED', '\xF0', '\xF4', '\xF5' }
+    local runs = spellings(alphabet, 4)
+    local cases = [for run in runs => `content={run}`]
+
+    for _, run in runs do
+      table.insert(cases, `# {run}\ncontent=Morrowind.esm\n`)
+    end
+
+    local function parsed(parse: typeof(text.parse)): (case: string) -> unknown
+      return function(case: string): unknown return parse(case, Source) end
+    end
+
+    expect(#cases).toBe(2 * 41371)
+    expect(disagreement(cases, quoted, parsed(Oracle.parse), parsed(text.parse))).toBe ''
+  end)
 end)
 
 return suite
