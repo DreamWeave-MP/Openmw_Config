@@ -5,7 +5,7 @@ id = "org.dreamweave.openmw-config"
 version = "0.1.0"
 jess_api = "1"
 include = ["src"]
-tests = ["tests/run.luau", "tests/style.luau"]
+tests = ["tests/run.luau", "tests/grammar.luau", "tests/style.luau"]
 
 [modules]
 "@openmw-config" = "src/init.luau"
