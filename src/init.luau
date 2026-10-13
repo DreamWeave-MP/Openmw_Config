@@ -298,10 +298,7 @@ function Methods.dataDirectories(self: Config): { string }
 end
 
 function Methods.entries(self: Config): { Entry }
-  local result: { Entry } = {}
-  for _, entry in stateOf(self).entries do table.insert(result, table.clone(entry)) end
-
-  return result
+  return [for entry in stateOf(self).entries => table.clone(entry)]
 end
 
 function Methods.chain(self: Config): { ChainEntry }
