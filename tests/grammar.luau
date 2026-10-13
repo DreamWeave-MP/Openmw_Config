@@ -440,6 +440,20 @@ suite.describe('the grammar', function()
     expect(#cases).toBe(2 * 41371)
     expect(disagreement(cases, quoted, parsed(Oracle.parse), parsed(text.parse))).toBe ''
   end)
+
+  suite.it('refuses or reads a run that opens with any byte past ASCII as the character count does', function()
+    -- The alphabet above has no lead byte whose every continuation is taken, which is what most
+    -- text past Latin opens with, and none of a sequence longer than four bytes.
+    local tails = spellings({ 'a', '\x80', '\x8F', '\x90', '\x9F', '\xA0', '\xBF' }, 3)
+    local cases = [for lead in range(0x80, 0xFF) for tail in tails => `content=A{string.char(lead)}{tail}`]
+
+    local function parsed(parse: typeof(text.parse)): (case: string) -> unknown
+      return function(case: string): unknown return parse(case, Source) end
+    end
+
+    expect(#cases).toBe(128 * 400)
+    expect(disagreement(cases, quoted, parsed(Oracle.parse), parsed(text.parse))).toBe ''
+  end)
 end)
 
 return suite
