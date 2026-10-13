@@ -8,6 +8,8 @@ export type Tokens = { localPath: string?, globalPath: string?, userConfig: stri
 
 local Windows = string.find(jess.fs.join('first', 'second'), '\\', 1, true) ~= nil
 local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else '\\'
+local Doubled, Hidden = Separator .. Separator, Separator .. '.'
+local SeparatorByte, Dot = string.byte(Separator), string.byte('.')
 
 local Roots: { [string]: string } = table.freeze {
   ['?local?'] = 'localPath',
@@ -30,8 +32,29 @@ local function absolute(path: string): string
   return assert(result, message)
 end
 
+--- Whether `path` is its own key already: no other separator, one between segments and none
+--- after the last, and no `.` segment. A path that opens with a `.` is left to the walk.
+local function canonical(path: string): boolean
+  if string.find(path, Other, 1, true) or string.find(path, Doubled, 1, true) then return false end
+
+  local first, last = string.byte(path, 1), string.byte(path, -1)
+  if first == Dot or last == SeparatorByte then return false end
+
+  local hidden = string.find(path, Hidden, 1, true)
+  while hidden do
+    local following = string.byte(path, hidden + 2)
+    if not following or following == SeparatorByte then return false end
+
+    hidden = string.find(path, Hidden, hidden + 2, true)
+  end
+
+  return true
+end
+
 -- Path equality is lexical, not canonical: symlink aliases remain distinct chain directories.
 local function key(path: string): string
+  if canonical(path) then return path end
+
   local normalized = separators(path)
   local parts: { string } = {}
   for _, part in string.split(normalized, Separator) do
