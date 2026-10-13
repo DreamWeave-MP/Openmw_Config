@@ -115,8 +115,7 @@ local function load(path: string, tokens: Tokens): Config
   local files: { File }, active: { string }, chain: { ChainEntry } = {}, {}, {}
   local originals: { [string]: string } = {}
   while #pending > 0 do
-    local nextConfig = table.remove(pending) :: { path: string, depth: number }
-    local file, depth = nextConfig.path, nextConfig.depth
+    local { path: file, depth } = table.remove(pending) :: { path: string, depth: number }
     local directory = jess.fs.parent(file) :: string
     local identity = paths.key(directory)
     if tried[identity] then continue end
