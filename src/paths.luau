@@ -34,8 +34,8 @@ end
 local function key(path: string): string
   local normalized = separators(path)
   local parts: { string } = {}
-  for part in string.gmatch(normalized, '[^/\\]+') do
-    if part ~= '.' then table.insert(parts, part) end
+  for _, part in string.split(normalized, Separator) do
+    if part ~= '' and part ~= '.' then table.insert(parts, part) end
   end
 
   local prefix = if Windows and string.sub(normalized, 1, 2) == '\\\\'
