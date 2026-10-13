@@ -151,8 +151,10 @@ local function lines(source: string): { string }
 end
 
 local function parse(source: string, path: string): { Entry }
-  local valid, invalid = utf8.len(source)
-  if not valid then fail(path, 0, `configuration is not UTF-8 at byte {invalid}`) end
+  if not bytes.isUtf8(source) then
+    local _, invalid = utf8.len(source)
+    fail(path, 0, `configuration is not UTF-8 at byte {invalid}`)
+  end
 
   -- A key and a value cut from UTF-8 lines that hold no NUL, and no carriage return but the one
   -- that ends them, are UTF-8, trimmed and on one line already. Of everything `validate` refuses,
