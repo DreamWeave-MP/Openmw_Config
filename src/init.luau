@@ -302,10 +302,7 @@ function Methods.entries(self: Config): { Entry }
 end
 
 function Methods.chain(self: Config): { ChainEntry }
-  local result: { ChainEntry } = {}
-  for _, entry in stateOf(self).chain do table.insert(result, table.clone(entry)) end
-
-  return result
+  return [for entry in stateOf(self).chain => table.clone(entry)]
 end
 
 function Methods.rootFile(self: Config): string return stateOf(self).root end
