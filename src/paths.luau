@@ -9,6 +9,13 @@ export type Tokens = { localPath: string?, globalPath: string?, userConfig: stri
 local Windows = string.find(jess.fs.join('first', 'second'), '\\', 1, true) ~= nil
 local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else '\\'
 
+local Roots: { [string]: string } = table.freeze {
+  ['?local?'] = 'localPath',
+  ['?global?'] = 'globalPath',
+  ['?userconfig?'] = 'userConfig',
+  ['?userdata?'] = 'userData',
+}
+
 local function separators(path: string): string return bytes.translate(path, Other, Separator) end
 
 local function rooted(path: string): boolean
@@ -64,26 +71,24 @@ local function unquote(value: string): string
   return table.concat(result)
 end
 
-local function resolve(value: string, source: string, tokens: Tokens): string
-  local path = unquote(value)
-  local roots: { [string]: string } = {
-    ['?local?'] = 'localPath',
-    ['?global?'] = 'globalPath',
-    ['?userconfig?'] = 'userConfig',
-    ['?userdata?'] = 'userData',
-  }
+--- `path` with the token it opens with, when it opens with one, replaced by that token's root.
+local function expand(path: string, source: string, tokens: Tokens): string
+  if string.sub(path, 1, 1) ~= '?' then return path end
 
-  for token, field in roots do
+  for token, field in Roots do
     if string.sub(path, 1, #token) ~= token then continue end
 
     local root = ((tokens :: unknown) :: { [string]: string? })[field]
     assert(root, `openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
     local suffix = string.gsub(string.sub(path, #token + 1), '^[/\\]+', '')
-    path = jess.fs.join(root, suffix)
-    break
+    return jess.fs.join(root, suffix)
   end
 
-  path = separators(path)
+  return path
+end
+
+local function resolve(value: string, source: string, tokens: Tokens): string
+  local path = separators(expand(unquote(value), source, tokens))
   if rooted(path) then return path end
 
   return jess.fs.join(jess.fs.parent(source) or '.', path)
