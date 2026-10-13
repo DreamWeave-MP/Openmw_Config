@@ -120,9 +120,7 @@ local function encodeDirectory(value: string): string
     'openmw-config: directory paths must be single-line UTF-8 for export')
   if trim(value) == value and string.sub(value, 1, 1) ~= '"' then return value end
 
-  return '"' .. string.gsub(value, '[&"]', function(character: string): string
-    return '&' .. character
-  end) .. '"'
+  return '"' .. string.gsub(value, '[&"]', '&%0') .. '"'
 end
 
 local function lines(source: string): { string }
