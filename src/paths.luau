@@ -56,11 +56,7 @@ local function key(path: string): string
   if canonical(path) then return path end
 
   local normalized = separators(path)
-  local parts: { string } = {}
-  for _, part in string.split(normalized, Separator) do
-    if part ~= '' and part ~= '.' then table.insert(parts, part) end
-  end
-
+  local parts = [for part in string.split(normalized, Separator) if part ~= '' and part ~= '.' => part]
   local prefix = if Windows and string.sub(normalized, 1, 2) == '\\\\'
     then '\\\\'
     elseif string.sub(normalized, 1, 1) == Separator then Separator else ''
