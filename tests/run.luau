@@ -173,6 +173,40 @@ suite.describe('configuration ownership', function()
     expect(config:dataDirectories()[1]).toBe(jess.fs.join(tokens.userConfig :: string, 'data'))
   end)
 
+  suite.it('removes a directory by any spelling of the folder it resolves to', function()
+    local directory, path = fixture('remove-spelling', 'data=mods/first\ndata="mods/second"\ncontent=mods/first\n')
+    local config = configuration.new(path)
+    expect(config:remove('data', directory .. '/mods/./first/')).toBe(true)
+    expect(config:remove('data', jess.fs.join(directory, 'mods', 'third'))).toBe(false)
+    expect(config:remove('content', jess.fs.join(directory, 'mods', 'first'))).toBe(false)
+    expect(config:values('data')).toEqual { '"mods/second"' }
+    expect(config:values('content')).toEqual { 'mods/first' }
+    expect(config:generation()).toBe(1)
+    expect(config:remove('data', jess.fs.join(directory, 'mods', 'second'))).toBe(true)
+    expect(config:dataDirectories()).toEqual {}
+  end)
+
+  suite.it('answers its queries with copies a caller may keep and change', function()
+    local _, path = fixture('copies', '# head\ncontent=A.esp\ndata=one\ncontent=B.esp\n# tail\n')
+    local config = configuration.new(path)
+    local entries, chain = config:entries(), config:chain()
+    expect(#entries).toBe(4)
+    expect(entries[4].key).toBe(nil)
+    expect(entries[4].comment).toBe '# tail\n'
+    entries[1].value = 'Changed.esp'
+    table.remove(entries)
+    chain[1].status = 'skippedMissing'
+    expect(config:values('content')).toEqual { 'A.esp', 'B.esp' }
+    expect(config:values('absent')).toEqual {}
+    expect(#config:entries()).toBe(4)
+    expect(config:chain()).toEqual { { path = path, depth = 0, status = 'loaded' } }
+
+    -- A key that is no string at all is the key of the comments after the last setting, which
+    -- have no value to give.
+    local values = (config.values :: unknown) :: (self: configuration.Config, key: unknown) -> { string }
+    expect(values(config, nil)).toEqual {}
+  end)
+
   suite.it('resolves relative paths from any explicitly named config file', function()
     local directory = fixture('custom-name', '')
     local custom = jess.fs.join(directory, 'custom.cfg')
