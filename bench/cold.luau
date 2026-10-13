@@ -1,10 +1,10 @@
 --!strict
--- What a command that loads one configuration and exits pays before anything is warm: the
--- package's three modules compiled and run, then the first load of a small chain. Run by `jess run
--- --capability filesystem.read --capability filesystem.write --package . bench/cold.luau
--- <scratch>`, on a release build. Each line is one sample of something a process does once, so
--- compare medians over many runs. This file uses none of the l3i dialect, so that whatever a
--- module's first use of it costs is paid inside the `require` timed here.
+-- What a command that loads one configuration and exits pays before anything is warm: each of
+-- the package's three modules compiled and run, then the first load of a small chain. Run by
+-- `jess run --capability filesystem.read --capability filesystem.write --package .
+-- bench/cold.luau <scratch>`, on a release build. Each line is one sample of something a process
+-- does once, so compare medians over many runs. This file uses none of the l3i dialect, so that
+-- whatever a module's first use of it costs is paid inside the `require` timed here.
 local fs = require '@dream/fs'
 
 if not jess.bench.verified then
@@ -55,8 +55,16 @@ write(installPath, install)
 write(userPath, user)
 
 local started = os.clock()
+require '@openmw-config/paths'
+local requiredPaths = os.clock() - started
+
+started = os.clock()
+require '@openmw-config/text'
+local requiredText = os.clock() - started
+
+started = os.clock()
 local configuration = require '@openmw-config'
-local required = os.clock() - started
+local requiredChain = os.clock() - started
 
 started = os.clock()
 local config = configuration.new(installPath, { tokens = { userData = userData } })
@@ -68,5 +76,8 @@ if #config:values('content') ~= Plugins or #config:dataDirectories() ~= Folders 
   error('config bench: the cold load is not what the files hold', 0)
 end
 
-print(`cold: require the package\t{string.format('%.9f', required)}`)
+print(`cold: require @openmw-config/paths\t{string.format('%.9f', requiredPaths)}`)
+print(`cold: require @openmw-config/text\t{string.format('%.9f', requiredText)}`)
+print(`cold: require @openmw-config, the two above loaded\t{string.format('%.9f', requiredChain)}`)
+print(`cold: require all three\t{string.format('%.9f', requiredPaths + requiredText + requiredChain)}`)
 print(`cold: first new, a chain of two files ({#install + #user} lines)\t{string.format('%.9f', loaded)}`)
