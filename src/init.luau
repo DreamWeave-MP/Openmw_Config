@@ -140,11 +140,7 @@ local function load(path: string, tokens: Tokens): Config
     local entries = text.parse(source, file)
     for _, entry in entries do resolved(entry, tokens) end
 
-    local replacesConfig = false
-    for _, entry in entries do
-      if entry.key == 'replace' and entry.value == 'config' then replacesConfig = true end
-    end
-
+    local replacesConfig = any[for entry in entries => entry.key == 'replace' and entry.value == 'config']
     if #files > 1 and replacesConfig then
       files = { files[1] }
       active = { active[1] }
@@ -205,11 +201,7 @@ local function load(path: string, tokens: Tokens): Config
   end
 
   local user = jess.fs.join(active[#active], 'openmw.cfg')
-  local ownsUserFile = false
-  for _, event in chain do
-    if paths.key(event.path) == paths.key(user) then ownsUserFile = true end
-  end
-
+  local ownsUserFile = any[for event in chain => paths.key(event.path) == paths.key(user)]
   local owned: { [string]: boolean } = { [user] = true }
   local userOriginal = originals[user]
   for file in originals do
