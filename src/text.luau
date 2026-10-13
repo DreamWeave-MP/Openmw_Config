@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- Configuration grammar follows openmw-config 3.0.2's ConfigFile::read. Fallback values stay
 -- strings: their application meaning and i64 precision do not belong to the configuration loader.
+local bytes = require '@dream/bytes'
 
 export type Entry = {
   key: string?,
@@ -33,6 +34,7 @@ table.freeze(DirectoryKeys)
 table.freeze(SingletonKeys)
 table.freeze(UniqueKeys)
 local Stamp = '# OpenMW-Config Serializer Version:'
+local OneLine = 'a setting must fit on one key=value line without NUL bytes'
 
 local function whitespace(code: number): boolean
   return code == 32 or (code >= 9 and code <= 13) or code == 133 or code == 160 or code == 5760
@@ -91,6 +93,17 @@ local function broken(value: string): boolean
     or string.find(value, '\0', 1, true) ~= nil
 end
 
+--- The two settings whose value is one of a closed set, or a pair.
+local function meaning(key: string, value: string, source: string, line: number)
+  if key == 'encoding' and value ~= 'win1250' and value ~= 'win1251' and value ~= 'win1252' then
+    fail(source, line, `unsupported encoding '{value}'`)
+  end
+
+  if key == 'fallback' and not string.find(value, ',', 1, true) then
+    fail(source, line, `fallback needs Key,Value, got '{value}'`)
+  end
+end
+
 local function validate(key: string, value: string, source: string, line: number)
   if type(key) ~= 'string' or type(value) ~= 'string' then
     fail(source, line, 'settings need string keys and values')
@@ -99,20 +112,14 @@ local function validate(key: string, value: string, source: string, line: number
   if not utf8.len(key) or not utf8.len(value) then fail(source, line, 'settings must be UTF-8') end
 
   if key == '' or string.sub(key, 1, 1) == '#' or string.find(key, '=', 1, true) or broken(key) or broken(value) then
-    fail(source, line, 'a setting must fit on one key=value line without NUL bytes')
+    fail(source, line, OneLine)
   end
 
   if trim(key) ~= key or trim(value) ~= value then
     fail(source, line, 'setting keys and values must not have surrounding whitespace')
   end
 
-  if key == 'encoding' and value ~= 'win1250' and value ~= 'win1251' and value ~= 'win1252' then
-    fail(source, line, `unsupported encoding '{value}'`)
-  end
-
-  if key == 'fallback' and not string.find(value, ',', 1, true) then
-    fail(source, line, `fallback needs Key,Value, got '{value}'`)
-  end
+  meaning(key, value, source, line)
 end
 
 local function encodeDirectory(value: string): string
@@ -147,6 +154,10 @@ local function parse(source: string, path: string): { Entry }
   local valid, invalid = utf8.len(source)
   if not valid then fail(path, 0, `configuration is not UTF-8 at byte {invalid}`) end
 
+  -- A key and a value cut from UTF-8 lines that hold no NUL, and no carriage return but the one
+  -- that ends them, are UTF-8, trimmed and on one line already. Of everything `validate` refuses,
+  -- that leaves an empty key and a meaning.
+  local settled = not string.find(source, '\0', 1, true) and bytes.count(source, '\r') == bytes.count(source, '\r\n')
   local entries: { Entry }, configs: { Entry }, comments: { string } = {}, {}, {}
   local encodingAt: number?
   for number, line in lines(source) do
@@ -165,7 +176,14 @@ local function parse(source: string, path: string): { Entry }
 
     local key = trim(string.sub(trimmed, 1, equals - 1))
     local value = trim(string.sub(trimmed, equals + 1))
-    validate(key, value, path, number)
+    if not settled then
+      validate(key, value, path, number)
+    elseif key == '' then
+      fail(path, number, OneLine)
+    else
+      meaning(key, value, path, number)
+    end
+
     local entry: Entry = {
       key = key,
       value = value,
