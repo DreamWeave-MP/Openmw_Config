@@ -1,14 +1,15 @@
 --!strict
 --!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
+local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
 
 export type Tokens = { localPath: string?, globalPath: string?, userConfig: string?, userData: string? }
 
 local Windows = string.find(jess.fs.join('first', 'second'), '\\', 1, true) ~= nil
-local Separator = if Windows then '\\' else '/'
+local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else '\\'
 
-local function separators(path: string): string return (string.gsub(path, '[/\\]', Separator)) end
+local function separators(path: string): string return bytes.translate(path, Other, Separator) end
 
 local function rooted(path: string): boolean
   return string.sub(path, 1, 1) == Separator
