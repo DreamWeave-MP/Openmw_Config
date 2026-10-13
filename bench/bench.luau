@@ -1,0 +1,585 @@
+--!strict
+-- openmw-config, timed from Luau: the grammar (parsing, validation, trimming, quoting, rendering),
+-- path keys and resolution, loading a configuration chain, its queries and edits, and rendering
+-- and saving the user file. Run by `jess run --capability filesystem.read --capability
+-- filesystem.write --package . bench/bench.luau <scratch> [filter]`, on a release build. Prints
+-- one line per workload: its name, a tab, and the seconds one call takes. Every workload's result
+-- is compared with what the generator of its input says it must be, outside the time, so a path
+-- that stopped doing the work fails here. What one cold process pays is `bench/cold.luau`'s.
+local configuration = require '@openmw-config'
+local fs = require '@dream/fs'
+local paths = require '@openmw-config/paths'
+local text = require '@openmw-config/text'
+
+-- A build without the verified toolchain runs Luau slower than a release does, so a number from
+-- one says nothing about what ships.
+if not jess.bench.verified then
+  error('config bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+--- The arguments: a folder to write the configuration chain into, and a filter on the workload
+--- names.
+local scratch: string?, filter: string? = ...
+local only = if filter and filter ~= '' then filter else nil
+local root = jess.fs.join(assert(scratch, 'config bench: the first argument is a scratch folder'), 'openmw-config-bench')
+
+type Config = configuration.Config
+type Entry = configuration.Entry
+
+export type Row = { name: string, seconds: number }
+
+local rows: { Row } = {}
+
+local function median(samples: { number }): number
+  table.sort(samples)
+  return samples[(#samples + 1) // 2]
+end
+
+--- Seconds per call of `body`: warmed up, then the median of seven batches of a size that takes
+--- about a tenth of a second, with a full collection before each so one batch's garbage isn't the
+--- next one's. `verify` is given the result of the first call and of one more after the last
+--- batch, outside the time.
+local function measure(body: () -> unknown, verify: (result: unknown) -> ()): number
+  jess.bench.collect()
+  verify(body())
+  local start = os.clock()
+  body()
+  local once = math.max(os.clock() - start, 1e-7)
+  local iterations = math.max(1, math.floor(0.1 / once))
+  local samples: { number } = {}
+
+  for batch = 1, 7 do
+    jess.bench.collect()
+    start = os.clock()
+
+    for _ = 1, iterations do
+      body()
+    end
+
+    samples[batch] = (os.clock() - start) / iterations
+  end
+
+  verify(body())
+  return median(samples)
+end
+
+--- Times `body`, whose every result `holds` must accept.
+local function workload(name: string, body: () -> unknown, holds: (result: unknown) -> boolean)
+  if only and not string.find(name, only, 1, true) then return end
+
+  local function verify(result: unknown)
+    if not holds(result) then error(`config bench: {name}: the result is not what the input holds`, 0) end
+  end
+
+  table.insert(rows, { name = name, seconds = measure(body, verify) })
+end
+
+local function io<Value>(value: Value?, message: string?, kind: dream_fs_ErrorKind?): Value
+  if not value then error(message or tostring(kind), 0) end
+
+  return value
+end
+
+--- A configuration file being written, twice over: as a launcher writes it, and as a person
+--- does, with spaces, tabs and Unicode spaces around keys and values. `bytes` is the length of
+--- every key and value, and `counts` how many settings each key has.
+type Draft = {
+  plain: { string },
+  spaced: { string },
+  settings: number,
+  bytes: number,
+  counts: { [string]: number },
+}
+
+local function draft(): Draft return { plain = {}, spaced = {}, settings = 0, bytes = 0, counts = {} } end
+
+local Pads = { ' ', '\t', '  ', '\u{A0}', ' \u{3000}' }
+
+local function put(file: Draft, key: string, value: string)
+  local index = file.settings
+  local lead = if index % 3 == 0 then Pads[index % #Pads + 1] else ''
+  local tail = if index % 4 == 0 then Pads[(index + 2) % #Pads + 1] else ''
+  file.settings += 1
+  file.bytes += #key + #value
+  file.counts[key] = (file.counts[key] or 0) + 1
+  table.insert(file.plain, `{key}={value}`)
+  table.insert(file.spaced, `{lead}{key} ={if index % 2 == 0 then ' ' else ''}{value}{tail}`)
+end
+
+local function note(file: Draft, line: string)
+  table.insert(file.plain, line)
+  table.insert(file.spaced, line)
+end
+
+local Sections = {
+  'Weather',
+  'Weather_Clear',
+  'Weather_Cloudy',
+  'Weather_Foggy',
+  'Weather_Overcast',
+  'Weather_Rain',
+  'Weather_Thunderstorm',
+  'Weather_Ashstorm',
+  'Weather_Blight',
+  'Weather_Snow',
+  'Weather_Blizzard',
+  'Moons',
+  'Fonts',
+  'Movies',
+  'Inventory',
+  'Water',
+  'LightAttenuation',
+}
+
+local Names = {
+  'Sky_Sunrise_Color',
+  'Sky_Day_Color',
+  'Sky_Sunset_Color',
+  'Sky_Night_Color',
+  'Fog_Sunrise_Color',
+  'Fog_Day_Color',
+  'Ambient_Day_Color',
+  'Sun_Disc_Sunset_Color',
+  'Land_Fog_Day_Depth',
+  'Wind_Speed',
+  'Cloud_Speed',
+  'Glare_View',
+  'Transition_Delta',
+  'Thunder_Frequency',
+  'Rain_Diameter',
+  'Cloud_Texture',
+  'Ambient_Loop_Sound_ID',
+  'Storm_Threshold',
+  'Using_Precip',
+}
+
+local Mods = {
+  'Landscape Retexture',
+  'Signposts Retextured',
+  'Weapon Sheathing',
+  'Better Bodies',
+  'Unofficial Patch',
+  'Animated Containers',
+  'Distant Towers',
+  'Glowing Windows',
+  'Vanilla Friendly Creatures',
+  'Dwemer Lightning Rods',
+  'Ports of Vvardenfell',
+}
+
+local Fallbacks, Folders, Plugins = 573, 400, 300
+
+local userData = jess.fs.join(root, 'userdata')
+local userConfig = jess.fs.join(root, 'user')
+local tokens: configuration.Tokens = { userData = userData, userConfig = userConfig }
+
+--- The `data=` value of folder `index` as a configuration holds it, and the folder it names when
+--- the file holding it is `source`: most quoted and absolute, some plain, some relative to the
+--- file, and some under a token with escaped quotes in the name.
+local function folder(index: number, source: string): (string, string)
+  local mod = `{Mods[index % #Mods + 1]} {index}`
+
+  if index % 20 == 0 then
+    local below = `mods/"{mod}"/Data Files`
+    return `"?userdata?/mods/&"{mod}&"/Data Files"`, paths.separators(jess.fs.join(userData, below))
+  end
+
+  if index % 10 == 5 then
+    return `mods/{mod}`, jess.fs.join(jess.fs.parent(source) :: string, paths.separators(`mods/{mod}`))
+  end
+
+  local absolute = if index % 7 == 3
+    then `/opt/games/mods/{mod}/00 Core`
+    else `/home/player/.local/share/openmw/mods/{mod}/Data Files`
+
+  return if index % 7 == 3 then absolute else `"{absolute}"`, paths.separators(absolute)
+end
+
+--- The configuration the engine ships: where everything else is found.
+local function installFile(): Draft
+  local file = draft()
+  note(file, '# The engine\'s own settings. Yours belong in the user configuration.')
+  put(file, 'data-local', '"?userdata?data"')
+  put(file, 'user-data', '"?userdata?"')
+  put(file, 'config', '"?userconfig?"')
+  put(file, 'resources', './resources')
+  put(file, 'data', './resources/vfs-mw')
+  return file
+end
+
+--- A user configuration the size of a large mod list's: the settings an import of Morrowind.ini
+--- writes, then the folders, archives and plugins of the list.
+local function userFile(source: string): Draft
+  local file = draft()
+  note(file, '# Written by the launcher, and edited by hand since.')
+  note(file, '')
+  put(file, 'encoding', 'win1252')
+
+  for index = 1, Fallbacks do
+    if index % 16 == 1 then note(file, `# fallback settings {index} to {index + 15}`) end
+
+    local name = `{Sections[index % #Sections + 1]}_{Names[index % #Names + 1]}_{index}`
+    put(file, 'fallback', `{name},{index % 255},{index * 7 % 255},{index * 13 % 255}`)
+  end
+
+  note(file, '')
+
+  for index = 1, 3 do
+    put(file, 'fallback-archive', `Archive {index}.bsa`)
+  end
+
+  for index = 1, Folders do
+    put(file, 'data', (folder(index, source)))
+  end
+
+  for index = 1, Plugins do
+    local extension = if index % 9 == 0 then 'esm' elseif index % 5 == 0 then 'omwaddon' else 'esp'
+    put(file, 'content', `{Mods[index % #Mods + 1]} {index}.{extension}`)
+  end
+
+  for index = 1, 8 do
+    put(file, 'groundcover', `Grass Region {index}.esp`)
+  end
+
+  put(file, 'config', 'profile')
+  return file
+end
+
+--- The last configuration of the chain, the one a save writes: a profile's own plugins and
+--- folders.
+local function profileFile(): Draft
+  local file = draft()
+  note(file, '# The profile in use.')
+
+  for index = 1, 40 do
+    put(file, 'content', `Profile Plugin {index}.esp`)
+  end
+
+  for index = 1, 20 do
+    put(file, 'data', `"/home/player/.config/openmw/profile/Folder {index}"`)
+  end
+
+  note(file, '# The end of the profile.')
+  return file
+end
+
+local installPath = jess.fs.join(root, 'install', 'openmw.cfg')
+local userPath = jess.fs.join(userConfig, 'openmw.cfg')
+local profilePath = jess.fs.join(userConfig, 'profile', 'openmw.cfg')
+local install, user, profile = installFile(), userFile(userPath), profileFile()
+local userText = table.concat(user.plain, '\n') .. '\n'
+
+local function write(path: string, file: Draft)
+  io(fs.mkdir(jess.fs.parent(path) :: string, { recursive = true }))
+  io(fs.writeFile(path, table.concat(file.plain, '\n') .. '\n'))
+end
+
+local function count(key: string): number
+  return (install.counts[key] or 0) + (user.counts[key] or 0) + (profile.counts[key] or 0)
+end
+
+local function keyed(entries: { Entry }): number return #[for entry in entries if entry.key => entry] end
+
+local function parses(name: string, source: string)
+  workload(
+    `text.parse: {name} ({#user.plain} lines)`,
+    function(): unknown return text.parse(source, userPath) end,
+    function(result: unknown): boolean
+      local entries = result :: { Entry }
+      local bytes = sum[for entry in entries => #(entry.key :: string) + #(entry.value :: string)]
+      return #entries == user.settings and bytes == user.bytes and entries[#entries].key == 'config'
+    end
+  )
+end
+
+parses('a mod list\'s openmw.cfg', userText)
+parses('the same written by hand, CRLF', table.concat(user.spaced, '\r\n') .. '\r\n')
+
+local parsed = text.parse(userText, userPath)
+
+workload(
+  `text.validate: {#parsed} settings`,
+  function(): unknown
+    local checked = 0
+
+    for _, entry in parsed do
+      text.validate(entry.key :: string, entry.value :: string, userPath, entry.line)
+      checked += 1
+    end
+
+    return checked
+  end,
+  function(result: unknown): boolean
+    -- `text.validate` raises on a setting the grammar refuses, which is the work this workload
+    -- has to be seen doing.
+    local accepted = pcall(text.validate, 'encoding', 'utf8', userPath, 0)
+    return result == #parsed and not accepted
+  end
+)
+
+workload(
+  `text.render: {#parsed} entries`,
+  function(): unknown
+    local total = 0
+
+    for _, entry in parsed do
+      total += #text.render(entry)
+    end
+
+    return total
+  end,
+  function(result: unknown): boolean return result == #userText end
+)
+
+local function trims(name: string, pad: (core: string, index: number) -> string)
+  local cores = [for index in range(1, 1024) => `Sky_Day_Color_{index},{index % 255},{index * 7 % 255}`]
+  local padded = [for index, core in enumerate(cores) => pad(core, index)]
+  local expected = sum[for core in cores => #core]
+
+  workload(
+    `text.trim: 1024 values, {name}`,
+    function(): unknown
+      local total = 0
+
+      for _, value in padded do
+        total += #text.trim(value)
+      end
+
+      return total
+    end,
+    function(result: unknown): boolean
+      return result == expected and all[for value, core in zipStrict(padded, cores) => text.trim(value) == core]
+    end
+  )
+end
+
+trims('nothing to trim', function(core: string): string return core end)
+
+trims('spaces and tabs', function(core: string, index: number): string
+  return `{string.rep(' ', index % 4)}\t{core}{string.rep(' ', index % 3 + 1)}`
+end)
+
+trims('Unicode spaces', function(core: string, index: number): string
+  return if index % 2 == 0 then `\u{A0} {core}\u{2003}` else `\u{3000}{core} \u{A0}\t`
+end)
+
+do
+  local values: { string }, folders: { string } = {}, {}
+
+  for index = 1, 1024 do
+    values[index], folders[index] = folder(index, userPath)
+  end
+
+  local resolvedBytes = sum[for path in folders => #path]
+
+  workload(
+    'paths.resolve: 1024 data folders',
+    function(): unknown
+      local total = 0
+
+      for _, value in values do
+        total += #paths.resolve(value, userPath, tokens)
+      end
+
+      return total
+    end,
+    function(result: unknown): boolean
+      local same = all[for value, path in zipStrict(values, folders) => paths.resolve(value, userPath, tokens) == path]
+      return result == resolvedBytes and same
+    end
+  )
+
+  --- Every fourth folder is spelled a way that is not its key: a doubled separator, a `.`
+  --- segment, a trailing separator.
+  local spelled = [for index, path in enumerate(folders) =>
+    if index % 12 == 0 then string.gsub(path, '/mods/', '//mods/./')
+    elseif index % 12 == 4 then `{path}/`
+    elseif index % 12 == 8 then string.gsub(path, '/mods/', '/./mods/')
+    else path]
+
+  workload(
+    'paths.key: 1024 folders',
+    function(): unknown
+      local total = 0
+
+      for _, path in spelled do
+        total += #paths.key(path)
+      end
+
+      return total
+    end,
+    function(result: unknown): boolean
+      local same = all[for path, expected in zipStrict(spelled, folders) => paths.key(path) == expected]
+      return result == resolvedBytes and same
+    end
+  )
+
+  --- A quarter of the folders have a name that has to be quoted to survive a reload: two quotes
+  --- around it, and an `&` before each `&` and `"` in it.
+  local exported = [for index, path in enumerate(folders) => if index % 4 == 0 then `{path} & more ` else path]
+  local quotedBytes = sum[for index, path in enumerate(exported) =>
+    if index % 4 == 0 then #path + 2 + select(2, string.gsub(path, '[&"]', '')) else #path]
+
+  workload(
+    'text.encodeDirectory: 1024 folders',
+    function(): unknown
+      local total = 0
+
+      for _, path in exported do
+        total += #text.encodeDirectory(path)
+      end
+
+      return total
+    end,
+    function(result: unknown): boolean
+      local same = all[for path in exported => paths.resolve(text.encodeDirectory(path), '/openmw.cfg', tokens) == path]
+      return result == quotedBytes and same
+    end
+  )
+end
+
+write(installPath, install)
+write(userPath, user)
+write(profilePath, profile)
+
+local lines = #install.plain + #user.plain + #profile.plain
+local settings = install.settings + user.settings + profile.settings
+local options: configuration.Options = { tokens = tokens }
+
+workload(
+  `new: a chain of three files ({lines} lines)`,
+  function(): unknown return configuration.new(installPath, options) end,
+  function(result: unknown): boolean
+    local config = result :: Config
+    return #config:chain() == 3 and config:userFile() == profilePath and keyed(config:entries()) == settings
+  end
+)
+
+local loaded = configuration.new(installPath, options)
+
+workload(
+  `values: content, data and fallback of {settings} settings`,
+  function(): unknown return #loaded:values('content') + #loaded:values('data') + #loaded:values('fallback') end,
+  function(result: unknown): boolean return result == count('content') + count('data') + count('fallback') end
+)
+
+workload(
+  `dataDirectories: {count('data') + 2} folders`,
+  function(): unknown return loaded:dataDirectories() end,
+  function(result: unknown): boolean
+    local folders = result :: { string }
+    local first = (folder(1, userPath))
+    return #folders == count('data') + 2 and folders[3] == paths.resolve(first, userPath, tokens)
+  end
+)
+
+workload(
+  `entries: {settings} settings`,
+  function(): unknown return loaded:entries() end,
+  function(result: unknown): boolean return keyed(result :: { Entry }) == settings end
+)
+
+workload(
+  `render: {settings} settings`,
+  function(): unknown return loaded:render() end,
+  function(result: unknown): boolean
+    return keyed(text.parse(result :: string, installPath)) == settings
+  end
+)
+
+workload(
+  `render, resolved: {settings} settings`,
+  function(): unknown return loaded:render(true) end,
+  function(result: unknown): boolean
+    return keyed(text.parse(result :: string, installPath)) == settings - count('config')
+  end
+)
+
+do
+  local edited = configuration.new(installPath, options)
+  local moved = edited:dataDirectories()[200]
+
+  workload(
+    `remove and append: one of {count('data')} data folders`,
+    function(): unknown
+      local removed = edited:remove('data', moved)
+      edited:append('data', moved)
+      return removed
+    end,
+    function(result: unknown): boolean return result == true and #edited:values('data') == count('data') end
+  )
+end
+
+do
+  local edited = configuration.new(installPath, options)
+  edited:remove('data', edited:dataDirectories()[200])
+  local inherited = install.counts.data + user.counts.data - 1
+
+  workload(
+    `renderUser: {inherited} inherited data folders relisted`,
+    function(): unknown return edited:renderUser() end,
+    function(result: unknown): boolean
+      local entries = text.parse(result :: string, profilePath)
+      local replaced = #[for entry in entries if entry.key == 'replace' and entry.value == 'data' => entry]
+      return keyed(entries) == profile.settings + 1 + inherited and replaced == 1
+    end
+  )
+end
+
+do
+  local edited = configuration.new(installPath, options)
+  local plugins = [for index in range(1, Plugins) => `Sorted Plugin {index}.esp`]
+
+  workload(
+    `replace: {Plugins} content files of {count('content')}`,
+    function(): unknown
+      edited:replace('content', plugins)
+      return edited:last('content')
+    end,
+    function(result: unknown): boolean return result == plugins[Plugins] and #edited:values('content') == Plugins end
+  )
+end
+
+do
+  local edited = configuration.new(installPath, options)
+  local turn = 0
+
+  workload(
+    'set and path: resources',
+    function(): unknown
+      turn += 1
+      edited:set('resources', if turn % 2 == 0 then 'resources-even' else 'resources-odd')
+      return edited:path('resources')
+    end,
+    function(result: unknown): boolean
+      local name = if turn % 2 == 0 then 'resources-even' else 'resources-odd'
+      return result == jess.fs.join(jess.fs.parent(profilePath) :: string, name)
+    end
+  )
+end
+
+do
+  local edited = configuration.new(installPath, options)
+  local turn = 0
+
+  workload(
+    `saveUser: a user file of {profile.settings} settings`,
+    function(): unknown
+      turn += 1
+      edited:set('encoding', if turn % 2 == 0 then 'win1250' else 'win1251')
+      return edited:saveUser().path
+    end,
+    function(result: unknown): boolean
+      local saved = io(fs.readFileString(profilePath))
+      return result == profilePath and saved == edited:renderUser() and keyed(text.parse(saved, profilePath)) == profile.settings + 1
+    end
+  )
+end
+
+io(fs.remove(root, { recursive = true }))
+
+for _, row in rows do
+  print(`{row.name}\t{string.format('%.9f', row.seconds)}`)
+end
+
+return rows
