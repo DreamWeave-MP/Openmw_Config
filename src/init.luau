@@ -348,8 +348,16 @@ function Methods.remove(self: Config, key: string, value: string): boolean
   local state = stateOf(self)
   local kept: { Entry } = {}
   local changed = false
+  local folder: string?
   for _, entry in state.entries do
-    if entry.key == key and (entry.value == value or (entry.resolved and paths.key(entry.resolved) == paths.key(value))) then
+    local found = entry.key == key and entry.value == value
+    if not found and entry.key == key and entry.resolved then
+      local resolvedKey = paths.key(entry.resolved)
+      folder = folder or paths.key(value)
+      found = resolvedKey == folder
+    end
+
+    if found then
       changed = true
       if not state.owned[entry.source] then replacement(state, key) end
     else
