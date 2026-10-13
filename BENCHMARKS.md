@@ -105,6 +105,60 @@ rows for a chain the size of a mod list's (`require all three` and the warm `new
 14.3 ms and head 12.2 ms. The crossover is a chain of several hundred lines. Each dialect
 conversion is its own commit and reverts cleanly if load time is what counts.
 
+### Timed again, a change at a time
+
+A second pass over the same commits, the same binary and machine, later the same day. The whole
+comparison run again (four rounds warm, forty-one cold) put every ratio in the two tables above
+within 5 percent of what is printed there. Then each change for speed against the commit before
+it, on the rows it touches, three runs each way, alternating, medians:
+
+| Commit | What it does | Row | Before, µs | After, µs | Before / after |
+|---|---|---|---:|---:|---:|
+| `77d7fe1` | plain searches for the bytes no setting may hold | text.validate | 1456.5 | 613.4 | 2.37x |
+| | | text.encodeDirectory | 1923.7 | 630.7 | 3.05x |
+| `dfbb651` | a replacement pattern for the quotes, not a closure | text.encodeDirectory | 652.4 | 594.2 | 1.10x |
+| `f107812` | one look at the file for NUL and a stray carriage return | text.parse | 1460.1 | 883.2 | 1.65x |
+| | | text.parse, CRLF | 1720.1 | 1158.2 | 1.49x |
+| `6cea08b` | `bytes.translate` for the other separator | paths.resolve | 3709.9 | 3004.8 | 1.23x |
+| | | paths.key | 2940.0 | 2082.9 | 1.41x |
+| `749a592` | a quoted value with no `&` cut out whole | paths.resolve | 2980.0 | 822.6 | 3.62x |
+| `5cce9cc` | one token table, read only after a `?` | paths.resolve | 823.8 | 522.4 | 1.58x |
+| `b6e43d2` | `string.split` for a key's segments | paths.key | 2116.4 | 1175.4 | 1.80x |
+| `2e9ff48` | a path that is its own key returned as it is | paths.key | 1206.5 | 609.5 | 1.98x |
+| `a062276` | the removed folder's key taken once | remove and append | 249.9 | 156.5 | 1.60x |
+| `39024c8` | comments joined only when there are some | text.parse | 896.8 | 814.5 | 1.10x |
+| | | text.parse, CRLF | 1167.1 | 1115.0 | 1.05x |
+| `234634d` | `bytes.isUtf8` for the file | text.parse | 879.2 | 798.4 | 1.10x |
+| | | text.parse, CRLF | 1186.8 | 1075.7 | 1.10x |
+| `ac8a53e` | `entries` as a comprehension | entries | 155.3 | 120.9 | 1.28x |
+| `16a17b8` | a key's segments as a comprehension | paths.key | 570.0 | 532.8 | 1.07x |
+
+The small ones sit at the edge of what this machine can tell apart. `dfbb651` was 1.06x in another
+run of three. `234634d` is seven runs each way here and was 1.02x and 1.00x in a run of three; the
+check alone, on a 106 KB file of ASCII, is 100.5 µs with `utf8.len` and 2.8 µs with `bytes.isUtf8`
+(131.5 against 34.1 on Cyrillic names, 114.4 against 28.8 on Japanese ones). `16a17b8` is the walk
+only: three quarters of that row's paths are their own key and never reach it.
+
+What each dialect construct costs a cold process, the source of each commit in turn, one sample a
+process, forty-one processes each, round robin, medians:
+
+| Source of | paths, µs | text, µs | chain, µs | require all three, µs |
+|---|---:|---:|---:|---:|
+| `234634d`, no construct yet | 1056.8 | 2038.4 | 5839.7 | 8947.9 |
+| `ac8a53e`, `entries` as a comprehension | 1050.6 | 2036.1 | 5984.1 | 9069.8 |
+| `f5022d8`, `chain` as a comprehension | 1050.8 | 2041.2 | 6120.6 | 9217.6 |
+| `b031f3b`, two `any` | 1068.4 | 2030.7 | 6154.9 | 9283.3 |
+| `279f984`, a record pattern | 1066.0 | 2038.0 | 6247.3 | 9348.8 |
+| `16a17b8`, a comprehension in `paths.key` | 1169.7 | 2020.2 | 6194.0 | 9402.0 |
+| `2fd2037`, a comprehension in `text.parse` | 1172.2 | 2147.2 | 6179.4 | 9502.5 |
+
+A comprehension costs the module that holds it 100 to 145 µs to load, each one, not only the
+first; two `any` together about 35 µs; the record pattern nothing this can tell from noise (the
+chain column moves 50 µs between two commits that do not touch it). All seven: 555 µs, 0.94x.
+Against that, `entries` gives back 34 µs a call on a chain of 1,351 settings, so it pays for
+itself on the fifth call, and the comprehension in `paths.key` 0.145 µs for each path that is not
+its own key, so on about the seven hundredth. The other five pay nothing back in time.
+
 Measured and not kept: reading lines with `string.split` (no change on LF, 0.94x on CRLF);
 `bytes.isUtf8` for a key and a value in `text.validate` (1.06x on its row, nothing on `replace`:
 noise); `values` as a comprehension, which needs a filter on the value so that a key that is no
