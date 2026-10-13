@@ -40,6 +40,11 @@ end
 local function unquote(value: string): string
   if string.sub(value, 1, 1) ~= '"' then return value end
 
+  if not string.find(value, '&', 2, true) then
+    local closing = string.find(value, '"', 2, true)
+    return string.sub(value, 2, if closing then closing - 1 else -1)
+  end
+
   local result: { string } = {}
   local escaped = false
   for position = 2, #value do
