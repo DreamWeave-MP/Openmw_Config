@@ -184,14 +184,13 @@ local function parse(source: string, path: string): { Entry }
       meaning(key, value, path, number)
     end
 
-    local entry: Entry = {
-      key = key,
-      value = value,
-      source = path,
-      line = number,
-      comment = table.concat(comments),
-    }
-    table.clear(comments)
+    local comment = ''
+    if comments[1] then
+      comment = table.concat(comments)
+      table.clear(comments)
+    end
+
+    local entry: Entry = { key = key, value = value, source = path, line = number, comment = comment }
     if key == 'config' then
       table.insert(configs, entry)
     elseif key == 'encoding' and encodingAt then
