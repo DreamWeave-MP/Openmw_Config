@@ -204,11 +204,7 @@ local function parse(source: string, path: string): { Entry }
   end
 
   table.move(configs, 1, #configs, #entries + 1, entries)
-  local trailing: { string } = {}
-  for _, comment in comments do
-    if string.sub(comment, 1, #Stamp) ~= Stamp then table.insert(trailing, comment) end
-  end
-
+  local trailing = [for comment in comments if string.sub(comment, 1, #Stamp) ~= Stamp => comment]
   if #trailing > 0 then
     table.insert(entries, { source = path, line = 0, comment = table.concat(trailing) })
   end
