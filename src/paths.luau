@@ -11,12 +11,12 @@ local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else
 local Doubled, Hidden = Separator .. Separator, Separator .. '.'
 local SeparatorByte, Dot = string.byte(Separator), string.byte('.')
 
-local Roots: { [string]: string } = table.freeze {
+local Roots: { [string]: string } = table.freeze({
   ['?local?'] = 'localPath',
   ['?global?'] = 'globalPath',
   ['?userconfig?'] = 'userConfig',
   ['?userdata?'] = 'userData',
-}
+} :: { [string]: string })
 
 local function separators(path: string): string return bytes.translate(path, Other, Separator) end
 
