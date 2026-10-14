@@ -2,7 +2,7 @@
 -- What a command that loads one configuration and exits pays before anything is warm: each of
 -- the package's three modules compiled and run, then the first load of a small chain. Run by
 -- `jess run --capability filesystem.read --capability filesystem.write --package .
--- bench/cold.luau <scratch>`, on a release build. Each line is one sample of something a process
+-- bench/cold.jsl <scratch>`, on a release build. Each line is one sample of something a process
 -- does once, so compare medians over many runs. This file uses none of the l3i dialect, so that
 -- whatever a module's first use of it costs is paid inside the `require` timed here.
 local fs = require '@dream/fs'

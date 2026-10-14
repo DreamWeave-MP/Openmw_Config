@@ -2,10 +2,10 @@
 -- openmw-config, timed from Luau: the grammar (parsing, validation, trimming, quoting, rendering),
 -- path keys and resolution, loading a configuration chain, its queries and edits, and rendering
 -- and saving the user file. Run by `jess run --capability filesystem.read --capability
--- filesystem.write --package . bench/bench.luau <scratch> [filter]`, on a release build. Prints
+-- filesystem.write --package . bench/bench.jsl <scratch> [filter]`, on a release build. Prints
 -- one line per workload: its name, a tab, and the seconds one call takes. Every workload's result
 -- is compared with what the generator of its input says it must be, outside the time, so a path
--- that stopped doing the work fails here. What one cold process pays is `bench/cold.luau`'s.
+-- that stopped doing the work fails here. What one cold process pays is `bench/cold.jsl`'s.
 local configuration = require '@openmw-config'
 local fs = require '@dream/fs'
 local paths = require '@openmw-config/paths'

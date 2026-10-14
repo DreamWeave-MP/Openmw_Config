@@ -237,7 +237,7 @@ end
 --- What a call raised, without the position Luau puts before the text of a failed `assert`: the
 --- oracle's lines are not the package's.
 local function raised(problem: unknown): string
-  return (string.gsub(tostring(problem), '^[^\n]-%.luau:%d+: ', ''))
+  return (string.gsub(tostring(problem), '^[^\n]-%.jsl:%d+: ', ''))
 end
 
 --- Whether two calls did the same thing: returned equal values, or raised the same text.
