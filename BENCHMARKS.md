@@ -163,3 +163,64 @@ Measured and not kept: reading lines with `string.split` (no change on LF, 0.94x
 `bytes.isUtf8` for a key and a value in `text.validate` (1.06x on its row, nothing on `replace`:
 noise); `values` as a comprehension, which needs a filter on the value so that a key that is no
 string still matches nothing (0.87x).
+
+## Which modules are native, and why
+
+Jess compiles to machine code only what is marked (`--!native` on a module, `@native` on one
+function), and every load pays for what is marked. A module carries `--!native` when a row below
+spends its time there and the module is small (12 KB or less); a larger module carries `@native`
+on the functions the row spends its time in, and nothing else.
+
+Measured 2026-10-14 with `jess 0.1.0`, the verified release build of jess `07c38cb` on l3i
+2.0.3, on the i7-10870H, the one-minute load 1.14 and 1.25 at the start of the two
+sessions. In each session the bench ran alternately on this package and on a copy of it with
+every module marked, three fresh runs of `bench/bench.jsl` each, every run's row the median of
+its batches; a column is the median of the three, and a ratio is against the all-marked runs of
+the same session. Which functions a row spends its time in comes from `jess run --profile` of
+that row alone, unmarked. The load cost is a fresh `jess run --package <this package>
+--package-path jpk` of a script that only requires `@openmw-config`, the two sides alternating, the
+median of five each after one warm-up.
+
+| Requiring `@openmw-config` | All marked | This state |
+| --- | ---: | ---: |
+| Unmarked | 0.054 s | 0.050 s |
+| Final | 0.056 s | 0.055 s |
+
+| Row | All marked (ms) | Unmarked / all marked | Final (ms) | Final / all marked |
+| --- | ---: | ---: | ---: | ---: |
+| text.parse: a mod list's openmw.cfg (1325 lines) | 0.8066 | **2.060×** | 0.8831 | **1.095×** |
+| text.parse: the same written by hand, CRLF (1325 lines) | 1.092 | **2.032×** | 1.226 | **1.123×** |
+| text.validate: 1286 settings | 0.7136 | **2.042×** | 0.8015 | **1.123×** |
+| text.render: 1286 entries | 0.2307 | **1.120×** | 0.2514 | **1.090×** |
+| text.trim: 1024 values, nothing to trim | 0.07348 | **2.942×** | 0.08037 | **1.094×** |
+| text.trim: 1024 values, spaces and tabs | 0.1768 | **2.566×** | 0.1941 | **1.098×** |
+| text.trim: 1024 values, Unicode spaces | 0.6056 | **2.103×** | 0.6611 | **1.092×** |
+| paths.resolve: 1024 data folders | 0.6146 | **1.353×** | 0.6561 | **1.068×** |
+| paths.key: 1024 folders | 0.5980 | **1.403×** | 0.6256 | 1.046× |
+| text.encodeDirectory: 1024 folders | 0.6765 | **1.452×** | 0.6864 | 1.015× |
+| new: a chain of three files (1393 lines) | 1.730 | **1.855×** | 1.586 | 0.917× |
+| values: content, data and fallback of 1351 settings | 0.06725 | **2.021×** | 0.06271 | 0.933× |
+| dataDirectories: 423 folders | 0.04647 | **2.240×** | 0.04676 | 1.006× |
+| entries: 1351 settings | 0.1510 | **1.344×** | 0.1497 | 0.992× |
+| render: 1351 settings | 0.3015 | **1.340×** | 0.3163 | 1.049× |
+| render, resolved: 1351 settings | 0.5104 | **1.561×** | 0.5113 | 1.002× |
+| remove and append: one of 421 data folders | 0.1695 | **1.694×** | 0.1665 | 0.982× |
+| renderUser: 400 inherited data folders relisted | 0.7070 | **1.449×** | 0.7063 | 0.999× |
+| replace: 300 content files of 340 | 0.2565 | **1.968×** | 0.2466 | 0.962× |
+| set and path: resources | 0.00212 | **1.457×** | 0.00224 | **1.059×** |
+| saveUser: a user file of 60 settings | 0.9652 | **1.061×** | 0.9205 | 0.954× |
+
+What carries the directive (every module and function here is one a row spends its time in,
+unmarked):
+
+- Whole: `paths`, `text`.
+- `init`, by function: `resolved`, `load`, `Methods.values`, `Methods.path`,
+  `Methods.dataDirectories`, `Methods.entries`, `entryFor`, `Methods.remove`, `Methods.replace`,
+  `Methods.render`, `Methods.renderUser`, `inherited`.
+
+The package is small, and nearly all of it is on some row's path: unmarked, requiring it costs
+0.004 s less than all marked, while the parse, trim, and lookup rows run 1.3x to 2.9x slower. So it
+stays marked except where `init` has functions no row reaches. The rows above 5% that remain are
+the `text` rows (1.06x to 1.12x), and `text` is marked whole on both sides of that session: the
+same code, read as slower, which is this protocol's noise (two all-marked copies of dream-archive,
+measured the same way, put 10 of 109 rows more than 5% apart).
