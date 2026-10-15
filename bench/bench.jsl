@@ -21,7 +21,7 @@ end
 --- names.
 local scratch: string?, filter: string? = ...
 local only = if filter and filter ~= '' then filter else nil
-local root = jess.fs.join(assert(scratch, 'config bench: the first argument is a scratch folder'), 'openmw-config-bench')
+local root = fs.join(assert(scratch, 'config bench: the first argument is a scratch folder'), 'openmw-config-bench')
 
 type Config = configuration.Config
 type Entry = configuration.Entry
@@ -169,8 +169,8 @@ local Mods = {
 
 local Fallbacks, Folders, Plugins = 573, 400, 300
 
-local userData = jess.fs.join(root, 'userdata')
-local userConfig = jess.fs.join(root, 'user')
+local userData = fs.join(root, 'userdata')
+local userConfig = fs.join(root, 'user')
 local tokens: configuration.Tokens = { userData = userData, userConfig = userConfig }
 
 --- The `data=` value of folder `index` as a configuration holds it, and the folder it names when
@@ -181,11 +181,11 @@ local function folder(index: number, source: string): (string, string)
 
   if index % 20 == 0 then
     local below = `mods/"{mod}"/Data Files`
-    return `"?userdata?/mods/&"{mod}&"/Data Files"`, paths.separators(jess.fs.join(userData, below))
+    return `"?userdata?/mods/&"{mod}&"/Data Files"`, paths.separators(fs.join(userData, below))
   end
 
   if index % 10 == 5 then
-    return `mods/{mod}`, jess.fs.join(jess.fs.parent(source) :: string, paths.separators(`mods/{mod}`))
+    return `mods/{mod}`, fs.join(fs.parent(source) :: string, paths.separators(`mods/{mod}`))
   end
 
   local absolute = if index % 7 == 3
@@ -263,14 +263,14 @@ local function profileFile(): Draft
   return file
 end
 
-local installPath = jess.fs.join(root, 'install', 'openmw.cfg')
-local userPath = jess.fs.join(userConfig, 'openmw.cfg')
-local profilePath = jess.fs.join(userConfig, 'profile', 'openmw.cfg')
+local installPath = fs.join(root, 'install', 'openmw.cfg')
+local userPath = fs.join(userConfig, 'openmw.cfg')
+local profilePath = fs.join(userConfig, 'profile', 'openmw.cfg')
 local install, user, profile = installFile(), userFile(userPath), profileFile()
 local userText = table.concat(user.plain, '\n') .. '\n'
 
 local function write(path: string, file: Draft)
-  io(fs.mkdir(jess.fs.parent(path) :: string, { recursive = true }))
+  io(fs.mkdir(fs.parent(path) :: string, { recursive = true }))
   io(fs.writeFile(path, table.concat(file.plain, '\n') .. '\n'))
 end
 
@@ -553,7 +553,7 @@ do
     end,
     function(result: unknown): boolean
       local name = if turn % 2 == 0 then 'resources-even' else 'resources-odd'
-      return result == jess.fs.join(jess.fs.parent(profilePath) :: string, name)
+      return result == fs.join(fs.parent(profilePath) :: string, name)
     end
   )
 end

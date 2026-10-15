@@ -12,10 +12,10 @@ if not jess.bench.verified then
 end
 
 local scratch: string? = ...
-local root = jess.fs.join(assert(scratch, 'config bench: the first argument is a scratch folder'), 'openmw-config-cold')
-local userData = jess.fs.join(root, 'userdata')
-local installPath = jess.fs.join(root, 'install', 'openmw.cfg')
-local userPath = jess.fs.join(root, 'user', 'openmw.cfg')
+local root = fs.join(assert(scratch, 'config bench: the first argument is a scratch folder'), 'openmw-config-cold')
+local userData = fs.join(root, 'userdata')
+local installPath = fs.join(root, 'install', 'openmw.cfg')
+local userPath = fs.join(root, 'user', 'openmw.cfg')
 
 local function io<Value>(value: Value?, message: string?, kind: dream_fs_ErrorKind?): Value
   if not value then error(message or tostring(kind), 0) end
@@ -24,7 +24,7 @@ local function io<Value>(value: Value?, message: string?, kind: dream_fs_ErrorKi
 end
 
 local function write(path: string, lines: { string })
-  io(fs.mkdir(jess.fs.parent(path) :: string, { recursive = true }))
+  io(fs.mkdir(fs.parent(path) :: string, { recursive = true }))
   io(fs.writeFile(path, table.concat(lines, '\n') .. '\n'))
 end
 
@@ -48,7 +48,7 @@ local install = {
   'data-local="?userdata?data"',
   'resources=./resources',
   'data=./resources/vfs-mw',
-  `config="{jess.fs.parent(userPath) :: string}"`,
+  `config="{fs.parent(userPath) :: string}"`,
 }
 
 write(installPath, install)

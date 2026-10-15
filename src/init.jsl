@@ -95,9 +95,9 @@ local function handle(state: State): Config
 end
 
 local function empty(directory: string, tokens: Tokens): Config
-  assert(directory ~= '' and jess.fs.fileName(directory) ~= 'openmw.cfg',
+  assert(directory ~= '' and fs.fileName(directory) ~= 'openmw.cfg',
     'openmw-config: newEmpty needs a configuration directory')
-  local file = jess.fs.join(paths.absolute(directory), 'openmw.cfg')
+  local file = fs.join(paths.absolute(directory), 'openmw.cfg')
   return handle {
     entries = {}, chain = {}, originals = {}, owned = { [file] = true }, root = file, user = file,
     ownsUserFile = true, tokens = tokens, replaces = {}, generation = 0,
@@ -109,7 +109,7 @@ local function load(path: string, tokens: Tokens): Config
   assert(path ~= '', 'openmw-config: configuration path is empty')
   local root = paths.absolute(path)
   local rootInfo = stat(root)
-  if rootInfo and rootInfo.isDir then root = jess.fs.join(root, 'openmw.cfg') end
+  if rootInfo and rootInfo.isDir then root = fs.join(root, 'openmw.cfg') end
 
   local pending = { { path = root, depth = 0 } }
   local tried: { [string]: boolean } = {}
@@ -117,7 +117,7 @@ local function load(path: string, tokens: Tokens): Config
   local originals: { [string]: string } = {}
   while #pending > 0 do
     local { path: file, depth } = table.remove(pending) :: { path: string, depth: number }
-    local directory = jess.fs.parent(file) :: string
+    local directory = fs.parent(file) :: string
     local identity = paths.key(directory)
     if tried[identity] then continue end
 
@@ -149,7 +149,7 @@ local function load(path: string, tokens: Tokens): Config
     for index = #entries, 1, -1 do
       local entry = entries[index]
       if entry.key == 'config' then
-        table.insert(pending, { path = jess.fs.join(entry.resolved :: string, 'openmw.cfg'), depth = depth + 1 })
+        table.insert(pending, { path = fs.join(entry.resolved :: string, 'openmw.cfg'), depth = depth + 1 })
       end
     end
 
@@ -200,7 +200,7 @@ local function load(path: string, tokens: Tokens): Config
     end
   end
 
-  local user = jess.fs.join(active[#active], 'openmw.cfg')
+  local user = fs.join(active[#active], 'openmw.cfg')
   local ownsUserFile = any[for event in chain => paths.key(event.path) == paths.key(user)]
   local owned: { [string]: boolean } = { [user] = true }
   local userOriginal = originals[user]
@@ -239,10 +239,10 @@ local function loadOptional(path: string, given: Options?): Config
   local info = stat(absolute)
   if info and not info.isDir then return load(absolute, tokens) end
 
-  if info and stat(jess.fs.join(absolute, 'openmw.cfg')) then return load(absolute, tokens) end
+  if info and stat(fs.join(absolute, 'openmw.cfg')) then return load(absolute, tokens) end
 
-  local directory = if jess.fs.fileName(absolute) == 'openmw.cfg'
-    then jess.fs.parent(absolute) :: string else absolute
+  local directory = if fs.fileName(absolute) == 'openmw.cfg'
+    then fs.parent(absolute) :: string else absolute
   return empty(directory, tokens)
 end
 
@@ -280,7 +280,7 @@ end
 function Methods.dataDirectories(self: Config): { string }
   local result: { string } = {}
   local resources = self:path('resources')
-  if resources then table.insert(result, jess.fs.join(resources, 'vfs')) end
+  if resources then table.insert(result, fs.join(resources, 'vfs')) end
 
   for _, entry in stateOf(self).entries do
     if entry.key == 'data' then table.insert(result, entry.resolved :: string) end
@@ -519,7 +519,7 @@ function Methods.saveUser(self: Config, options: { backup: boolean? }?): Written
   assert(current == state.originals[state.user],
     `openmw-config: user file '{state.user}' changed since it was loaded; reload before saving`)
   local output = self:renderUser()
-  local created, message = fs.mkdir(jess.fs.parent(state.user) :: string, { recursive = true })
+  local created, message = fs.mkdir(fs.parent(state.user) :: string, { recursive = true })
   assert(created, message)
   local backup: string?
   if selected.backup and current then
@@ -542,7 +542,8 @@ function Methods.saveUser(self: Config, options: { backup: boolean? }?): Written
 
   -- The existing generic atomic-replace seam preserves permissions and failed-write cleanup.
   -- It will move to L3i before the legacy plugin crate that currently implements it is deleted.
-  jess.fs.replace(state.user, output)
+  local done, problem = fs.writeFile(state.user, output, { atomic = true })
+  if not done then error(problem, 0) end
   state.originals[state.user] = output
   return { path = state.user, backup = backup }
 end

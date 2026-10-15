@@ -15,9 +15,9 @@ local function io<Value>(value: Value?, message: string?, kind: dream_fs_ErrorKi
 end
 
 local function fixture(name: string, source: string): (string, string)
-  local directory = jess.fs.join(scratch, 'openmw-config', name)
+  local directory = fs.join(scratch, 'openmw-config', name)
   io(fs.mkdir(directory, { recursive = true }))
-  local path = jess.fs.join(directory, 'openmw.cfg')
+  local path = fs.join(directory, 'openmw.cfg')
   io(fs.writeFile(path, source))
   return directory, path
 end
@@ -31,7 +31,7 @@ suite.describe('configuration ownership', function()
     local config = configuration.new(path)
     expect(config:renderUser()).toBe ''
     expect(config:last('encoding')).toBe 'win1252'
-    expect((fs.exists(jess.fs.join(directory, 'missing/user')))).toBe(false)
+    expect((fs.exists(fs.join(directory, 'missing/user')))).toBe(false)
     expect(read(path)).toBe(source)
     expect(config:chain()[2].status).toBe 'skippedMissing'
 
@@ -41,22 +41,22 @@ suite.describe('configuration ownership', function()
 
   suite.it('loads depth first and retains traversal history after replace=config', function()
     local directory, path = fixture('chain', 'content=Root.esm\nconfig=a\nconfig=b\n')
-    io(fs.mkdir(jess.fs.join(directory, 'a/c'), { recursive = true }))
-    io(fs.mkdir(jess.fs.join(directory, 'b'), { recursive = true }))
-    io(fs.writeFile(jess.fs.join(directory, 'a/openmw.cfg'), 'content=A.esp\nconfig=c\n'))
-    io(fs.writeFile(jess.fs.join(directory, 'a/c/openmw.cfg'), 'content=C.esp\n'))
-    io(fs.writeFile(jess.fs.join(directory, 'b/openmw.cfg'), 'replace=config\ncontent=B.esp\n'))
+    io(fs.mkdir(fs.join(directory, 'a/c'), { recursive = true }))
+    io(fs.mkdir(fs.join(directory, 'b'), { recursive = true }))
+    io(fs.writeFile(fs.join(directory, 'a/openmw.cfg'), 'content=A.esp\nconfig=c\n'))
+    io(fs.writeFile(fs.join(directory, 'a/c/openmw.cfg'), 'content=C.esp\n'))
+    io(fs.writeFile(fs.join(directory, 'b/openmw.cfg'), 'replace=config\ncontent=B.esp\n'))
     local config = configuration.new(path)
     expect(config:values('content')).toEqual { 'Root.esm', 'B.esp' }
     expect(#config:chain()).toBe(4)
-    expect(config:userFile()).toBe(jess.fs.join(directory, 'b/openmw.cfg'))
+    expect(config:userFile()).toBe(fs.join(directory, 'b/openmw.cfg'))
   end)
 
   suite.it('persists inherited removal without touching the parent', function()
     local source = '# parent\ncontent=Keep.esm\ncontent=Remove.esp\nconfig=user\n'
     local directory, path = fixture('removal', source)
-    io(fs.mkdir(jess.fs.join(directory, 'user'), { recursive = true }))
-    local user = jess.fs.join(directory, 'user/openmw.cfg')
+    io(fs.mkdir(fs.join(directory, 'user'), { recursive = true }))
+    local user = fs.join(directory, 'user/openmw.cfg')
     io(fs.writeFile(user, '# user\ncontent=Mine.esp\n# trailer\n'))
     local config = configuration.new(path)
     expect(config:remove('content', 'Remove.esp')).toBe(true)
@@ -68,14 +68,14 @@ suite.describe('configuration ownership', function()
 
   suite.it('relocates inherited relative directories by provenance, not value equality', function()
     local directory, path = fixture('relative-data', 'data=first\ndata=second\nresources=resources\ndata-local=second\nconfig=user\n')
-    io(fs.mkdir(jess.fs.join(directory, 'user'), { recursive = true }))
-    io(fs.writeFile(jess.fs.join(directory, 'user/openmw.cfg'), ''))
+    io(fs.mkdir(fs.join(directory, 'user'), { recursive = true }))
+    io(fs.writeFile(fs.join(directory, 'user/openmw.cfg'), ''))
     local config = configuration.new(path)
     expect(#config:dataDirectories()).toBe(4)
     config:remove('data', 'first')
     config:saveUser()
     local reloaded = configuration.new(path)
-    expect(reloaded:values('data')).toEqual { jess.fs.join(directory, 'second') }
+    expect(reloaded:values('data')).toEqual { fs.join(directory, 'second') }
     expect(#reloaded:dataDirectories()).toBe(3)
     expect(reloaded:dataDirectories()[2]).toBe(reloaded:dataDirectories()[3])
   end)
@@ -95,7 +95,7 @@ suite.describe('configuration ownership', function()
 
   suite.it('refuses to overwrite an unmodeled sibling of a custom config', function()
     local directory, user = fixture('custom-save', 'content=Valuable.esm\n')
-    local custom = jess.fs.join(directory, 'custom.cfg')
+    local custom = fs.join(directory, 'custom.cfg')
     io(fs.writeFile(custom, 'content=Custom.esm\n'))
     local config = configuration.new(custom)
     config:append('content', 'New.esp')
@@ -122,8 +122,8 @@ suite.describe('configuration ownership', function()
     config:saveUser()
     expect(configuration.new(path):values('content')).toEqual { 'Base.esm', 'First.esp', 'Second.esp' }
 
-    local empty = configuration.newEmpty(jess.fs.join(directory, 'new-user'))
-    io(fs.mkdir(jess.fs.join(directory, 'new-user'), { recursive = true }))
+    local empty = configuration.newEmpty(fs.join(directory, 'new-user'))
+    io(fs.mkdir(fs.join(directory, 'new-user'), { recursive = true }))
     io(fs.writeFile(empty:userFile(), 'content=Appeared.esm\n'))
     expect(function() empty:saveUser() end).toThrow 'changed since it was loaded'
     expect(read(empty:userFile())).toBe 'content=Appeared.esm\n'
@@ -131,14 +131,14 @@ suite.describe('configuration ownership', function()
 
   suite.it('quotes relocated paths with significant whitespace and escape characters', function()
     local directory, path = fixture('quoted-relocation', 'data=remove\ndata="second &&&"name "\nconfig=user\n')
-    io(fs.mkdir(jess.fs.join(directory, 'user'), { recursive = true }))
-    io(fs.writeFile(jess.fs.join(directory, 'user/openmw.cfg'), ''))
+    io(fs.mkdir(fs.join(directory, 'user'), { recursive = true }))
+    io(fs.writeFile(fs.join(directory, 'user/openmw.cfg'), ''))
     local config = configuration.new(path)
     config:remove('data', 'remove')
     local expected = config:dataDirectories()
     config:saveUser()
     expect(configuration.new(path):dataDirectories()).toEqual(expected)
-    local exported = jess.fs.join(directory, 'export.cfg')
+    local exported = fs.join(directory, 'export.cfg')
     io(fs.writeFile(exported, config:render(true)))
     expect(configuration.new(exported):dataDirectories()).toEqual(expected)
   end)
@@ -146,14 +146,14 @@ suite.describe('configuration ownership', function()
   suite.it('requires explicit roots for recognized tokens and creates nothing on failure', function()
     local directory, path = fixture('missing-token', 'config="?userconfig?"\n')
     expect(function() configuration.new(path) end).toThrow "needs an explicit 'userConfig' root"
-    expect((fs.exists(jess.fs.join(directory, '?userconfig?')))).toBe(false)
+    expect((fs.exists(fs.join(directory, '?userconfig?')))).toBe(false)
   end)
 
   suite.it('clears only user singleton overrides, leaving parent definitions intact', function()
     local source = 'resources=parent-resources\nconfig=user\n'
     local directory, path = fixture('singleton-ownership', source)
-    io(fs.mkdir(jess.fs.join(directory, 'user'), { recursive = true }))
-    io(fs.writeFile(jess.fs.join(directory, 'user/openmw.cfg'), 'resources=user-resources\n'))
+    io(fs.mkdir(fs.join(directory, 'user'), { recursive = true }))
+    io(fs.writeFile(fs.join(directory, 'user/openmw.cfg'), 'resources=user-resources\n'))
     local config = configuration.new(path)
     config:set('resources', nil)
     local parent = config:path('resources')
@@ -166,23 +166,23 @@ suite.describe('configuration ownership', function()
 
   suite.it('keeps token roots separate from configured singleton overrides', function()
     local directory, path = fixture('tokens', 'user-data=override\ndata-local="?userdata?\\local"\ndata="?userconfig?/data"\n')
-    local tokens: configuration.Tokens = { userData = jess.fs.join(directory, 'default-data'), userConfig = jess.fs.join(directory, 'default-config') }
+    local tokens: configuration.Tokens = { userData = fs.join(directory, 'default-data'), userConfig = fs.join(directory, 'default-config') }
     local config = configuration.new(path, { tokens = tokens })
-    expect(config:path('user-data')).toBe(jess.fs.join(directory, 'override'))
-    expect(config:path('data-local')).toBe(jess.fs.join(tokens.userData :: string, 'local'))
-    expect(config:dataDirectories()[1]).toBe(jess.fs.join(tokens.userConfig :: string, 'data'))
+    expect(config:path('user-data')).toBe(fs.join(directory, 'override'))
+    expect(config:path('data-local')).toBe(fs.join(tokens.userData :: string, 'local'))
+    expect(config:dataDirectories()[1]).toBe(fs.join(tokens.userConfig :: string, 'data'))
   end)
 
   suite.it('removes a directory by any spelling of the folder it resolves to', function()
     local directory, path = fixture('remove-spelling', 'data=mods/first\ndata="mods/second"\ncontent=mods/first\n')
     local config = configuration.new(path)
     expect(config:remove('data', directory .. '/mods/./first/')).toBe(true)
-    expect(config:remove('data', jess.fs.join(directory, 'mods', 'third'))).toBe(false)
-    expect(config:remove('content', jess.fs.join(directory, 'mods', 'first'))).toBe(false)
+    expect(config:remove('data', fs.join(directory, 'mods', 'third'))).toBe(false)
+    expect(config:remove('content', fs.join(directory, 'mods', 'first'))).toBe(false)
     expect(config:values('data')).toEqual { '"mods/second"' }
     expect(config:values('content')).toEqual { 'mods/first' }
     expect(config:generation()).toBe(1)
-    expect(config:remove('data', jess.fs.join(directory, 'mods', 'second'))).toBe(true)
+    expect(config:remove('data', fs.join(directory, 'mods', 'second'))).toBe(true)
     expect(config:dataDirectories()).toEqual {}
   end)
 
@@ -209,9 +209,9 @@ suite.describe('configuration ownership', function()
 
   suite.it('resolves relative paths from any explicitly named config file', function()
     local directory = fixture('custom-name', '')
-    local custom = jess.fs.join(directory, 'custom.cfg')
+    local custom = fs.join(directory, 'custom.cfg')
     io(fs.writeFile(custom, 'data=relative\n'))
-    expect(configuration.new(custom):dataDirectories()).toEqual { jess.fs.join(directory, 'relative') }
+    expect(configuration.new(custom):dataDirectories()).toEqual { fs.join(directory, 'relative') }
   end)
 end)
 

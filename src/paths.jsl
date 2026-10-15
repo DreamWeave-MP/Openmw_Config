@@ -6,8 +6,9 @@ local fs = require '@dream/fs'
 
 export type Tokens = { localPath: string?, globalPath: string?, userConfig: string?, userData: string? }
 
-local Windows = string.find(jess.fs.join('first', 'second'), '\\', 1, true) ~= nil
+local Windows = string.find(fs.join('first', 'second'), '\\', 1, true) ~= nil
 local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else '\\'
+local Separators = bytes.rules { replace = { [Other] = Separator } }
 local Doubled, Hidden = Separator .. Separator, Separator .. '.'
 local SeparatorByte, Dot = string.byte(Separator), string.byte('.')
 
@@ -18,7 +19,7 @@ local Roots: { [string]: string } = table.freeze({
   ['?userdata?'] = 'userData',
 } :: { [string]: string })
 
-local function separators(path: string): string return bytes.translate(path, Other, Separator) end
+local function separators(path: string): string return bytes.translate(path, Separators) end
 
 local function rooted(path: string): boolean
   return string.sub(path, 1, 1) == Separator
@@ -100,7 +101,7 @@ local function expand(path: string, source: string, tokens: Tokens): string
     local root = ((tokens :: unknown) :: { [string]: string? })[field]
     assert(root, `openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
     local suffix = string.gsub(string.sub(path, #token + 1), '^[/\\]+', '')
-    return jess.fs.join(root, suffix)
+    return fs.join(root, suffix)
   end
 
   return path
@@ -110,7 +111,7 @@ local function resolve(value: string, source: string, tokens: Tokens): string
   local path = separators(expand(unquote(value), source, tokens))
   if rooted(path) then return path end
 
-  return jess.fs.join(jess.fs.parent(source) or '.', path)
+  return fs.join(fs.parent(source) or '.', path)
 end
 
 return table.freeze { absolute = absolute, key = key, resolve = resolve, separators = separators }

@@ -4,6 +4,7 @@
 -- for every character, kept here as the statement of what the shipped ones return and raise. Each
 -- case runs both over every short spelling of an alphabet holding every byte either one treats
 -- specially, and they have to agree on the result or on the text of the error.
+local fs = require '@dream/fs'
 local paths = require '@openmw-config/paths'
 local test = require '@jess/test'
 local text = require '@openmw-config/text'
@@ -14,7 +15,7 @@ type Tokens = paths.Tokens
 local expect = test.expect
 local suite = test.new()
 
-local Windows = string.find(jess.fs.join('first', 'second'), '\\', 1, true) ~= nil
+local Windows = string.find(fs.join('first', 'second'), '\\', 1, true) ~= nil
 local Separator = if Windows then '\\' else '/'
 local Stamp = '# OpenMW-Config Serializer Version:'
 
@@ -79,14 +80,14 @@ function Oracle.resolve(value: string, source: string, tokens: Tokens): string
     local root = ((tokens :: unknown) :: { [string]: string? })[field]
     assert(root, `openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
     local suffix = string.gsub(string.sub(path, #token + 1), '^[/\\]+', '')
-    path = jess.fs.join(root, suffix)
+    path = fs.join(root, suffix)
     break
   end
 
   path = Oracle.separators(path)
   if Oracle.rooted(path) then return path end
 
-  return jess.fs.join(jess.fs.parent(source) or '.', path)
+  return fs.join(fs.parent(source) or '.', path)
 end
 
 function Oracle.fail(source: string, line: number, reason: string): never
@@ -274,7 +275,7 @@ end
 
 local function quoted(case: string): string return string.format('%q', case) end
 
-local Source = jess.fs.join('chain', 'user', 'openmw.cfg')
+local Source = fs.join('chain', 'user', 'openmw.cfg')
 
 suite.describe('path keys and resolution', function()
   suite.it('keys every short spelling of a path as the segment walk does', function()
@@ -308,10 +309,10 @@ suite.describe('path keys and resolution', function()
     local prefixes = { '?local?', '?global?', '?userconfig?', '?userdata?', '?other?', '?LOCAL?', '?local', 'a?local?', '' }
     local suffixes = { '', 'a', '/a', '\\a', '//a/./b/', '?local?', 'mods/&"A Mod&"', '"' }
     local roots: Tokens = {
-      localPath = jess.fs.join('roots', 'local'),
-      globalPath = jess.fs.join('roots', 'global'),
-      userConfig = jess.fs.join('roots', 'config'),
-      userData = jess.fs.join('roots', 'data'),
+      localPath = fs.join('roots', 'local'),
+      globalPath = fs.join('roots', 'global'),
+      userConfig = fs.join('roots', 'config'),
+      userData = fs.join('roots', 'data'),
     }
 
     type Case = { value: string, tokens: Tokens }
