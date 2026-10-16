@@ -4,6 +4,15 @@ local configuration = require '@openmw-config'
 local fs = require '@dream/fs'
 local test = require '@jess/test'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 local scratch = assert(rawget(_G, 'scratchRoot') :: string?, 'the suite needs a host-owned scratchRoot')
@@ -22,7 +31,7 @@ local function fixture(name: string, source: string): (string, string)
   return directory, path
 end
 
-local function read(path: string): string return io(fs.readFileString(path)) end
+local function read(path: string): string return io(readText(path)) end
 
 suite.describe('configuration ownership', function()
   suite.it('preserves untouched user bytes without creating configured directories', function()

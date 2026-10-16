@@ -11,6 +11,15 @@ local fs = require '@dream/fs'
 local paths = require '@openmw-config/paths'
 local text = require '@openmw-config/text'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 -- A build without the verified toolchain runs Luau slower than a release does, so a number from
 -- one says nothing about what ships.
 if not jess.bench.verified then
@@ -570,7 +579,7 @@ do
       return edited:saveUser().path
     end,
     function(result: unknown): boolean
-      local saved = io(fs.readFileString(profilePath))
+      local saved = io(readText(profilePath))
       return result == profilePath and saved == edited:renderUser() and keyed(text.parse(saved, profilePath)) == profile.settings + 1
     end
   )
