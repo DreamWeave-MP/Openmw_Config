@@ -93,33 +93,40 @@ local function broken(value: string): boolean
     or string.find(value, '\0', 1, true) ~= nil
 end
 
---- The two settings whose value is one of a closed set, or a pair.
-local function meaning(key: string, value: string, source: string, line: number)
+--- Why `value` means nothing for `key`, for the two settings whose value is one of a closed set
+--- or a pair; nil when it means something.
+local function unsupported(key: string, value: string): string?
   if key == 'encoding' and value ~= 'win1250' and value ~= 'win1251' and value ~= 'win1252' then
-    fail(source, line, `unsupported encoding '{value}'`)
+    return `unsupported encoding '{value}'`
   end
 
   if key == 'fallback' and not string.find(value, ',', 1, true) then
-    fail(source, line, `fallback needs Key,Value, got '{value}'`)
+    return `fallback needs Key,Value, got '{value}'`
   end
+
+  return nil
 end
 
-local function validate(key: string, value: string, source: string, line: number)
-  if type(key) ~= 'string' or type(value) ~= 'string' then
-    fail(source, line, 'settings need string keys and values')
-  end
-
-  if not utf8.len(key) or not utf8.len(value) then fail(source, line, 'settings must be UTF-8') end
+--- Why `key=value` can't be a setting on a line of openmw.cfg, or nil when it can.
+local function problem(key: string, value: string): string?
+  if type(key) ~= 'string' or type(value) ~= 'string' then return 'settings need string keys and values' end
+  if not utf8.len(key) or not utf8.len(value) then return 'settings must be UTF-8' end
 
   if key == '' or string.sub(key, 1, 1) == '#' or string.find(key, '=', 1, true) or broken(key) or broken(value) then
-    fail(source, line, OneLine)
+    return OneLine
   end
 
   if trim(key) ~= key or trim(value) ~= value then
-    fail(source, line, 'setting keys and values must not have surrounding whitespace')
+    return 'setting keys and values must not have surrounding whitespace'
   end
 
-  meaning(key, value, source, line)
+  return unsupported(key, value)
+end
+
+--- Raises what `problem` says, at `source:line`.
+local function validate(key: string, value: string, source: string, line: number)
+  local reason = problem(key, value)
+  if reason then fail(source, line, reason) end
 end
 
 local function encodeDirectory(value: string): string
@@ -183,7 +190,8 @@ local function parse(source: string, path: string): { Entry }
     elseif key == '' then
       fail(path, number, OneLine)
     else
-      meaning(key, value, path, number)
+      local reason = unsupported(key, value)
+      if reason then fail(path, number, reason) end
     end
 
     local comment = ''
@@ -224,6 +232,7 @@ return table.freeze {
   SingletonKeys = SingletonKeys,
   UniqueKeys = UniqueKeys,
   fail = fail,
+  problem = problem,
   validate = validate,
   parse = parse,
   render = render,

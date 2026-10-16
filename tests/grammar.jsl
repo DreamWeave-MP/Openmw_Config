@@ -377,6 +377,16 @@ suite.describe('the grammar', function()
     expect(function() validate('content', {}, Source, 3) end).toThrow 'settings need string keys and values'
   end)
 
+  suite.it('answers why a setting can not be written, without raising what validate raises', function()
+    expect(text.problem('content', 'Mods.esp')).toBeNil()
+    expect(text.problem('content', ' Mods.esp')).toBe 'setting keys and values must not have surrounding whitespace'
+    expect(text.problem('encoding', 'utf8')).toBe "unsupported encoding 'utf8'"
+    expect(text.problem('fallback', 'Key')).toBe "fallback needs Key,Value, got 'Key'"
+
+    local broken = text.problem('content', 'Two\nLines.esp') :: string
+    expect(function() text.validate('content', 'Two\nLines.esp', Source, 2) end).toThrow(broken)
+  end)
+
   suite.it('quotes every short directory for export as the pattern classes do', function()
     local cases = spellings({ 'a', ' ', '"', '&', '\r', '\n', '\0', '\u{A0}', '\xFF' }, 5)
     expect(#cases).toBe(66430)
