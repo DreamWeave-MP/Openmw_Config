@@ -1,12 +1,12 @@
 +++
 title = "openmw-config"
-description = "Read, compose and write OpenMW's openmw.cfg chains from Rust, or from Lua embedded in a Rust host."
+description = "Read, compose and write OpenMW's openmw.cfg chains, as a Jess package in Luau."
 
 [taxonomies]
-tags = ["OpenMW", "Rust", "Lua", "Configuration"]
+tags = ["OpenMW", "Jess", "Luau", "Configuration"]
 
 [extra]
-sections = ["overview", "install", "compatibility", "releases", "credits"]
+sections = ["overview", "releases", "credits"]
 +++
 
 OpenMW does not read one `openmw.cfg`. It reads a chain of them: a root config beside the

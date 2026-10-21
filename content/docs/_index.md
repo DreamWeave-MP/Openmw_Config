@@ -16,6 +16,10 @@ hide_child_cards = true
 kind = "guide"
 +++
 
+These pages describe what an `openmw.cfg` chain is and how OpenMW reads it, which the Luau package
+implements the same way. Their code samples are from the Rust crate and are being rewritten for the
+package; until then the package's own `src/init.jsl` documents every function.
+
 openmw-config turns OpenMW's chain of `openmw.cfg` files into one configuration you can read,
 change and save, from Rust or from Luau running inside a Rust program. These pages explain how it
 behaves; the two references list every call.

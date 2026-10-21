@@ -18,24 +18,21 @@ documentation = "@/docs/_index.md"
 support = "https://github.com/DreamWeave-MP/Openmw_Config/discussions"
 donate = "https://ko-fi.com/magicaldave"
 
-# A Rust library. StroggForge's library workflow (.github/workflows/ci.yml) tests it on every push;
-# pushing a bare version tag, like 3.0.0, publishes that version to crates.io and records it here.
+# A Jess package: `jess` names the Package Source this project publishes, the repository root's
+# own jess.toml. Each release tag `openmw_config-<version>` is one version of the package, packed
+# by the Mod Template from that tag; every push to main packs a development build. Versions 3.0.2
+# and below are the Rust crate, which lives on the `rust` branch and stays on crates.io.
 [package]
-format = "crate"
-crate = "openmw-config"
-
-[[recommends]]
-name = "vfstool_lib"
-url = "https://crates.io/crates/vfstool_lib"
-reason = "Builds OpenMW's virtual file system from the data directories this crate resolves."
+format = "jpk"
+jess = "org.dreamweave.openmw-config"
 
 [[credits]]
 name = "Benjamin Winger"
 role = "Made the encoding value public"
 url = "https://github.com/benjaminwinger"
 
-# Every version on crates.io, oldest first. To release, add the next one here with the day you
-# publish it, set the same version in Cargo.toml, commit, and push its tag: git tag 2.0.2.
+# Every version, oldest first. To release, add the next one here with the day you publish it, set
+# the same version in jess.toml, commit, and push its tag: git tag openmw_config-4.0.1.
 
 [[releases]]
 version = "0.1.0"
@@ -273,4 +270,12 @@ date = 2026-09-30
 summary = "Built on l3i 1.1.0."
 changed = [
     "l3i 1.1.0 comes from crates.io; the `@dream/openmw-config` module is unchanged.",
+]
+
+[[releases]]
+version = "4.0.0"
+date = 2026-10-21
+summary = "openmw-config is a Jess package, written in Luau; the Rust crate continues on the rust branch at 3.0.2."
+breaking = [
+    "The library is the Jess package `org.dreamweave.openmw-config`, module `@openmw-config`, installed with jess rather than Cargo. The Rust crate `openmw-config` stays at 3.0.2 on crates.io and on this repository's `rust` branch, and is no longer developed on main.",
 ]

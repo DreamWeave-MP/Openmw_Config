@@ -5,7 +5,7 @@
 # value matters for local previews.
 base_url = "https://DreamWeave-MP.github.io/Openmw_Config"
 title = "openmw-config"
-description = "Read, compose and write OpenMW's openmw.cfg chains from Rust, or from Lua embedded in a Rust host."
+description = "Read, compose and write OpenMW's openmw.cfg chains, as a Jess package in Luau."
 
 compile_sass = true
 build_search_index = true
@@ -44,7 +44,7 @@ palette = "moss"
 menu_items = [
     { name = "Overview", url = "@/home/index.md" },
     { name = "Guide", url = "@/docs/_index.md" },
-    { name = "Rust API", url = "@/docs/api/_index.md" },
+    { name = "Network", url = "@/network.md" },
     { name = "Lua API", url = "@/docs/lua/_index.md" },
 ]
 
