@@ -1,5 +1,5 @@
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "document": "lock",
   "project": "3aaf4fe0-616f-41a3-b520-306eda9347b0",
   "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
@@ -954,6 +954,47 @@
           "reason": "Builds OpenMW's virtual file system from the data directories this crate resolves."
         }
       ],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "4.0.0",
+      "locked_from": "e68e98fd5c598014e8e49400cb4ccfb7c64a82be",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.openmw-config-4.0.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 24702,
+          "digests": {
+            "sha256": "741f6da8530e3e8b280799b3836aa29163d4436c118595b97d6d063cbfe235c0"
+          },
+          "jess": {
+            "package": "org.dreamweave.openmw-config",
+            "jess_api": "1",
+            "content_digest": "6dcb1c58d78004821234dfef5fc37f3c1a6de5d19cea8731ce4212322f159d20",
+            "dependencies": {}
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
       "components": [
         {
           "id": "main",
