@@ -14,7 +14,6 @@ name = "DreamWeave"
 url = "https://github.com/DreamWeave-MP"
 
 [links]
-documentation = "@/docs/_index.md"
 support = "https://github.com/DreamWeave-MP/Openmw_Config/discussions"
 donate = "https://ko-fi.com/magicaldave"
 

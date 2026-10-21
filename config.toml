@@ -43,9 +43,7 @@ palette = "moss"
 
 menu_items = [
     { name = "Overview", url = "@/home/index.md" },
-    { name = "Guide", url = "@/docs/_index.md" },
     { name = "Network", url = "@/network.md" },
-    { name = "Lua API", url = "@/docs/lua/_index.md" },
 ]
 
 # DreamWeave's own page-view counter: this is DreamWeave's site.

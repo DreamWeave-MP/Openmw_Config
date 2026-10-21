@@ -37,30 +37,23 @@ chain alone.
 - **Tells you where it went wrong.** Parse errors name the file and line; `config_chain()` lists
   every file it loaded and every `config=` target it skipped.
 
-```rust
-use openmw_config::{ConfigError, OpenMWConfiguration};
+```lua
+local config = require '@openmw-config'
 
-fn main() -> Result<(), ConfigError> {
-    let mut config = OpenMWConfiguration::from_env()?;
+local chain = config.new(rootConfigPath)   -- the root openmw.cfg; config= entries follow
+for _, plugin in chain:values 'content' do
+  print(plugin)
+end
 
-    for plugin in config.content_files_iter() {
-        println!("{}", plugin.value());
-    }
-
-    config.add_content_file("Better Balmora.esp")?;
-    config.save_user()
-}
+chain:append('content', 'Better Balmora.esp')
+chain:saveUser()                           -- the user's file, and only it
 ```
 
 ## Documentation
 
-This site is the crate's documentation, its API reference included.
-
-- **[Start here](@/docs/start-here.md)**: add the crate, load the chain, change it and save it.
-- **[Guide](@/docs/_index.md)**: loading, how chains resolve, editing, saving, paths, and
-  embedding Luau.
-- **[Rust API](@/docs/api/_index.md)** and **[Lua API](@/docs/lua/_index.md)**: every type,
-  method and function, with what it does to your files.
+The package's reference is `src/init.jsl`: every function is documented where it is written, and
+`jess luau-types` prints the module's types. The guide that explained the Rust crate lives with it
+on the `rust` branch; the Luau package's own guide is being written.
 
 openmw-config models `openmw.cfg` only; `settings.cfg` is not handled yet. It is not affiliated
 with the OpenMW project.
