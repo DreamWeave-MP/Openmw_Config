@@ -1,0 +1,117 @@
+--!strict
+--!native
+-- SPDX-License-Identifier: MIT OR Apache-2.0
+local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
+
+export type Tokens = { localPath: string?, globalPath: string?, userConfig: string?, userData: string? }
+
+local Windows = string.find(fs.join('first', 'second'), '\\', 1, true) ~= nil
+local Separator, Other = if Windows then '\\' else '/', if Windows then '/' else '\\'
+local Separators = bytes.rules { replace = { [Other] = Separator } }
+local Doubled, Hidden = Separator .. Separator, Separator .. '.'
+local SeparatorByte, Dot = string.byte(Separator), string.byte('.')
+
+local Roots: { [string]: string } = table.freeze({
+  ['?local?'] = 'localPath',
+  ['?global?'] = 'globalPath',
+  ['?userconfig?'] = 'userConfig',
+  ['?userdata?'] = 'userData',
+} :: { [string]: string })
+
+local function separators(path: string): string return bytes.translate(path, Separators) end
+
+local function rooted(path: string): boolean
+  return string.sub(path, 1, 1) == Separator
+    or (Windows and string.match(path, '^%a:[/\\]') ~= nil)
+end
+
+local function absolute(path: string): string
+  if rooted(path) then return path end
+
+  local result, message = fs.absolute(path)
+  return assert(result, message)
+end
+
+--- Whether `path` is its own key already: no other separator, one between segments and none
+--- after the last, and no `.` segment. A path that opens with a `.` is left to the walk.
+local function canonical(path: string): boolean
+  if string.find(path, Other, 1, true) or string.find(path, Doubled, 1, true) then return false end
+
+  local first, last = string.byte(path, 1), string.byte(path, -1)
+  if first == Dot or last == SeparatorByte then return false end
+
+  local hidden = string.find(path, Hidden, 1, true)
+  while hidden do
+    local following = string.byte(path, hidden + 2)
+    if not following or following == SeparatorByte then return false end
+
+    hidden = string.find(path, Hidden, hidden + 2, true)
+  end
+
+  return true
+end
+
+-- Path equality is lexical, not canonical: symlink aliases remain distinct chain directories.
+local function key(path: string): string
+  if canonical(path) then return path end
+
+  local normalized = separators(path)
+  local parts = [for part in string.split(normalized, Separator) if part ~= '' and part ~= '.' => part]
+  local prefix = if Windows and string.sub(normalized, 1, 2) == '\\\\'
+    then '\\\\'
+    elseif string.sub(normalized, 1, 1) == Separator then Separator else ''
+  return prefix .. table.concat(parts, Separator)
+end
+
+local function unquote(value: string): string
+  if string.sub(value, 1, 1) ~= '"' then return value end
+
+  if not string.find(value, '&', 2, true) then
+    local closing = string.find(value, '"', 2, true)
+    return string.sub(value, 2, if closing then closing - 1 else -1)
+  end
+
+  local result: { string } = {}
+  local escaped = false
+  for position = 2, #value do
+    local character = string.sub(value, position, position)
+    if escaped then
+      table.insert(result, character)
+      escaped = false
+    elseif character == '&' then
+      escaped = true
+    elseif character == '"' then
+      break
+    else
+      table.insert(result, character)
+    end
+  end
+
+  return table.concat(result)
+end
+
+--- `path` with the token it opens with, when it opens with one, replaced by that token's root.
+local function expand(path: string, source: string, tokens: Tokens): string
+  if string.sub(path, 1, 1) ~= '?' then return path end
+
+  for token, field in Roots do
+    if string.sub(path, 1, #token) ~= token then continue end
+
+    local root = ((tokens :: unknown) :: { [string]: string? })[field]
+    assert(root, `openmw-config: {source}: token '{token}' needs an explicit '{field}' root`)
+    local suffix = string.gsub(string.sub(path, #token + 1), '^[/\\]+', '')
+    return fs.join(root, suffix)
+  end
+
+  return path
+end
+
+local function resolve(value: string, source: string, tokens: Tokens): string
+  local path = separators(expand(unquote(value), source, tokens))
+  if rooted(path) then return path end
+
+  return fs.join(fs.parent(source) or '.', path)
+end
+
+return table.freeze { absolute = absolute, key = key, resolve = resolve, separators = separators }
