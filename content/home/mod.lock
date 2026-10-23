@@ -1,5 +1,5 @@
 {
-  "schema_version": "3",
+  "schema_version": "4",
   "document": "lock",
   "project": "3aaf4fe0-616f-41a3-b520-306eda9347b0",
   "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
@@ -987,6 +987,47 @@
             "package": "org.dreamweave.openmw-config",
             "jess_api": "1",
             "content_digest": "6dcb1c58d78004821234dfef5fc37f3c1a6de5d19cea8731ce4212322f159d20",
+            "dependencies": {}
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "4.1.0",
+      "locked_from": "1ead19295693300169272c5cfcf5765f982ee09f",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.openmw-config-4.1.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 28324,
+          "digests": {
+            "sha256": "d8d2f88483d7b3eaa2fb62563657f85b4b63811f8ffda589bf4c19f74b368521"
+          },
+          "jess": {
+            "package": "org.dreamweave.openmw-config",
+            "jess_api": "1",
+            "content_digest": "2160e87ed902e4f66e1e407f7fc8992cb0241f3123b65b9e3e515737525dbd42",
             "dependencies": {}
           }
         }
