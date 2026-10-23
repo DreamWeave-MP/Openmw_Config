@@ -243,6 +243,26 @@ suite.describe('configuration ownership', function()
     expect(found).toBe(nil)
     expect(problem).toBe(`the folder '{empty}' has no openmw.cfg`)
   end)
+
+  suite.it('falls back to OPENMW_CONFIG, then to OpenMW\'s own folder, an empty one naming nothing', function()
+    local _, path = fixture('fallbacks', '')
+    local own = fs.join(scratch, 'fallbacks-own')
+    io(fs.mkdir(own, { recursive = true }))
+    io(fs.writeFile(fs.join(own, 'openmw.cfg'), ''))
+
+    expect((configuration.locate(nil, { environment = path, own = own }))).toBe(path)
+    expect((configuration.locate('', { environment = '', own = own }))).toBe(fs.join(own, 'openmw.cfg'))
+
+    local found, problem = configuration.locate(nil, {})
+    expect(found).toBe(nil)
+    expect(problem).toBe('no OpenMW configuration was named, and OpenMW\'s own folder is unknown here')
+
+    local bare = fs.join(scratch, 'fallbacks-bare')
+    io(fs.mkdir(bare, { recursive = true }))
+    found, problem = configuration.locate(nil, { own = bare })
+    expect(found).toBe(nil)
+    expect(problem).toBe(`no OpenMW configuration was named, and OpenMW's own folder '{bare}' has no openmw.cfg`)
+  end)
 end)
 
 suite.describe('OpenMW user folders', function()

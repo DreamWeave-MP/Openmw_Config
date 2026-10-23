@@ -275,16 +275,27 @@ local function configIn(folder: string): (string?, string?)
   return nil, `the folder '{folder}' has no openmw.cfg`
 end
 
+--- What `locate` falls back to when nothing is given: OPENMW_CONFIG's value, and the folder OpenMW
+--- keeps its own configuration in.
+export type Fallbacks = { environment: string?, own: string? }
+
+--- This process's fallbacks; none without process.environment.
+local function fallbacksHere(): Fallbacks
+  if not jess.granted 'process.environment' then return {} end
+
+  return { environment = process.env 'OPENMW_CONFIG', own = userFolders().userConfig }
+end
+
 --- The openmw.cfg a tool reads: the one `given` names, else the one OPENMW_CONFIG names, each a
 --- file or a folder holding one; else OpenMW's own, in its user configuration folder. Nil and why
---- when there is none. Without process.environment only `given` counts.
-local function locate(given: string?): (string?, string?)
-  local selected = nonEmptyPath(given)
-  local environment = jess.granted 'process.environment'
-  if not selected and environment then selected = nonEmptyPath(process.env 'OPENMW_CONFIG') end
+--- when there is none. `fallbacks` stands in for this process's, so a test can say there are none
+--- rather than find the machine's own configuration.
+local function locate(given: string?, fallbacks: Fallbacks?): (string?, string?)
+  local fallback = fallbacks or fallbacksHere()
+  local selected = nonEmptyPath(given) or nonEmptyPath(fallback.environment)
 
   if not selected then
-    local folder = userFolders().userConfig
+    local folder = nonEmptyPath(fallback.own)
     if not folder then
       return nil, 'no OpenMW configuration was named, and OpenMW\'s own folder is unknown here'
     end
