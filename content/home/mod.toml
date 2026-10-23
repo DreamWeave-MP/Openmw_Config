@@ -291,3 +291,11 @@ added = [
 known_issues = [
     "`userFolders` and `locate`'s fallbacks need jess 0.2.1 or later, whose runtime says which platform it runs on and where Documents is.",
 ]
+
+[[releases]]
+version = "4.2.0"
+date = 2026-10-23
+summary = "`locate` takes the fallbacks it would read from the process, so a tool's tests never find the machine's own OpenMW configuration."
+added = [
+    "`locate(given, fallbacks)`: `fallbacks` is `{ environment, own }`, OPENMW_CONFIG's value and OpenMW's own configuration folder, standing in for this process's. A test passes `{}` to have neither; without it they are read from the process, as in 4.1.0.",
+]
