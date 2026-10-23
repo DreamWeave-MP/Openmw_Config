@@ -1051,6 +1051,47 @@
       "groups": [],
       "extensions": {},
       "critical_extensions": []
+    },
+    {
+      "version": "4.2.0",
+      "locked_from": "57745390d1bde26c44c529cc964e3bd94aa79f8e",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.openmw-config-4.2.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 28802,
+          "digests": {
+            "sha256": "d90b667ff0791baf86de6926ee198ae31a94f5c5ea7fbdb38d5f59e7451254c4"
+          },
+          "jess": {
+            "package": "org.dreamweave.openmw-config",
+            "jess_api": "1",
+            "content_digest": "1a84e63664f790aee1f7f16fcb23a1f511b0458028dc3b8c78737954a197328f",
+            "dependencies": {}
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "openmw-config",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
     }
   ]
 }
