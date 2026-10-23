@@ -278,3 +278,16 @@ summary = "openmw-config is a Jess package, written in Luau; the Rust crate cont
 breaking = [
     "The library is the Jess package `org.dreamweave.openmw-config`, module `@openmw-config`, installed with jess rather than Cargo. The Rust crate `openmw-config` stays at 3.0.2 on crates.io and on this repository's `rust` branch, and is no longer developed on main.",
 ]
+
+[[releases]]
+version = "4.1.0"
+date = 2026-10-23
+summary = "Finds OpenMW's own configuration again, as the Rust crate did: `locate` takes a named file or folder, else OPENMW_CONFIG, else the openmw.cfg in OpenMW's user folder."
+added = [
+    "`userFolders()`: the folders OpenMW's `?userconfig?` and `?userdata?` tokens name on this platform, worked out as OpenMW does: Documents\\My Games\\OpenMW on Windows (the Documents known folder, wherever it was moved), Library/Preferences/openmw and Library/Application Support/openmw on macOS, and the XDG folders elsewhere. Pass them to `new` as `tokens`. Empty without the process.environment capability.",
+    "`locate(given)`: the openmw.cfg a tool reads, `given` (a file, or a folder holding one under any capitalization), else OPENMW_CONFIG, else OpenMW's own. Nil and why when there is none.",
+    "`@openmw-config/user`: the per-platform rules as a function of a platform description, for a caller describing another platform.",
+]
+known_issues = [
+    "`userFolders` and `locate`'s fallbacks need jess 0.2.1 or later, whose runtime says which platform it runs on and where Documents is.",
+]
