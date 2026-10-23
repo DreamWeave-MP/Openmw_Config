@@ -1,0 +1,58 @@
+--!strict
+-- SPDX-License-Identifier: MIT OR Apache-2.0
+-- Where OpenMW keeps a user's configuration and data: the folders its `?userconfig?` and
+-- `?userdata?` tokens name, worked out as OpenMW's own `getUserConfigPath` and `getUserDataPath`
+-- do (components/files/windowspath.cpp, macospath.cpp and linuxpath.cpp). The OS answers where
+-- home and Documents are; the rest is OpenMW's convention, kept here.
+local fs = require '@dream/fs'
+local paths = require './paths'
+
+-- Only userConfig and userData: OpenMW's local and global folders are where it is installed.
+export type Folders = paths.Tokens
+
+--- What the folders are made from: the platform's name as `@dream/process` gives it, an
+--- environment variable, and a folder the OS defines.
+export type System = {
+  platform: string,
+  env: (name: string) -> string?,
+  knownFolder: (name: 'home' | 'documents') -> string?,
+}
+
+local function nonEmpty(value: string?): string?
+  if value == '' then return nil end
+
+  return value
+end
+
+--- OpenMW's user folders on `system`, each nil when the OS can't name what it is made from.
+local function folders(system: System): Folders
+  -- Windows keeps both in Documents\My Games\OpenMW, under the folder's own capitalization.
+  if system.platform == 'windows' then
+    local documents = nonEmpty(system.knownFolder 'documents')
+    if not documents then return {} end
+
+    local folder = fs.join(documents, 'My Games', 'OpenMW')
+    return { userConfig = folder, userData = folder }
+  end
+
+  local home = nonEmpty(system.knownFolder 'home')
+
+  if system.platform == 'macos' then
+    if not home then return {} end
+
+    return {
+      userConfig = fs.join(home, 'Library', 'Preferences', 'openmw'),
+      userData = fs.join(home, 'Library', 'Application Support', 'openmw'),
+    }
+  end
+
+  -- Everything else is the XDG layout Linux uses, an empty variable counting as unset.
+  local configHome = nonEmpty(system.env 'XDG_CONFIG_HOME') or (if home then fs.join(home, '.config') else nil)
+  local dataHome = nonEmpty(system.env 'XDG_DATA_HOME') or (if home then fs.join(home, '.local', 'share') else nil)
+  return {
+    userConfig = if configHome then fs.join(configHome, 'openmw') else nil,
+    userData = if dataHome then fs.join(dataHome, 'openmw') else nil,
+  }
+end
+
+return table.freeze { folders = folders }

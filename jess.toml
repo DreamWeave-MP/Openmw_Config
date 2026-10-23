@@ -14,10 +14,13 @@ tests = ["tests/run.jsl", "tests/grammar.jsl", "tests/style.jsl"]
 # the settings it writes. They are not the configuration API.
 "@openmw-config/text" = "src/text.jsl"
 "@openmw-config/paths" = "src/paths.jsl"
+# OpenMW's per-user folders, worked out from a platform description: `userFolders` and `locate`
+# describe this one, and a caller may describe another.
+"@openmw-config/user" = "src/user.jsl"
 
 # Every module here is inert API: it does nothing until something requires it, and runs with the
 # authority of whatever calls it.
 
 [[layer]]
 id = "openmw-config.core"
-exports = ["@openmw-config", "@openmw-config/text", "@openmw-config/paths"]
+exports = ["@openmw-config", "@openmw-config/text", "@openmw-config/paths", "@openmw-config/user"]

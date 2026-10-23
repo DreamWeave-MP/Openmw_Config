@@ -4,7 +4,9 @@
 -- the user file never rewrites its parents.
 local fs = require '@dream/fs'
 local paths = require '@self/paths'
+local process = require '@dream/process'
 local text = require '@self/text'
+local user = require '@self/user'
 
 export type Entry = text.Entry
 export type Tokens = paths.Tokens
@@ -244,6 +246,65 @@ local function loadOptional(path: string, given: Options?): Config
   local directory = if fs.fileName(absolute) == 'openmw.cfg'
     then fs.parent(absolute) :: string else absolute
   return empty(directory, tokens)
+end
+
+--- An empty path names nothing: an exported but empty variable counts as unset.
+local function nonEmptyPath(path: string?): string?
+  if path == '' then return nil end
+
+  return path
+end
+
+--- OpenMW's `?userconfig?` and `?userdata?` folders on this platform, as tokens for `new`. Empty
+--- without the process.environment capability: where a user's folders are says who the user is.
+local function userFolders(): Tokens
+  if not jess.granted 'process.environment' then return {} end
+
+  return user.folders { platform = process.platform(), env = process.env, knownFolder = process.knownFolder }
+end
+
+--- The openmw.cfg in `folder`, under any capitalization; nil and why when there is none.
+local function configIn(folder: string): (string?, string?)
+  local names, problem = fs.list(folder)
+  if not names then return nil, `can't list the configuration folder '{folder}': {problem}` end
+
+  for _, name in names do
+    if string.lower(name) == 'openmw.cfg' then return fs.join(folder, name), nil end
+  end
+
+  return nil, `the folder '{folder}' has no openmw.cfg`
+end
+
+--- The openmw.cfg a tool reads: the one `given` names, else the one OPENMW_CONFIG names, each a
+--- file or a folder holding one; else OpenMW's own, in its user configuration folder. Nil and why
+--- when there is none. Without process.environment only `given` counts.
+local function locate(given: string?): (string?, string?)
+  local selected = nonEmptyPath(given)
+  local environment = jess.granted 'process.environment'
+  if not selected and environment then selected = nonEmptyPath(process.env 'OPENMW_CONFIG') end
+
+  if not selected then
+    local folder = userFolders().userConfig
+    if not folder then
+      return nil, 'no OpenMW configuration was named, and OpenMW\'s own folder is unknown here'
+    end
+
+    local found = configIn(folder)
+    if found then return found, nil end
+
+    return nil, `no OpenMW configuration was named, and OpenMW's own folder '{folder}' has no openmw.cfg`
+  end
+
+  local info, message, kind = fs.stat(selected)
+  if not info and kind ~= 'notFound' and message then
+    return nil, `can't read the configuration '{selected}': {message}`
+  end
+
+  if info and info.isFile then return selected, nil end
+
+  if not info or not info.isDir then return nil, `the configuration '{selected}' isn't a file or a folder` end
+
+  return configIn(selected)
 end
 
 @native
@@ -550,4 +611,10 @@ end
 
 table.freeze(Methods)
 
-return table.freeze { new = new, newEmpty = newEmpty, loadOptional = loadOptional }
+return table.freeze {
+  new = new,
+  newEmpty = newEmpty,
+  loadOptional = loadOptional,
+  userFolders = userFolders,
+  locate = locate,
+}

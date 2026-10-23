@@ -3,6 +3,7 @@
 local configuration = require '@openmw-config'
 local fs = require '@dream/fs'
 local test = require '@jess/test'
+local user = require '@openmw-config/user'
 
 --- The text of the file at `path`, raising the read's own message when there is none.
 local function readText(path: string): string
@@ -221,6 +222,60 @@ suite.describe('configuration ownership', function()
     local custom = fs.join(directory, 'custom.cfg')
     io(fs.writeFile(custom, 'data=relative\n'))
     expect(configuration.new(custom):dataDirectories()).toEqual { fs.join(directory, 'relative') }
+  end)
+
+  suite.it('locates the configuration a file or a folder names, under any capitalization', function()
+    local directory, path = fixture('located', '')
+    expect((configuration.locate(path))).toBe(path)
+
+    local folder = fs.join(scratch, 'located-folder')
+    io(fs.mkdir(folder, { recursive = true }))
+    io(fs.writeFile(fs.join(folder, 'OpenMW.CFG'), ''))
+    expect((configuration.locate(folder))).toBe(fs.join(folder, 'OpenMW.CFG'))
+
+    local found, problem = configuration.locate(`{directory}-missing`)
+    expect(found).toBe(nil)
+    expect(problem).toBe(`the configuration '{directory}-missing' isn't a file or a folder`)
+
+    local empty = fs.join(scratch, 'located-empty')
+    io(fs.mkdir(empty, { recursive = true }))
+    found, problem = configuration.locate(empty)
+    expect(found).toBe(nil)
+    expect(problem).toBe(`the folder '{empty}' has no openmw.cfg`)
+  end)
+end)
+
+suite.describe('OpenMW user folders', function()
+  local function system(platform: string, variables: { [string]: string }, folders: { [string]: string }): user.System
+    return {
+      platform = platform,
+      env = function(name: string): string? return variables[name] end,
+      knownFolder = function(name: 'home' | 'documents'): string? return folders[name] end,
+    }
+  end
+
+  suite.it('keeps both in Documents\\My Games\\OpenMW on Windows, wherever Documents is', function()
+    local documents = fs.join('D:', 'OneDrive', 'Documents')
+    local folder = fs.join(documents, 'My Games', 'OpenMW')
+    expect(user.folders(system('windows', {}, { documents = documents, home = 'C:' })))
+      .toEqual { userConfig = folder, userData = folder }
+    expect(user.folders(system('windows', {}, { home = 'C:' }))).toEqual {}
+  end)
+
+  suite.it('splits Preferences from Application Support on macOS', function()
+    expect(user.folders(system('macos', { XDG_CONFIG_HOME = '/elsewhere' }, { home = '/Users/n' }))).toEqual {
+      userConfig = fs.join('/Users/n', 'Library', 'Preferences', 'openmw'),
+      userData = fs.join('/Users/n', 'Library', 'Application Support', 'openmw'),
+    }
+  end)
+
+  suite.it('follows XDG elsewhere, an empty variable counting as unset', function()
+    local variables = { XDG_CONFIG_HOME = '/xdg/config', XDG_DATA_HOME = '' }
+    expect(user.folders(system('linux', variables, { home = '/home/n' }))).toEqual {
+      userConfig = fs.join('/xdg/config', 'openmw'),
+      userData = fs.join('/home/n', '.local', 'share', 'openmw'),
+    }
+    expect(user.folders(system('linux', {}, {}))).toEqual {}
   end)
 end)
 
